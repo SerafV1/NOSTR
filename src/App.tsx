@@ -12,6 +12,7 @@ import NotePage from './components/NotePage';
 import SettingsPage from './components/SettingsPage';
 import NotificationsPage from './components/NotificationsPage';
 import MessagesPage from './components/MessagesPage';
+import ComposeModal from './components/ComposeModal';
 
 type Page = 'home' | 'profile' | 'search' | 'note' | 'settings' | 'notifications' | 'messages';
 
@@ -33,6 +34,7 @@ function App() {
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [messagesRecipient, setMessagesRecipient] = useState<string | null>(null);
+  const [showComposeFab, setShowComposeFab] = useState(false);
 
   // Initialize relays on mount
   useEffect(() => {
@@ -372,6 +374,24 @@ function App() {
           <SettingsPage />
         )}
       </main>
+
+      {currentPage === 'home' && (
+        <button
+          className="compose-fab"
+          onClick={() => setShowComposeFab(true)}
+          title="New post"
+        >
+          +
+        </button>
+      )}
+
+      {showComposeFab && (
+        <ComposeModal
+          title="New post"
+          onClose={() => setShowComposeFab(false)}
+          onPublished={() => setShowComposeFab(false)}
+        />
+      )}
     </div>
   );
 }

@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { nip19 } from 'nostr-tools';
 import { NostrEventSigned } from '../types';
 import { NostrCore } from '../nostr/core';
 import { extractImageUrls, extractVideoUrls, extractYouTubeIds } from '../utils/media';
 import VideoPlayer from './VideoPlayer';
+import EmojiPicker from './EmojiPicker';
 
 interface ComposeNoteProps {
   onPublished?: (event: NostrEventSigned) => void;
@@ -16,6 +17,8 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
   const [content, setContent] = useState('');
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [publishing, setPublishing] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Extract hashtags from content automatically
   const extractHashtagsFromContent = (text: string): string[] => {
@@ -25,13 +28,32 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
     return [...new Set(tags)]; // Remove duplicates
   };
 
-  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newContent = e.target.value;
+  const updateContent = (newContent: string) => {
     setContent(newContent);
-    
-    // Auto-extract hashtags from content (for both notes and replies)
-    const extractedTags = extractHashtagsFromContent(newContent);
-    setHashtags(extractedTags);
+    setHashtags(extractHashtagsFromContent(newContent));
+  };
+
+  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    updateContent(e.target.value);
+  };
+
+  const insertEmoji = (emoji: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      updateContent(content + emoji);
+      return;
+    }
+
+    const start = textarea.selectionStart ?? content.length;
+    const end = textarea.selectionEnd ?? content.length;
+    updateContent(content.slice(0, start) + emoji + content.slice(end));
+
+    // Restore focus/cursor after the re-render that follows setContent
+    requestAnimationFrame(() => {
+      textarea.focus();
+      const cursor = start + emoji.length;
+      textarea.setSelectionRange(cursor, cursor);
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -64,13 +86,14 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
       if (event) {
         setContent('');
         setHashtags([]);
+        setShowEmojiPicker(false);
         onPublished?.(event);
       } else {
-        alert('Failed to publish note');
+        alert('Failed to publish note — check that you are logged in');
       }
     } catch (error) {
       console.error('Error publishing note:', error);
-      alert('Error publishing note');
+      alert(error instanceof Error ? error.message : 'Error publishing note');
     } finally {
       setPublishing(false);
     }
@@ -79,6 +102,7 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
   return (
     <form className="compose-note" onSubmit={handlePublish}>
       <textarea
+        ref={textareaRef}
         className="compose-textarea"
         placeholder={quoteNoteId ? 'Add a comment...' : "What's on your mind?"}
         value={content}
@@ -125,6 +149,21 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
       })()}
 
       <div className="compose-actions">
+        <div className="compose-emoji-wrapper">
+          <button
+            type="button"
+            className="compose-emoji-btn"
+            onClick={() => setShowEmojiPicker(show => !show)}
+            title="Add emoji"
+          >
+            😊
+          </button>
+          {showEmojiPicker && (
+            <div className="compose-emoji-popup">
+              <EmojiPicker onSelect={insertEmoji} />
+            </div>
+          )}
+        </div>
         <button
           type="submit"
           className="btn btn-primary"

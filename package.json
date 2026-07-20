@@ -12,6 +12,7 @@
     "lint": "eslint src --ext ts,tsx"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "nostr-tools": "^1.17.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

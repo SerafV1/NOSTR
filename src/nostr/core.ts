@@ -65,7 +65,7 @@ export class NostrCore {
       return signed;
     } catch (error) {
       console.error('Failed to publish note:', error);
-      return null;
+      throw error;
     }
   }
 
@@ -298,6 +298,59 @@ export class NostrCore {
       return events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
       console.error('Failed to fetch user notes:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Fetch a user's reposts (kind 6), paired with the original note.
+   * NIP-18 embeds the original event as JSON in the repost's content —
+   * used when present; falls back to fetching by the repost's `e` tag
+   * for reposts that only include the tag (some clients omit content).
+   */
+  static async fetchUserReposts(pubkey: string, limit: number = 50): Promise<{ repost: NostrEventSigned; original: NostrEventSigned }[]> {
+    const filters: NostrFilter[] = [
+      {
+        kinds: [EVENT_KINDS.REPOST],
+        authors: [pubkey],
+        limit
+      }
+    ];
+
+    try {
+      const relayPool = getRelayPool();
+      const repostEvents = this.dropFutureEvents(await relayPool.fetchEvents(filters));
+
+      const embedded = new Map<string, NostrEventSigned>();
+      const missingIds: string[] = [];
+
+      for (const repost of repostEvents) {
+        try {
+          const parsed = JSON.parse(repost.content) as NostrEventSigned;
+          if (parsed?.id && parsed?.pubkey && parsed?.content !== undefined) {
+            embedded.set(repost.id, parsed);
+            EventCache.addEvent(parsed);
+            continue;
+          }
+        } catch {
+          // Not embedded JSON — fetch it by id below
+        }
+        const targetId = repost.tags.find(t => t[0] === 'e')?.[1];
+        if (targetId) missingIds.push(targetId);
+      }
+
+      const fetchedMissing = missingIds.length > 0 ? await this.fetchEventsByIds(missingIds) : new Map<string, NostrEventSigned>();
+
+      const results: { repost: NostrEventSigned; original: NostrEventSigned }[] = [];
+      for (const repost of repostEvents) {
+        const original = embedded.get(repost.id)
+          ?? fetchedMissing.get(repost.tags.find(t => t[0] === 'e')?.[1] || '');
+        if (original) results.push({ repost, original });
+      }
+
+      return results.sort((a, b) => (b.repost.created_at || 0) - (a.repost.created_at || 0));
+    } catch (error) {
+      console.error('Failed to fetch user reposts:', error);
       return [];
     }
   }

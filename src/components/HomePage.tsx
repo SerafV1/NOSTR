@@ -3,7 +3,6 @@ import { NostrEventSigned } from '../types';
 import { NostrCore, PersistentCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
 import EventCard from './EventCard';
-import ComposeNote from './ComposeNote';
 
 interface HomePageProps {
   relaysConnected: boolean;
@@ -191,10 +190,6 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     }
   };
 
-  const handleNotePublished = (event: NostrEventSigned) => {
-    setEvents([event, ...events]);
-  };
-
   // A kind-1 note referencing another event is a reply
   const isReply = (e: NostrEventSigned) => e.tags.some(t => t[0] === 'e');
   const visibleEvents = events.filter(e => (contentTab === 'replies' ? isReply(e) : !isReply(e)));
@@ -221,8 +216,6 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
         </aside>
 
         <main className="home-main">
-          <ComposeNote onPublished={handleNotePublished} />
-
           <div className="feed-header">
             <h2>
               {feedType === 'global'

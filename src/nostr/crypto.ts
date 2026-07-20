@@ -179,10 +179,7 @@ export class NostrCrypto {
    */
   static npubEncode(pubkey: string): string {
     try {
-      if ((nostrTools as any).npubEncode) {
-        return (nostrTools as any).npubEncode(pubkey);
-      }
-      return '';
+      return (nostrTools as any).nip19.npubEncode(pubkey);
     } catch {
       return '';
     }
@@ -193,10 +190,7 @@ export class NostrCrypto {
    */
   static nsecEncode(privateKey: string): string {
     try {
-      if ((nostrTools as any).nsecEncode) {
-        return (nostrTools as any).nsecEncode(privateKey as `0x${string}`);
-      }
-      return '';
+      return (nostrTools as any).nip19.nsecEncode(privateKey);
     } catch {
       return '';
     }
@@ -207,10 +201,8 @@ export class NostrCrypto {
    */
   static npubDecode(npub: string): string {
     try {
-      if ((nostrTools as any).npubDecode) {
-        return (nostrTools as any).npubDecode(npub);
-      }
-      return '';
+      const decoded = (nostrTools as any).nip19.decode(npub);
+      return decoded.type === 'npub' ? decoded.data : '';
     } catch {
       return '';
     }
@@ -221,10 +213,8 @@ export class NostrCrypto {
    */
   static nsecDecode(nsec: string): string {
     try {
-      if ((nostrTools as any).nsecDecode) {
-        return (nostrTools as any).nsecDecode(nsec);
-      }
-      return '';
+      const decoded = (nostrTools as any).nip19.decode(nsec);
+      return decoded.type === 'nsec' ? decoded.data : '';
     } catch {
       return '';
     }
@@ -257,10 +247,7 @@ export class NostrCrypto {
    */
   static encodeNote(noteId: string): string {
     try {
-      if ((nostrTools as any).noteEncode) {
-        return (nostrTools as any).noteEncode(noteId);
-      }
-      return '';
+      return (nostrTools as any).nip19.noteEncode(noteId);
     } catch {
       return '';
     }
@@ -271,11 +258,8 @@ export class NostrCrypto {
    */
   static decodeNote(note: string): string | null {
     try {
-      if ((nostrTools as any).noteDecode) {
-        const result = (nostrTools as any).noteDecode(note);
-        return typeof result === 'string' ? result : null;
-      }
-      return null;
+      const decoded = (nostrTools as any).nip19.decode(note);
+      return decoded.type === 'note' && typeof decoded.data === 'string' ? decoded.data : null;
     } catch {
       return null;
     }
@@ -410,18 +394,34 @@ export class ExtensionManager {
   }
 
   /**
-   * Sign event using extension
+   * Sign event using extension. Same rationale as getPublicKey(): a
+   * hidden/unfocused approval popup would otherwise hang this call forever
+   * with no feedback, which from the compose form just looks like the
+   * extension "isn't activating" — a timeout turns that into a clear error.
    */
-  static async signEvent(event: any): Promise<any> {
+  static async signEvent(event: any, timeoutMs: number = 20000): Promise<any> {
+    const nostr = (window as NostrWindow).nostr;
+    if (!nostr) {
+      throw new Error('NOSTR extension not found');
+    }
     try {
-      const nostr = (window as NostrWindow).nostr;
-      if (!nostr) {
-        throw new Error('NOSTR extension not found');
-      }
-      return await nostr.signEvent(event);
+      return await Promise.race([
+        nostr.signEvent(event),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(
+              'Extension did not respond in time — its approval prompt may have opened ' +
+              'in a window that lost focus or opened behind the browser. Check for another ' +
+              'window/taskbar entry, or if you have multiple NOSTR extensions installed ' +
+              '(e.g. Alby + nos2x), disable all but one and try again.'
+            )),
+            timeoutMs
+          )
+        )
+      ]);
     } catch (error) {
       console.error('Failed to sign event with extension:', error);
-      return null;
+      throw error;
     }
   }
 

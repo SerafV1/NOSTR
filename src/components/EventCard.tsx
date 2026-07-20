@@ -11,10 +11,12 @@ import {
   stripMediaUrls,
   splitContentTokens
 } from '../utils/media';
-import ComposeNote from './ComposeNote';
+import ComposeModal from './ComposeModal';
 import VideoPlayer from './VideoPlayer';
 import QuotedNoteCard from './QuotedNoteCard';
 import LinkPreviewCard from './LinkPreviewCard';
+import EmojiPicker from './EmojiPicker';
+import ZapButton from './ZapButton';
 
 interface EventCardProps {
   event: NostrEventSigned;
@@ -387,16 +389,6 @@ const EventCard: React.FC<EventCardProps> = ({
     return String(sats);
   };
 
-  const handleZap = () => {
-    const lightningAddress = profile?.lud16 || (profile as any)?.lud06;
-    if (!lightningAddress) {
-      alert('This author has no lightning address in their profile');
-      return;
-    }
-    // Hand off to the user's lightning wallet
-    window.open(`lightning:${lightningAddress}`, '_blank');
-  };
-
   const displayName = profile?.display_name || profile?.name || formatAddress(event.pubkey);
   const displayPicture = profile?.picture || '';
 
@@ -562,40 +554,26 @@ const EventCard: React.FC<EventCardProps> = ({
           </button>
           {showReactions && (
             <div className="reactions-menu">
-              {['👍', '❤️', '😂', '😮', '😢', '🔥'].map((emoji) => (
-                <button
-                  key={emoji}
-                  className="reaction-option"
-                  onClick={() => handleReaction(emoji)}
-                >
-                  {emoji}
-                </button>
-              ))}
+              <EmojiPicker onSelect={(emoji) => { handleReaction(emoji); setShowReactions(false); }} />
             </div>
           )}
         </div>
 
-        <button
-          className="action-btn"
-          onClick={handleZap}
-          title="Zap with lightning"
-        >
+        <ZapButton lud16={profile?.lud16} triggerClassName="action-btn" triggerTitle="Zap with lightning">
           <span className="action-icon">⚡</span>
           <span className="action-count">{formatSats(zapSats)}</span>
-        </button>
+        </ZapButton>
       </div>
 
       {composeMode && (
-        <div className="inline-reply" onClick={(e) => e.stopPropagation()}>
-          <div className="inline-reply-label">
-            {composeMode === 'reply' ? 'Replying to this post' : 'Quoting this post'}
-          </div>
-          <ComposeNote
-            replyTo={composeMode === 'reply' ? event.id : undefined}
-            quoteNoteId={composeMode === 'quote' ? event.id : undefined}
-            onPublished={handleComposePublished}
-          />
-        </div>
+        <ComposeModal
+          title={composeMode === 'reply' ? 'Reply' : 'Quote'}
+          replyTo={composeMode === 'reply' ? event.id : undefined}
+          quoteNoteId={composeMode === 'quote' ? event.id : undefined}
+          context={{ authorName: displayName, authorPicture: displayPicture, content: event.content }}
+          onClose={() => setComposeMode(null)}
+          onPublished={handleComposePublished}
+        />
       )}
 
       {enlargedImage && (
