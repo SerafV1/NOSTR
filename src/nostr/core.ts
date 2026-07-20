@@ -681,6 +681,48 @@ export class NostrCore {
   }
 
   /**
+   * Fetch multiple events by id in one relay query, reusing the cache for
+   * ids already seen (e.g. from earlier feed loads) instead of refetching
+   */
+  static async fetchEventsByIds(eventIds: string[]): Promise<Map<string, NostrEventSigned>> {
+    const unique = Array.from(new Set(eventIds));
+    const result = new Map<string, NostrEventSigned>();
+    const missing: string[] = [];
+
+    for (const id of unique) {
+      const cached = EventCache.getEvent(id);
+      if (cached) {
+        result.set(id, cached);
+      } else {
+        missing.push(id);
+      }
+    }
+
+    if (missing.length > 0) {
+      try {
+        const relayPool = getRelayPool();
+        const events = await relayPool.fetchEvents([{ ids: missing }]);
+        for (const event of events) {
+          EventCache.addEvent(event);
+          result.set(event.id, event);
+        }
+      } catch (error) {
+        console.error('Failed to batch fetch events by id:', error);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Public accessor for the zap amount parser — used when rendering zap
+   * notifications outside fetchEngagement/fetchZapTotals
+   */
+  static getZapAmountSats(zapReceipt: NostrEventSigned): number {
+    return this.parseZapAmountSats(zapReceipt);
+  }
+
+  /**
    * Search events by content
    */
   static async searchEvents(query: string, limit: number = 50): Promise<NostrEventSigned[]> {

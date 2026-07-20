@@ -323,19 +323,37 @@ export class ExtensionManager {
   }
 
   /**
-   * Get public key from extension
+   * Get public key from extension. Some extensions (nos2x in particular)
+   * open their approval prompt as a separate OS window, which certain
+   * window managers/browser setups can leave unfocused or hidden — from
+   * the page's perspective this looks like the call hanging forever with
+   * no popup, error, or rejection. A timeout turns that silent hang into
+   * a clear, actionable error instead of leaving the caller stuck.
    */
-  static async getPublicKey(): Promise<string | null> {
+  static async getPublicKey(timeoutMs: number = 20000): Promise<string | null> {
     try {
       const nostr = (window as NostrWindow).nostr;
       if (!nostr) {
         throw new Error('NOSTR extension not found');
       }
-      const pubkey = await nostr.getPublicKey();
+      const pubkey = await Promise.race([
+        nostr.getPublicKey(),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(
+              'Extension did not respond in time — its approval prompt may have opened ' +
+              'in a window that lost focus or opened behind the browser. Check for another ' +
+              'window/taskbar entry, or if you have multiple NOSTR extensions installed ' +
+              '(e.g. Alby + nos2x), disable all but one and try again.'
+            )),
+            timeoutMs
+          )
+        )
+      ]);
       return pubkey;
     } catch (error) {
       console.error('Failed to get public key from extension:', error);
-      return null;
+      throw error;
     }
   }
 
@@ -343,21 +361,16 @@ export class ExtensionManager {
    * Login via extension (NIP-07)
    */
   static async loginWithExtension(): Promise<string | null> {
-    try {
-      const pubkey = await this.getPublicKey();
-      if (!pubkey) {
-        throw new Error('Failed to get public key from extension');
-      }
-
-      CredentialManager.storePublicKey(pubkey);
-      CredentialManager.setExtensionMode(true);
-
-      console.log('Logged in via extension with pubkey:', pubkey);
-      return pubkey;
-    } catch (error) {
-      console.error('Extension login failed:', error);
-      return null;
+    const pubkey = await this.getPublicKey();
+    if (!pubkey) {
+      throw new Error('Failed to get public key from extension');
     }
+
+    CredentialManager.storePublicKey(pubkey);
+    CredentialManager.setExtensionMode(true);
+
+    console.log('Logged in via extension with pubkey:', pubkey);
+    return pubkey;
   }
 
   /**

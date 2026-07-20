@@ -3,7 +3,7 @@
 const IMAGE_URL_SOURCE = 'https?:\\/\\/[^\\s]+\\.(?:jpg|jpeg|png|gif|webp|bmp|svg)(?:\\?[^\\s]*)?';
 const VIDEO_URL_SOURCE = 'https?:\\/\\/[^\\s]+\\.(?:mp4|webm|mov|m4v|ogv)(?:\\?[^\\s]*)?';
 const YOUTUBE_URL_SOURCE =
-  'https?:\\/\\/(?:www\\.|m\\.)?(?:youtube\\.com\\/(?:watch\\?v=|shorts\\/|live\\/|embed\\/)|youtu\\.be\\/)([A-Za-z0-9_-]{11})[^\\s]*';
+  'https?:\\/\\/(?:(?:www|m|music)\\.)?(?:youtube\\.com\\/(?:watch\\?v=|shorts\\/|live\\/|embed\\/)|youtu\\.be\\/)([A-Za-z0-9_-]{11})[^\\s]*';
 const ANY_URL_SOURCE = 'https?:\\/\\/[^\\s]+';
 // A quoted note reference (NIP-19 note/nevent) — rendered as an embedded
 // quote card, so the raw nostr: URI is hidden from the visible text

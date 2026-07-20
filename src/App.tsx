@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { CredentialManager, NostrCrypto } from './nostr/crypto';
 import { getRelayPool, DEFAULT_RELAYS } from './nostr/relay';
+import { NotificationCore, NotificationStore } from './nostr/notifications';
 import './index.css';
 import LoginPage from './components/LoginPage';
 import HomePage from './components/HomePage';
@@ -8,8 +9,9 @@ import ProfilePage from './components/ProfilePage';
 import SearchPage from './components/SearchPage';
 import NotePage from './components/NotePage';
 import SettingsPage from './components/SettingsPage';
+import NotificationsPage from './components/NotificationsPage';
 
-type Page = 'home' | 'profile' | 'search' | 'note' | 'settings';
+type Page = 'home' | 'profile' | 'search' | 'note' | 'settings' | 'notifications';
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(CredentialManager.isLoggedIn());
@@ -26,6 +28,7 @@ function App() {
   const [relaysConnected, setRelaysConnected] = useState(false);
   const [relayInfos, setRelayInfos] = useState<{ url: string; connected: boolean; paid: boolean }[]>([]);
   const [showRelayPanel, setShowRelayPanel] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   // Initialize relays on mount
   useEffect(() => {
@@ -107,6 +110,25 @@ function App() {
     const interval = setInterval(refreshRelayInfos, 5000);
     return () => clearInterval(interval);
   }, [isLoggedIn, relaysConnected]);
+
+  // Poll for the unread notification badge — skipped while the
+  // Notifications page itself is open, since it manages the count directly
+  useEffect(() => {
+    if (!isLoggedIn || !relaysConnected || !publicKey || currentPage === 'notifications') return;
+
+    const refreshUnread = async () => {
+      try {
+        const notifications = await NotificationCore.fetchNotifications(publicKey, 50);
+        setUnreadNotifications(NotificationStore.countUnread(publicKey, notifications));
+      } catch (error) {
+        console.error('Failed to refresh notification badge:', error);
+      }
+    };
+
+    refreshUnread();
+    const interval = setInterval(refreshUnread, 30000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn, relaysConnected, publicKey, currentPage]);
 
   const handleLogin = (privkey: string) => {
     try {
@@ -192,13 +214,22 @@ function App() {
             >
               Profile
             </button>
-            <button 
+            <button
               className="nav-btn"
               onClick={navigateToSearch}
             >
               Search
             </button>
-            <button 
+            <button
+              className={`nav-btn ${currentPage === 'notifications' ? 'active' : ''}`}
+              onClick={() => setCurrentPage('notifications')}
+            >
+              🔔 Notifications
+              {unreadNotifications > 0 && (
+                <span className="nav-badge">{unreadNotifications > 99 ? '99+' : unreadNotifications}</span>
+              )}
+            </button>
+            <button
               className={`nav-btn ${currentPage === 'settings' ? 'active' : ''}`}
               onClick={() => setCurrentPage('settings')}
             >
@@ -278,6 +309,15 @@ function App() {
             onNavigateToNote={navigateToNote}
             onNavigateToTopic={navigateToTopic}
             onBack={navigateBackFromNote}
+          />
+        )}
+        {currentPage === 'notifications' && (
+          <NotificationsPage
+            pubkey={publicKey}
+            relaysConnected={relaysConnected}
+            onNavigateToProfile={navigateToProfile}
+            onNavigateToNote={navigateToNote}
+            onMarkRead={() => setUnreadNotifications(0)}
           />
         )}
         {currentPage === 'settings' && (

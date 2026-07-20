@@ -464,6 +464,22 @@ textarea {
   background: rgba(102, 126, 234, 0.2);
 }
 
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: var(--spacing-xs);
+  background: var(--error-color);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+
 .header-right {
   display: flex;
   align-items: center;
@@ -2424,4 +2440,113 @@ textarea {
 .no-relays p {
   margin: 0;
   font-size: 1.1rem;
+}
+
+/* Notifications */
+.notifications-page {
+  max-width: 700px;
+  margin: 0 auto;
+  width: 100%;
+  padding: var(--spacing-xl);
+}
+
+.notifications-header {
+  margin-bottom: var(--spacing-lg);
+}
+
+.notification-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+  background: var(--light-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-md);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.notification-item:hover {
+  border-color: var(--primary-color);
+}
+
+.notification-item.unread {
+  border-color: var(--primary-color);
+  background: rgba(102, 126, 234, 0.08);
+}
+
+.notification-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+}
+
+.notification-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.notification-avatar-placeholder {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: white;
+  flex-shrink: 0;
+}
+
+.notification-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-text {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.notification-actor {
+  background: none;
+  border: none;
+  padding: 0;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.notification-actor:hover {
+  color: var(--primary-color);
+}
+
+.notification-preview {
+  margin-top: var(--spacing-xs);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.notification-time {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
 }

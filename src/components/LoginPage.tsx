@@ -36,6 +36,14 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   };
 
   const handleExtensionLogin = async () => {
+    if (!ExtensionManager.hasExtension()) {
+      alert(
+        'No NOSTR extension detected. Make sure nos2x, Alby, or a similar NIP-07 ' +
+        'extension is installed and enabled for this browser, then reload the page.'
+      );
+      return;
+    }
+
     setIsExtensionLoading(true);
     try {
       const pubkey = await ExtensionManager.loginWithExtension();
@@ -47,7 +55,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       }
     } catch (error) {
       console.error('Extension login failed:', error);
-      alert('Extension login failed');
+      alert(error instanceof Error ? error.message : 'Extension login failed');
     } finally {
       setIsExtensionLoading(false);
     }
