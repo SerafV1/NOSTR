@@ -60,9 +60,11 @@ export class NostrCrypto {
   }
 
   /**
-   * Create and sign an event
+   * Create and sign an event. createdAt defaults to now — callers that need
+   * a specific timestamp (e.g. NIP-59 gift wraps, which randomize it to
+   * avoid leaking send time) can override it.
    */
-  static signEvent(event: NostrEvent, privateKey: string): NostrEventSigned {
+  static signEvent(event: NostrEvent, privateKey: string, createdAt?: number): NostrEventSigned {
     const normalizedKey = this.normalizePrivateKey(privateKey);
     if (!normalizedKey) throw new Error('Private key is not valid hex or nsec format');
     privateKey = normalizedKey;
@@ -71,7 +73,7 @@ export class NostrCrypto {
 
     const eventTemplate: any = {
       kind: event.kind,
-      created_at: Math.floor(Date.now() / 1000),
+      created_at: createdAt ?? Math.floor(Date.now() / 1000),
       tags: event.tags || [],
       content: event.content,
       pubkey
@@ -140,6 +142,36 @@ export class NostrCrypto {
     } catch {
       return '';
     }
+  }
+
+  /**
+   * Derive the NIP-44 conversation key (ECDH shared secret) between our
+   * private key and another party's public key. Symmetric: deriving with
+   * (privA, pubB) yields the same key as (privB, pubA), which is what lets
+   * both sides of a conversation — and a sender re-reading their own sent
+   * messages — decrypt with just their own key.
+   */
+  static getConversationKey(privateKey: string, publicKey: string): Uint8Array {
+    const normalized = this.normalizePrivateKey(privateKey);
+    if (!normalized) throw new Error('Private key is not valid hex or nsec format');
+    return (nostrTools as any).nip44.utils.v2.getConversationKey(normalized, publicKey);
+  }
+
+  /**
+   * Encrypt a message for a recipient (NIP-44) — used for NIP-17 private
+   * direct messages instead of the legacy NIP-04 scheme above.
+   */
+  static encryptNip44(message: string, privateKey: string, publicKey: string): string {
+    const key = this.getConversationKey(privateKey, publicKey);
+    return (nostrTools as any).nip44.encrypt(key, message);
+  }
+
+  /**
+   * Decrypt a message from a sender (NIP-44)
+   */
+  static decryptNip44(ciphertext: string, privateKey: string, publicKey: string): string {
+    const key = this.getConversationKey(privateKey, publicKey);
+    return (nostrTools as any).nip44.decrypt(key, ciphertext);
   }
 
   /**
@@ -311,6 +343,10 @@ export interface NostrWindow extends Window {
     signEvent(event: any): Promise<any>;
     encrypt(pubkey: string, plaintext: string): Promise<string>;
     decrypt(pubkey: string, ciphertext: string): Promise<string>;
+    nip44?: {
+      encrypt(pubkey: string, plaintext: string): Promise<string>;
+      decrypt(pubkey: string, ciphertext: string): Promise<string>;
+    };
   };
 }
 
@@ -419,5 +455,39 @@ export class ExtensionManager {
       console.error('Failed to decrypt with extension:', error);
       return null;
     }
+  }
+
+  /**
+   * Whether the extension exposes the NIP-44 methods required for
+   * NIP-17 private messages — older extensions only support NIP-04
+   */
+  static hasNip44(): boolean {
+    const nostr = (window as NostrWindow).nostr;
+    return !!nostr?.nip44?.encrypt && !!nostr?.nip44?.decrypt;
+  }
+
+  /**
+   * Encrypt using extension (NIP-44)
+   */
+  static async encryptNip44(pubkey: string, plaintext: string): Promise<string> {
+    const nostr = (window as NostrWindow).nostr;
+    if (!nostr?.nip44?.encrypt) {
+      throw new Error(
+        'Your NOSTR extension does not support NIP-44 encryption, required for private ' +
+        'messages. Update the extension or switch to one that supports it (e.g. Alby).'
+      );
+    }
+    return await nostr.nip44.encrypt(pubkey, plaintext);
+  }
+
+  /**
+   * Decrypt using extension (NIP-44)
+   */
+  static async decryptNip44(pubkey: string, ciphertext: string): Promise<string> {
+    const nostr = (window as NostrWindow).nostr;
+    if (!nostr?.nip44?.decrypt) {
+      throw new Error('Your NOSTR extension does not support NIP-44 decryption, required for private messages.');
+    }
+    return await nostr.nip44.decrypt(pubkey, ciphertext);
   }
 }

@@ -22,7 +22,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     try {
       const newKey = NostrCrypto.generatePrivateKey();
       setPrivkey(newKey);
-      setMode('login');
     } finally {
       setIsGenerating(false);
     }

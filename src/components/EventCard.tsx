@@ -7,12 +7,14 @@ import {
   extractImageUrls,
   extractVideoUrls,
   extractYouTubeIds,
+  extractPreviewLinkUrl,
   stripMediaUrls,
   splitContentTokens
 } from '../utils/media';
 import ComposeNote from './ComposeNote';
 import VideoPlayer from './VideoPlayer';
 import QuotedNoteCard from './QuotedNoteCard';
+import LinkPreviewCard from './LinkPreviewCard';
 
 interface EventCardProps {
   event: NostrEventSigned;
@@ -97,16 +99,25 @@ const EventCard: React.FC<EventCardProps> = ({
 
   const loadQuotedNote = async () => {
     try {
-      // Look for a nostr:note1... or nostr:nevent1... reference
-      const matches = event.content.match(/nostr:(?:note1|nevent1)[a-z0-9]+/gi);
+      // Look for a nostr:note1..., nostr:nevent1... or nostr:naddr1... reference
+      const matches = event.content.match(/nostr:(?:note1|nevent1|naddr1)[a-z0-9]+/gi);
 
       if (matches && matches.length > 0) {
         const link = matches[0];
-        const decodedId = link.toLowerCase().includes('nevent1') ? decodeNevent(link) : decodeNote(link);
+        const linkLower = link.toLowerCase();
 
+        if (linkLower.includes('naddr1')) {
+          const address = decodeNaddr(link);
+          if (address) {
+            const note = await NostrCore.fetchEventByAddress(address.kind, address.pubkey, address.identifier);
+            if (note) setQuotedNote(note);
+          }
+          return;
+        }
+
+        const decodedId = linkLower.includes('nevent1') ? decodeNevent(link) : decodeNote(link);
         if (decodedId) {
-          // Try to fetch the referenced note
-          const note = await (NostrCore as any).fetchEventById(decodedId);
+          const note = await NostrCore.fetchEventById(decodedId);
           if (note) {
             setQuotedNote(note);
           }
@@ -133,6 +144,18 @@ const EventCard: React.FC<EventCardProps> = ({
       return decoded.type === 'nevent' ? (decoded.data as { id: string }).id : null;
     } catch (error) {
       console.error('Failed to decode nevent:', error);
+      return null;
+    }
+  };
+
+  const decodeNaddr = (naddrLink: string): { kind: number; pubkey: string; identifier: string } | null => {
+    try {
+      const decoded = nip19.decode(naddrLink.replace(/^nostr:/, ''));
+      if (decoded.type !== 'naddr') return null;
+      const { kind, pubkey, identifier } = decoded.data as { kind: number; pubkey: string; identifier: string };
+      return { kind, pubkey, identifier };
+    } catch (error) {
+      console.error('Failed to decode naddr:', error);
       return null;
     }
   };
@@ -471,6 +494,14 @@ const EventCard: React.FC<EventCardProps> = ({
               </div>
             ))}
           </div>
+        )}
+        {extractImageUrls(event.content).length === 0 &&
+          extractVideoUrls(event.content).length === 0 &&
+          extractYouTubeIds(event.content).length === 0 &&
+          extractPreviewLinkUrl(event.content) && (
+            <div onClick={(e) => e.stopPropagation()}>
+              <LinkPreviewCard url={extractPreviewLinkUrl(event.content)!} />
+            </div>
         )}
       </div>
 

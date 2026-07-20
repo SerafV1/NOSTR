@@ -681,6 +681,38 @@ export class NostrCore {
   }
 
   /**
+   * Fetch an addressable event (NIP-19 naddr) by its (kind, author, d-tag)
+   * coordinate rather than by id — these events are replaceable, so when
+   * several match, the most recent one is the current version.
+   */
+  static async fetchEventByAddress(
+    kind: number,
+    pubkey: string,
+    identifier: string
+  ): Promise<NostrEventSigned | null> {
+    const filters: NostrFilter[] = [
+      {
+        kinds: [kind],
+        authors: [pubkey],
+        '#d': [identifier],
+        limit: 10
+      }
+    ];
+
+    try {
+      const relayPool = getRelayPool();
+      const events = await relayPool.fetchEvents(filters);
+      if (events.length === 0) return null;
+      return events.reduce((latest, current) =>
+        (current.created_at || 0) > (latest.created_at || 0) ? current : latest
+      );
+    } catch (error) {
+      console.error('Failed to fetch event by address:', error);
+      return null;
+    }
+  }
+
+  /**
    * Fetch multiple events by id in one relay query, reusing the cache for
    * ids already seen (e.g. from earlier feed loads) instead of refetching
    */

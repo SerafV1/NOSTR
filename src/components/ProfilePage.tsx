@@ -12,6 +12,7 @@ interface ProfilePageProps {
   onNavigateToProfile: (pubkey: string) => void;
   onNavigateToNote?: (noteId: string) => void;
   onNavigateToTopic?: (topic: string) => void;
+  onNavigateToMessages?: (pubkey: string) => void;
 }
 
 const ProfilePage: React.FC<ProfilePageProps> = ({
@@ -20,7 +21,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   relaysConnected,
   onNavigateToProfile,
   onNavigateToNote,
-  onNavigateToTopic
+  onNavigateToTopic,
+  onNavigateToMessages
 }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [notes, setNotes] = useState<NostrEventSigned[]>([]);
@@ -143,6 +145,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                 onClick={() => setEditing(!editing)}
               >
                 {editing ? 'Cancel' : 'Edit Profile'}
+              </button>
+            )}
+            {!isOwnProfile && onNavigateToMessages && (
+              <button
+                className="btn btn-secondary btn-small"
+                onClick={() => onNavigateToMessages(pubkey)}
+              >
+                ✉️ Message
               </button>
             )}
           </div>

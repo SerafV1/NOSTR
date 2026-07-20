@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { CredentialManager, NostrCrypto } from './nostr/crypto';
 import { getRelayPool, DEFAULT_RELAYS } from './nostr/relay';
 import { NotificationCore, NotificationStore } from './nostr/notifications';
+import { DirectMessageCore, DirectMessageStore } from './nostr/dm';
 import './index.css';
 import LoginPage from './components/LoginPage';
 import HomePage from './components/HomePage';
@@ -10,8 +11,9 @@ import SearchPage from './components/SearchPage';
 import NotePage from './components/NotePage';
 import SettingsPage from './components/SettingsPage';
 import NotificationsPage from './components/NotificationsPage';
+import MessagesPage from './components/MessagesPage';
 
-type Page = 'home' | 'profile' | 'search' | 'note' | 'settings' | 'notifications';
+type Page = 'home' | 'profile' | 'search' | 'note' | 'settings' | 'notifications' | 'messages';
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(CredentialManager.isLoggedIn());
@@ -29,6 +31,8 @@ function App() {
   const [relayInfos, setRelayInfos] = useState<{ url: string; connected: boolean; paid: boolean }[]>([]);
   const [showRelayPanel, setShowRelayPanel] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [messagesRecipient, setMessagesRecipient] = useState<string | null>(null);
 
   // Initialize relays on mount
   useEffect(() => {
@@ -130,6 +134,26 @@ function App() {
     return () => clearInterval(interval);
   }, [isLoggedIn, relaysConnected, publicKey, currentPage]);
 
+  // Poll for the unread message badge — skipped while Messages is open,
+  // since it manages last-seen markers directly
+  useEffect(() => {
+    if (!isLoggedIn || !relaysConnected || !publicKey || currentPage === 'messages') return;
+
+    const refreshUnread = async () => {
+      try {
+        const messages = await DirectMessageCore.fetchMessages(publicKey);
+        const conversations = DirectMessageCore.groupConversations(messages);
+        setUnreadMessages(DirectMessageStore.countUnread(publicKey, conversations));
+      } catch (error) {
+        console.error('Failed to refresh message badge:', error);
+      }
+    };
+
+    refreshUnread();
+    const interval = setInterval(refreshUnread, 30000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn, relaysConnected, publicKey, currentPage]);
+
   const handleLogin = (privkey: string) => {
     try {
       let pubkey: string;
@@ -184,6 +208,11 @@ function App() {
     setCurrentPage('search');
   };
 
+  const navigateToMessages = (recipient?: string) => {
+    setMessagesRecipient(recipient || null);
+    setCurrentPage('messages');
+  };
+
   const navigateBackFromNote = () => {
     setCurrentPage(noteReturnPage);
     setSelectedNoteId(null);
@@ -227,6 +256,15 @@ function App() {
               🔔 Notifications
               {unreadNotifications > 0 && (
                 <span className="nav-badge">{unreadNotifications > 99 ? '99+' : unreadNotifications}</span>
+              )}
+            </button>
+            <button
+              className={`nav-btn ${currentPage === 'messages' ? 'active' : ''}`}
+              onClick={() => navigateToMessages()}
+            >
+              ✉️ Messages
+              {unreadMessages > 0 && (
+                <span className="nav-badge">{unreadMessages > 99 ? '99+' : unreadMessages}</span>
               )}
             </button>
             <button
@@ -292,6 +330,7 @@ function App() {
             onNavigateToProfile={navigateToProfile}
             onNavigateToNote={navigateToNote}
             onNavigateToTopic={navigateToTopic}
+            onNavigateToMessages={navigateToMessages}
           />
         )}
         {currentPage === 'search' && (
@@ -318,6 +357,15 @@ function App() {
             onNavigateToProfile={navigateToProfile}
             onNavigateToNote={navigateToNote}
             onMarkRead={() => setUnreadNotifications(0)}
+          />
+        )}
+        {currentPage === 'messages' && (
+          <MessagesPage
+            pubkey={publicKey}
+            relaysConnected={relaysConnected}
+            onNavigateToProfile={navigateToProfile}
+            onMarkRead={() => setUnreadMessages(0)}
+            initialRecipient={messagesRecipient}
           />
         )}
         {currentPage === 'settings' && (

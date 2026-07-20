@@ -61,8 +61,20 @@ A comprehensive, feature-rich NOSTR web application built with TypeScript and Re
 - Reply to notes with threading
 - Like/favorite functionality (via reactions)
 - Repost events
-- View reply counts
+- Quote notes, long-form articles (`naddr`) and other events inline, rendered as an embedded quote card
+- Link previews (Open Graph title/description/image) for plain URLs in note content
+- View reply counts, repost counts, like counts and zap totals
 - Event metadata caching
+
+### 🔔 Notifications
+- Unified feed of replies, mentions, reactions, reposts and zaps that reference you
+- Unread badge in the header nav, backed by a persisted last-seen marker
+- Live polling while the app is open
+
+### ✉️ Private Direct Messages (NIP-17)
+- End-to-end encrypted 1:1 messaging using NIP-44 encryption wrapped in NIP-59 gift wraps
+- Relays never see who's messaging whom, or the message content — only the recipient (and the sender's own gift-wrapped copy) can decrypt
+- Conversation list with unread tracking, per-thread view, works with both local-key and NIP-07 extension login (extension must support NIP-44)
 
 ### 🎨 User Interface
 - Modern dark mode design
@@ -75,7 +87,7 @@ A comprehensive, feature-rich NOSTR web application built with TypeScript and Re
 ### 🔐 Cryptographic Security
 - NIP-01 compliant event signing
 - Event verification with public key cryptography
-- NIP-04 message encryption support
+- NIP-44 (versioned) and legacy NIP-04 encryption primitives
 - Secure credential handling
 - No private key transmission
 
@@ -84,29 +96,40 @@ A comprehensive, feature-rich NOSTR web application built with TypeScript and Re
 ```
 nostr-web-app/
 ├── src/
-│   ├── components/           # React components
-│   │   ├── LoginPage.tsx     # Authentication UI
-│   │   ├── HomePage.tsx      # Main feed page
-│   │   ├── ProfilePage.tsx   # User profile display
-│   │   ├── SearchPage.tsx    # Search functionality
-│   │   ├── EventCard.tsx     # Individual note component
-│   │   ├── ComposeNote.tsx   # Note composition form
+│   ├── components/            # React components
+│   │   ├── LoginPage.tsx      # Authentication UI
+│   │   ├── HomePage.tsx       # Main feed page
+│   │   ├── ProfilePage.tsx    # User profile display
+│   │   ├── SearchPage.tsx     # Search functionality
+│   │   ├── NotePage.tsx       # Single note + replies view
+│   │   ├── NotificationsPage.tsx # Replies/mentions/reactions/reposts/zaps
+│   │   ├── MessagesPage.tsx   # NIP-17 private DM conversations + threads
+│   │   ├── SettingsPage.tsx   # Relay/app settings
+│   │   ├── EventCard.tsx      # Individual note component
+│   │   ├── QuotedNoteCard.tsx # Embedded quote card (note/nevent/naddr)
+│   │   ├── LinkPreviewCard.tsx # Open Graph link preview card
+│   │   ├── VideoPlayer.tsx    # Inline video embed
+│   │   ├── ComposeNote.tsx    # Note composition form
 │   │   └── EditProfileForm.tsx # Profile editing
-│   ├── nostr/                # NOSTR protocol implementation
-│   │   ├── crypto.ts         # Cryptographic operations
-│   │   ├── relay.ts          # Relay connection pooling
-│   │   └── core.ts           # Core NOSTR protocol functions
+│   ├── nostr/                 # NOSTR protocol implementation
+│   │   ├── crypto.ts          # Keys, signing, NIP-04/NIP-44 encryption
+│   │   ├── relay.ts           # Relay connection pooling
+│   │   ├── core.ts            # Core protocol functions + caches
+│   │   ├── notifications.ts   # Notification feed + unread tracking
+│   │   └── dm.ts               # NIP-17 send/receive (seal + gift wrap)
 │   ├── utils/
-│   │   └── helpers.ts        # Utility functions
-│   ├── types.ts              # TypeScript type definitions
-│   ├── App.tsx               # Main app component
-│   ├── main.tsx              # Entry point
-│   └── index.css             # Global styling
-├── index.html                # HTML template
-├── vite.config.ts            # Vite configuration
-├── tsconfig.json             # TypeScript configuration
-├── package.json              # Dependencies
-└── README.md                 # This file
+│   │   ├── helpers.ts         # Formatting utilities
+│   │   ├── media.ts           # Image/video/YouTube/quote-ref extraction
+│   │   └── linkPreview.ts     # Best-effort OG metadata fetch + cache
+│   ├── types.ts               # TypeScript type definitions
+│   ├── App.tsx                # Main app component
+│   ├── main.tsx                # Entry point
+│   └── index.css              # Global styling
+├── index.html                 # HTML template
+├── vite.config.ts             # Vite configuration
+├── tsconfig.json               # TypeScript configuration
+├── package.json               # Dependencies
+└── README.md                  # This file
 ```
 
 ## Tech Stack
@@ -181,15 +204,45 @@ The app will open automatically at `http://localhost:5173`
    - Click on usernames to view their profiles
    - See all their notes and information
 
-## NOSTR Event Types Supported
+## NOSTR Event Kinds Used
 
-- **Kind 0**: User Metadata (profiles)
-- **Kind 1**: Text Note (posts)
-- **Kind 3**: Contacts (follow list)
-- **Kind 5**: Event Deletion
-- **Kind 6**: Repost
-- **Kind 7**: Reaction (likes with custom emoji)
-- **Kind 4**: Encrypted Direct Message (extensible)
+| Kind | Name | Usage |
+|---|---|---|
+| 0 | Metadata | Read/write user profiles |
+| 1 | Text Note | Read/write notes, replies, quotes |
+| 3 | Contacts | Read-only — powers the home feed; no follow/unfollow UI yet |
+| 5 | Event Deletion | Delete your own events |
+| 6 | Repost | Repost/quote-repost |
+| 7 | Reaction | Emoji reactions |
+| 13 | Seal | NIP-17 DM inner layer (sender-signed, NIP-44 encrypted) |
+| 14 | Chat Message | NIP-17 DM plaintext rumor (never published directly) |
+| 1059 | Gift Wrap | NIP-17 DM outer layer (published, ephemeral-key signed) |
+| 9734 / 9735 | Zap Request / Receipt | Zap receipts are read and totalled; sending hands off to the recipient's Lightning wallet via a `lightning:` URI rather than constructing the request itself |
+| 30023 | Long-form Content | Read-only, via `naddr` quote references |
+
+## Supported NIPs
+
+| NIP | Title | Notes |
+|---|---|---|
+| [01](https://github.com/nostr-protocol/nips/blob/master/01.md) | Basic protocol | Events, filters, relay `REQ`/`EVENT`/`EOSE` |
+| [02](https://github.com/nostr-protocol/nips/blob/master/02.md) | Contact List | Read-only (home feed) |
+| [04](https://github.com/nostr-protocol/nips/blob/master/04.md) | Encrypted DMs | Primitives implemented in `crypto.ts`; unused by the app — see NIP-17 |
+| [05](https://github.com/nostr-protocol/nips/blob/master/05.md) | DNS Identifiers | Displayed on profiles; not cryptographically verified |
+| [07](https://github.com/nostr-protocol/nips/blob/master/07.md) | Browser Extension | Login/sign/encrypt via `window.nostr` (Alby, nos2x, …) |
+| [09](https://github.com/nostr-protocol/nips/blob/master/09.md) | Event Deletion | |
+| [10](https://github.com/nostr-protocol/nips/blob/master/10.md) | Reply Threading | Basic `e` reply tag |
+| [11](https://github.com/nostr-protocol/nips/blob/master/11.md) | Relay Information Document | Capability/paid-relay detection |
+| [17](https://github.com/nostr-protocol/nips/blob/master/17.md) | Private Direct Messages | Full send/receive |
+| [18](https://github.com/nostr-protocol/nips/blob/master/18.md) | Reposts | Repost and quote-repost |
+| [19](https://github.com/nostr-protocol/nips/blob/master/19.md) | bech32 Entities | `npub`/`nsec`/`note`/`nevent`/`naddr`/`nprofile` |
+| [21](https://github.com/nostr-protocol/nips/blob/master/21.md) | `nostr:` URI Scheme | |
+| [25](https://github.com/nostr-protocol/nips/blob/master/25.md) | Reactions | |
+| [27](https://github.com/nostr-protocol/nips/blob/master/27.md) | Text Note References | Inline `nostr:` mentions and quote cards |
+| [44](https://github.com/nostr-protocol/nips/blob/master/44.md) | Encrypted Payloads (Versioned) | Used by NIP-17 |
+| [57](https://github.com/nostr-protocol/nips/blob/master/57.md) | Zaps | Read/aggregate receipts only, see table above |
+| [59](https://github.com/nostr-protocol/nips/blob/master/59.md) | Gift Wrap | Used by NIP-17 |
+
+Known gap: NIP-17 messages are published to your own configured relay pool rather than looking up the recipient's preferred DM relays (NIP-65/kind 10050), so delivery depends on sharing at least one relay with them.
 
 ## API Reference
 
@@ -226,11 +279,26 @@ const pubkey = await ExtensionManager.getPublicKey();
 // Sign event using extension
 const signedEvent = await ExtensionManager.signEvent(event);
 
-// Encrypt message using extension
+// Encrypt/decrypt message using extension (NIP-04)
 const ciphertext = await ExtensionManager.encrypt(pubkey, plaintext);
-
-// Decrypt message using extension
 const plaintext = await ExtensionManager.decrypt(pubkey, ciphertext);
+
+// NIP-44 (required for NIP-17 direct messages)
+const supportsNip44 = ExtensionManager.hasNip44();
+const ciphertext44 = await ExtensionManager.encryptNip44(pubkey, plaintext);
+const plaintext44 = await ExtensionManager.decryptNip44(pubkey, ciphertext);
+```
+
+### DirectMessageCore (NIP-17)
+```typescript
+// Send a private message (gift-wraps and publishes to both parties)
+await DirectMessageCore.sendDirectMessage(recipientPubkey, content);
+
+// Fetch and decrypt all messages addressed to you
+const messages = await DirectMessageCore.fetchMessages(ownPubkey);
+
+// Group into per-contact conversations, newest first
+const conversations = DirectMessageCore.groupConversations(messages);
 ```
 
 ### NostrCore
@@ -289,9 +357,9 @@ const events = await relayPool.fetchEvents(filters);
 The app connects to these relays by default:
 - wss://relay.damus.io
 - wss://nos.lol
-- wss://relay.nostr.band
-- wss://nostr.wine
-- wss://relay.snort.social
+- wss://nostr.mom
+- wss://relay.nostr.net
+- wss://purplepag.es (profile metadata)
 - wss://nostr-pub.wellorder.net
 
 You can add or remove relays from the relay management system.
@@ -325,8 +393,11 @@ Just serve the `dist` folder as static files.
 ## Local Storage Data
 
 The app stores the following in browser localStorage:
-- `nostr_privkey`: Encrypted private key
-- `nostr_pubkey`: User's public key
+- `nostr_privkey` / `nostr_pubkey`: Your keypair (extension-mode logins only store the pubkey)
+- `nostr_relay_configs` / `nostr_excluded_relays`: Relay pool configuration
+- `nostr_notifications_seen_<pubkey>` / `nostr_dm_seen_<you>_<them>`: Read-state markers for the unread badges
+- `nostr_recent_searches`: Recent search terms
+- `nostr_cache_*`: Stale-while-revalidate cache for profiles, feeds, notes and DMs
 
 ⚠️ **Warning**: Private keys stored in localStorage are not highly secure. For production use, consider implementing additional security measures.
 
@@ -342,30 +413,29 @@ The app stores the following in browser localStorage:
 
 Contributions are welcome! Areas for improvement:
 
-- Direct messages (NIP-04)
-- Follow/Unfollow functionality
-- Notifications
-- Image upload support
-- Video embedding
+- Follow/Unfollow functionality (kind 3 is currently read-only)
+- Image upload support (hosting, not just linking)
 - Advanced search filters
 - Bookmarks
-- Zaps (Lightning payments)
+- NIP-57 zap request construction (currently hands off to the wallet via `lightning:`)
 - NIP-47 Wallet Connect
+- NIP-65/kind-10050 relay list lookup for DM delivery
 - Push notifications
+- User blocking/muting
+- Emoji picker
 
 ## Roadmap
 
-- [ ] Direct messaging with encryption
+- [x] Direct messaging with encryption (NIP-17)
+- [x] Notification system
+- [x] Link previews
 - [ ] Follow list management
 - [ ] Bookmark functionality
 - [ ] Image hosting integration
-- [ ] Video embedding support
 - [ ] Advanced filtering and sorting
-- [ ] Notification system
 - [ ] User blocking/muting
 - [ ] Emoji picker
-- [ ] Link previews
-- [ ] Lightning integration (Zaps)
+- [ ] Lightning zap request construction (NIP-57 send-side)
 - [ ] Mobile app (React Native)
 
 ## Troubleshooting

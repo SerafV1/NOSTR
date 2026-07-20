@@ -5,9 +5,9 @@ const VIDEO_URL_SOURCE = 'https?:\\/\\/[^\\s]+\\.(?:mp4|webm|mov|m4v|ogv)(?:\\?[
 const YOUTUBE_URL_SOURCE =
   'https?:\\/\\/(?:(?:www|m|music)\\.)?(?:youtube\\.com\\/(?:watch\\?v=|shorts\\/|live\\/|embed\\/)|youtu\\.be\\/)([A-Za-z0-9_-]{11})[^\\s]*';
 const ANY_URL_SOURCE = 'https?:\\/\\/[^\\s]+';
-// A quoted note reference (NIP-19 note/nevent) — rendered as an embedded
-// quote card, so the raw nostr: URI is hidden from the visible text
-const QUOTE_REF_SOURCE = 'nostr:(?:note1|nevent1)[a-z0-9]+';
+// A quoted note reference (NIP-19 note/nevent/naddr) — rendered as an
+// embedded quote card, so the raw nostr: URI is hidden from the visible text
+const QUOTE_REF_SOURCE = 'nostr:(?:note1|nevent1|naddr1)[a-z0-9]+';
 
 const trimTrailingPunctuation = (url: string): string => url.replace(/[.,;:!?)]+$/, '');
 
@@ -33,6 +33,25 @@ export function extractYouTubeIds(content: string): string[] {
     ids.add(match[1]);
   }
   return Array.from(ids);
+}
+
+/**
+ * First link in the content that isn't already rendered as an image, video
+ * or YouTube embed — used to show a single X/Twitter-style preview card
+ * for the one "real" link in a note, same as most clients do.
+ */
+export function extractPreviewLinkUrl(content: string): string | null {
+  const images = new Set(extractImageUrls(content));
+  const videos = new Set(extractVideoUrls(content));
+  const youtubeRegex = new RegExp(YOUTUBE_URL_SOURCE, 'i');
+  const matches = content.match(new RegExp(ANY_URL_SOURCE, 'gi')) || [];
+
+  for (const raw of matches) {
+    const url = trimTrailingPunctuation(raw);
+    if (images.has(url) || videos.has(url) || youtubeRegex.test(url)) continue;
+    return url;
+  }
+  return null;
 }
 
 /**
