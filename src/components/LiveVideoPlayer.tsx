@@ -17,6 +17,9 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
   const [error, setError] = useState<string | null>(null);
   const [buffering, setBuffering] = useState(true);
   const [slow, setSlow] = useState(false);
+  // Bumping this remounts a brand-new <video> DOM node (via the key prop
+  // below), used only as a last resort once hls.js's own recovery gives up.
+  const [reinitKey, setReinitKey] = useState(0);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -27,7 +30,6 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
 
     let hls: Hls | null = null;
     let cancelled = false;
-    let HlsCtor: typeof Hls | null = null;
 
     const tryPlay = () => {
       video.play().catch(err => console.warn('[LiveVideoPlayer] Autoplay was blocked:', err));
@@ -35,54 +37,90 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
 
     const slowTimer = setTimeout(() => setSlow(true), 15000);
 
-    // Some stalls (a decoder that's silently given up on an otherwise
-    // healthy-looking buffer) don't clear with a nudge — startLoad()/seeking
-    // to the live edge doesn't help because hls.js's internal pipeline
-    // itself is stuck, not the network. Escalate to fully tearing down and
-    // recreating the whole hls.js instance, which is what a page refresh
-    // effectively does, without losing the surrounding page.
-    let fullReinitCount = 0;
-    const MAX_FULL_REINITS = 3;
+    import('hls.js').then(({ default: Hls }) => {
+      if (cancelled) return;
 
-    const initHls = () => {
-      if (!HlsCtor || cancelled) return;
-
-      if (!HlsCtor.isSupported()) {
-        setError("Your browser can't play this stream format");
+      // Prefer hls.js whenever MSE is available — it's what's actually
+      // battle-tested here. `canPlayType('application/vnd.apple.mpegurl')`
+      // looks like the right way to detect native HLS support, but several
+      // Chromium-based browsers (observed: Brave) return "maybe" for it
+      // despite having no real native HLS playback — that false positive
+      // was silently routing them to the browser's own unreliable native
+      // handling, skipping every recovery mechanism below entirely. Only
+      // fall back to native <video src> when hls.js genuinely can't run
+      // (MSE unavailable — basically just Safari, where native HLS is
+      // actually good).
+      if (!Hls.isSupported()) {
+        if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = src;
+          tryPlay();
+        } else {
+          setError("Your browser can't play this stream format");
+        }
         return;
       }
 
-      hls = new HlsCtor();
+      // A 404 on a playlist/segment reload usually means the browser served
+      // a stale cached .m3u8 listing segments that already aged out of the
+      // live window — skip the HTTP cache entirely so reloads always see
+      // what's actually current.
+      hls = new Hls({
+        fetchSetup: (context, initParams) =>
+          new Request(context.url, { ...initParams, cache: 'no-store' }),
+        xhrSetup: (xhr) => {
+          xhr.setRequestHeader('Cache-Control', 'no-cache');
+        }
+      });
       hls.loadSource(src);
       hls.attachMedia(video);
-      hls.on(HlsCtor.Events.MANIFEST_PARSED, tryPlay);
+      hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+        console.log('[LiveVideoPlayer] Codecs reported by manifest:', data.levels.map(l => ({
+          videoCodec: l.videoCodec,
+          audioCodec: l.audioCodec,
+          bitrate: l.bitrate,
+          resolution: `${l.width}x${l.height}`
+        })));
+        tryPlay();
+      });
 
+      // hls.js's own documented recovery pattern (see their README): a
+      // fatal error doesn't necessarily mean the stream is dead, just that
+      // hls.js's own internal retries were exhausted. Give it another shot
+      // via its own recovery APIs before giving up — but don't add extra
+      // polling/forcing on top, since that ends up racing hls.js's own
+      // internal reload cycle rather than helping it.
       let networkRetries = 0;
       let mediaRetries = 0;
       const MAX_RETRIES = 4;
 
-      hls.on(HlsCtor.Events.FRAG_LOADED, () => {
+      hls.on(Hls.Events.FRAG_LOADED, () => {
         networkRetries = 0;
         mediaRetries = 0;
       });
 
-      hls.on(HlsCtor.Events.ERROR, (_event, data) => {
+      hls.on(Hls.Events.ERROR, (_event, data) => {
         console.warn('[LiveVideoPlayer] HLS error:', data.type, data.details, 'fatal:', data.fatal);
-        if (!data.fatal || !hls || !HlsCtor) return;
+        if (!data.fatal || !hls) return;
 
         switch (data.type) {
-          case HlsCtor.ErrorTypes.NETWORK_ERROR:
+          case Hls.ErrorTypes.NETWORK_ERROR:
             if (networkRetries++ < MAX_RETRIES) {
               console.warn(`[LiveVideoPlayer] Retrying after network error (${networkRetries}/${MAX_RETRIES})`);
               hls.startLoad();
+            } else if (reinitKey < 3) {
+              console.warn('[LiveVideoPlayer] Network retries exhausted — remounting player');
+              setReinitKey(k => k + 1);
             } else {
               setError('Stream unavailable — the broadcaster may not be live right now');
             }
             break;
-          case HlsCtor.ErrorTypes.MEDIA_ERROR:
+          case Hls.ErrorTypes.MEDIA_ERROR:
             if (mediaRetries++ < MAX_RETRIES) {
               console.warn(`[LiveVideoPlayer] Recovering from media error (${mediaRetries}/${MAX_RETRIES})`);
               hls.recoverMediaError();
+            } else if (reinitKey < 3) {
+              console.warn('[LiveVideoPlayer] Media retries exhausted — remounting player');
+              setReinitKey(k => k + 1);
             } else {
               setError('Playback error — try reloading the page');
             }
@@ -91,85 +129,14 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
             setError('Stream unavailable — the broadcaster may not be live right now');
         }
       });
-    };
-
-    const fullReinit = () => {
-      if (fullReinitCount >= MAX_FULL_REINITS) {
-        console.warn('[LiveVideoPlayer] Giving up after repeated full reinits');
-        setError('Playback keeps stalling — try reloading the page');
-        return;
-      }
-      fullReinitCount++;
-      console.warn(`[LiveVideoPlayer] Stall persisted after a nudge — full reinit ${fullReinitCount}/${MAX_FULL_REINITS}`);
-      hls?.destroy();
-      hls = null;
-      initHls();
-    };
-
-    // Falling behind the live edge (or a stuck decoder) can freeze playback
-    // silently — no error event fires, currentTime just stops advancing.
-    // First try a light nudge (seek to live edge + resume loading); if the
-    // stall persists right through that, escalate to a full reinit.
-    let lastTime = -1;
-    let stalledTicks = 0;
-    let nudgedAt = 0;
-    const watchdog = setInterval(() => {
-      if (cancelled || video.ended) return;
-
-      if (video.currentTime === lastTime) {
-        stalledTicks++;
-        if (stalledTicks === 2) {
-          console.warn('[LiveVideoPlayer] Playback stalled — nudging to live edge');
-          const liveEdge = hls?.liveSyncPosition;
-          if (liveEdge != null && liveEdge > video.currentTime) {
-            video.currentTime = liveEdge;
-          } else if (video.seekable.length > 0) {
-            video.currentTime = video.seekable.end(video.seekable.length - 1);
-          }
-          hls?.startLoad();
-          video.play().catch(() => { /* ignore — controls let the viewer resume manually */ });
-          nudgedAt = Date.now();
-        } else if (stalledTicks >= 4 && Date.now() - nudgedAt > 8000) {
-          // Still frozen a good while after the nudge — that didn't work
-          stalledTicks = 0;
-          if (hls) {
-            fullReinit();
-          } else {
-            // Native (Safari) path has no hls.js instance to recreate —
-            // reloading the <video> element's source is the equivalent
-            video.src = '';
-            video.src = src;
-            tryPlay();
-          }
-        }
-      } else {
-        stalledTicks = 0;
-      }
-      lastTime = video.currentTime;
-    }, 5000);
-
-    if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = src;
-      tryPlay();
-      return () => {
-        clearTimeout(slowTimer);
-        clearInterval(watchdog);
-      };
-    }
-
-    import('hls.js').then(({ default: Hls }) => {
-      if (cancelled) return;
-      HlsCtor = Hls;
-      initHls();
     });
 
     return () => {
       cancelled = true;
       clearTimeout(slowTimer);
-      clearInterval(watchdog);
       hls?.destroy();
     };
-  }, [src]);
+  }, [src, reinitKey]);
 
   if (!src) {
     return <div className="video-unsupported-note">⚠️ This stream has no playback URL</div>;
@@ -188,6 +155,7 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
         </div>
       )}
       <video
+        key={reinitKey}
         ref={videoRef}
         className={className}
         controls
