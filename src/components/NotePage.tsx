@@ -2,24 +2,28 @@ import React, { useState, useEffect } from 'react';
 import { NostrEventSigned } from '../types';
 import { NostrCore } from '../nostr/core';
 import EventCard from './EventCard';
-import ComposeNote from './ComposeNote';
 
 interface NotePageProps {
   noteId: string;
+  relaysConnected: boolean;
   onNavigateToProfile: (pubkey: string) => void;
   onNavigateToNote?: (noteId: string) => void;
   onNavigateToTopic?: (topic: string) => void;
   onBack: () => void;
 }
 
-const NotePage: React.FC<NotePageProps> = ({ noteId, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, onBack }) => {
+const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, onBack }) => {
   const [note, setNote] = useState<NostrEventSigned | null>(null);
   const [replies, setReplies] = useState<NostrEventSigned[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Landing here straight from a page refresh, the relay pool hasn't
+    // finished (re)connecting yet — fetching before then would just find
+    // nothing and show "Note not found" for a note that really does exist
+    if (!relaysConnected) return;
     loadNote();
-  }, [noteId]);
+  }, [noteId, relaysConnected]);
 
   const loadNote = async () => {
     setLoading(true);
@@ -50,10 +54,6 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, onNavigateToProfile, onNavi
     }
   };
 
-  const handleNotePublished = (event: NostrEventSigned) => {
-    setReplies([event, ...replies]);
-  };
-
   return (
     <div className="note-page">
       <div className="note-container">
@@ -64,9 +64,9 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, onNavigateToProfile, onNavi
           ← Back
         </button>
 
-        {loading && (
+        {(loading || !relaysConnected) && (
           <div className="loading">
-            Loading note...
+            {!relaysConnected ? 'Connecting to relays...' : 'Loading note...'}
           </div>
         )}
 
@@ -77,41 +77,30 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, onNavigateToProfile, onNavi
         )}
 
         {note && (
-          <>
-            <div className="note-main">
-              <EventCard
-                event={note}
-                onNavigateToProfile={onNavigateToProfile}
-                onNavigateToNote={onNavigateToNote}
-                onNavigateToTopic={onNavigateToTopic}
-              />
-            </div>
-
-            <div className="reply-section">
-              <h3>Reply to this note</h3>
-              <ComposeNote 
-                replyTo={note.id}
-                onPublished={handleNotePublished}
-              />
-            </div>
+          <div className="note-thread">
+            <EventCard
+              event={note}
+              onNavigateToProfile={onNavigateToProfile}
+              onNavigateToNote={onNavigateToNote}
+              onNavigateToTopic={onNavigateToTopic}
+              onRefresh={loadNote}
+            />
 
             {replies.length > 0 && (
-              <div className="replies-section">
-                <h3>Replies ({replies.length})</h3>
-                <div className="replies-list">
-                  {replies.map((reply) => (
-                    <EventCard
-                      key={reply.id}
-                      event={reply}
-                      onNavigateToProfile={onNavigateToProfile}
-                      onNavigateToNote={onNavigateToNote}
-                      onNavigateToTopic={onNavigateToTopic}
-                    />
-                  ))}
-                </div>
-              </div>
+              <>
+                <div className="thread-divider">Replies</div>
+                {replies.map((reply) => (
+                  <EventCard
+                    key={reply.id}
+                    event={reply}
+                    onNavigateToProfile={onNavigateToProfile}
+                    onNavigateToNote={onNavigateToNote}
+                    onNavigateToTopic={onNavigateToTopic}
+                  />
+                ))}
+              </>
             )}
-          </>
+          </div>
         )}
       </div>
     </div>

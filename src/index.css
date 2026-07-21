@@ -635,6 +635,13 @@ textarea {
   text-align: left;
   color: var(--text-primary);
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.reply-option-icon {
+  flex-shrink: 0;
 }
 
 .reply-option:hover {
@@ -923,17 +930,77 @@ textarea {
   width: 100%;
 }
 
+/* Home feed and profile timeline join their cards into one continuous
+   block instead of floating separately — same treatment as the note
+   thread. Scoped to these two so search results keep the spaced layout. */
+.home-main .events-list,
+.profile-notes .events-list {
+  gap: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.home-main .events-list .event-card,
+.profile-notes .events-list .event-card {
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  border-radius: 0;
+}
+
+/* First item: a bare card gets the radius directly; a reposted-item's or
+   zap-item's label sits visually above its card, so the label gets it instead */
+.home-main .events-list > *:first-child.event-card,
+.profile-notes .events-list > *:first-child.event-card,
+.home-main .events-list > .reposted-item:first-child .reposted-label,
+.profile-notes .events-list > .reposted-item:first-child .reposted-label,
+.home-main .events-list > .zap-item:first-child .zap-item-label,
+.profile-notes .events-list > .zap-item:first-child .zap-item-label {
+  border-top-left-radius: var(--border-radius);
+  border-top-right-radius: var(--border-radius);
+}
+
+.home-main .events-list > *:last-child.event-card,
+.home-main .events-list > *:last-child .event-card,
+.profile-notes .events-list > *:last-child.event-card,
+.profile-notes .events-list > *:last-child .event-card {
+  border-bottom: none;
+  border-bottom-left-radius: var(--border-radius);
+  border-bottom-right-radius: var(--border-radius);
+}
+
 .reposted-item {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
 }
 
 .reposted-label {
+  padding: var(--spacing-sm) var(--spacing-lg);
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-secondary);
-  padding-left: var(--spacing-md);
+  background: var(--dark-bg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.zap-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.zap-item-label {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--warning-color);
+  background: var(--dark-bg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.btn-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
 }
 
 .event-card {
@@ -1388,6 +1455,9 @@ textarea {
 
 .action-icon {
   font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .action-count {
@@ -1701,6 +1771,10 @@ textarea {
   justify-content: center;
   padding: 10vh var(--spacing-lg) var(--spacing-lg);
   z-index: 1000;
+  /* Scroll here (viewport-sized) rather than on .compose-modal itself —
+     an overflow on the modal box would clip the emoji picker popup
+     whenever it renders past the modal's own edge */
+  overflow-y: auto;
 }
 
 .compose-modal {
@@ -1709,8 +1783,6 @@ textarea {
   border-radius: 16px;
   width: 100%;
   max-width: 600px;
-  max-height: 80vh;
-  overflow-y: auto;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
 }
 
@@ -1830,20 +1902,30 @@ textarea {
 
 .profile-header {
   display: flex;
-  gap: var(--spacing-xl);
+  flex-direction: column;
+  gap: var(--spacing-md);
   margin-bottom: var(--spacing-2xl);
   position: relative;
-  margin-top: -100px;
 }
 
-.profile-header > .btn,
-.profile-header > .profile-header-actions {
-  align-self: flex-start;
+/* Avatar + action buttons share a row that overlaps the banner; the name
+   and everything else stacks below, under the avatar */
+.profile-header-top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--spacing-xl);
+  margin-top: -100px;
 }
 
 .profile-header-actions {
   display: flex;
   gap: var(--spacing-sm);
+  padding-bottom: var(--spacing-sm);
+}
+
+.profile-header-top > .btn {
+  margin-bottom: var(--spacing-sm);
 }
 
 .profile-avatar-large {
@@ -1871,17 +1953,44 @@ textarea {
 }
 
 .profile-info {
-  flex: 1;
-  padding-top: var(--spacing-xl);
+  width: 100%;
 }
 
 .profile-name {
   margin: 0 0 var(--spacing-sm) 0;
 }
 
+.profile-nip05 {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 0.15rem;
+}
+
 .profile-handle {
   color: var(--text-secondary);
   margin-bottom: var(--spacing-md);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 0.85rem;
+  font-family: monospace;
+}
+
+.copy-npub-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 0.2rem;
+  border-radius: var(--border-radius);
+  color: var(--text-secondary);
+  transition: var(--transition);
+}
+
+.copy-npub-btn:hover {
+  color: var(--primary-color);
+  background: rgba(102, 126, 234, 0.1);
 }
 
 .profile-bio {
@@ -1920,6 +2029,171 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
+}
+
+.profile-joined {
+  margin-top: var(--spacing-sm);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* Media tab — Instagram-style grid of thumbnails only, no post text */
+.media-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+}
+
+.media-grid-item {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: var(--dark-bg);
+}
+
+.media-grid-item img,
+.media-grid-item video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: var(--transition);
+}
+
+.media-grid-item:hover img,
+.media-grid-item:hover video {
+  transform: scale(1.05);
+  opacity: 0.9;
+}
+
+.media-grid-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-size: 1.5rem;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+/* Zaps tab — zaps this profile sent to others */
+.sent-zaps-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.sent-zap-item {
+  background: var(--light-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-md);
+}
+
+.sent-zap-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+}
+
+.zap-direction {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.zap-direction-sent {
+  color: var(--warning-color);
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.zap-direction-received {
+  color: var(--success-color);
+  background: rgba(74, 222, 128, 0.12);
+}
+
+.sent-zap-recipient {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+}
+
+.sent-zap-recipient:hover .sent-zap-recipient-name {
+  color: var(--primary-color);
+}
+
+.sent-zap-recipient-avatar,
+.sent-zap-recipient-avatar-placeholder {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.sent-zap-recipient-avatar-placeholder {
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: white;
+}
+
+.sent-zap-recipient-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.sent-zap-recipient-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: var(--transition);
+}
+
+.sent-zap-recipient-handle {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-family: monospace;
+}
+
+.sent-zap-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.sent-zap-amount {
+  font-weight: 600;
+  color: var(--warning-color);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.sent-zap-time {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 /* Edit Profile Form */
@@ -2291,21 +2565,24 @@ textarea {
     display: none;
   }
 
-  .profile-header {
+  .profile-header-top {
     flex-direction: column;
     align-items: center;
-    text-align: center;
     margin-top: -50px;
+  }
+
+  .profile-info {
+    text-align: center;
+  }
+
+  .profile-handle {
+    justify-content: center;
   }
 
   .profile-avatar-large,
   .profile-avatar-large-placeholder {
     width: 120px;
     height: 120px;
-  }
-
-  .profile-info {
-    padding-top: 0;
   }
 
   .search-input-group {
@@ -2408,38 +2685,43 @@ textarea {
   color: var(--secondary-color);
 }
 
-.note-main {
-  margin-bottom: var(--spacing-xl);
-}
-
-.reply-section {
-  background: var(--light-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  padding: var(--spacing-lg);
-  margin-bottom: var(--spacing-xl);
-}
-
-.reply-section h3 {
-  margin-bottom: var(--spacing-lg);
-  font-size: 1.1rem;
-  color: var(--text-primary);
-}
-
-.replies-section {
-  margin-top: var(--spacing-xl);
-}
-
-.replies-section h3 {
-  margin-bottom: var(--spacing-lg);
-  font-size: 1.1rem;
-  color: var(--text-primary);
-}
-
-.replies-list {
+/* Thread — the post and its replies joined into one continuous block,
+   cards touching with shared dividers instead of floating separately.
+   A labeled divider marks where the replies start. */
+.note-thread {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-lg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  margin-bottom: var(--spacing-xl);
+}
+
+.note-thread .event-card {
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  border-radius: 0;
+}
+
+.note-thread > .event-card:first-child {
+  border-top-left-radius: var(--border-radius);
+  border-top-right-radius: var(--border-radius);
+}
+
+.note-thread > .event-card:last-child {
+  border-bottom: none;
+  border-bottom-left-radius: var(--border-radius);
+  border-bottom-right-radius: var(--border-radius);
+}
+
+.thread-divider {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--dark-bg);
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
 }
 
 /* Settings Page */

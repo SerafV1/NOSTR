@@ -17,6 +17,7 @@ import QuotedNoteCard from './QuotedNoteCard';
 import LinkPreviewCard from './LinkPreviewCard';
 import EmojiPicker from './EmojiPicker';
 import ZapButton from './ZapButton';
+import { ReplyIcon, RepostIcon, HeartIcon, ZapIcon } from './Icons';
 
 interface EventCardProps {
   event: NostrEventSigned;
@@ -30,7 +31,8 @@ const EventCard: React.FC<EventCardProps> = ({
   event,
   onNavigateToProfile,
   onNavigateToNote,
-  onNavigateToTopic
+  onNavigateToTopic,
+  onRefresh
 }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [replyCount, setReplyCount] = useState(0);
@@ -373,6 +375,7 @@ const EventCard: React.FC<EventCardProps> = ({
   const handleComposePublished = () => {
     if (composeMode === 'reply') {
       setReplyCount(count => count + 1);
+      onRefresh?.();
     }
     setComposeMode(null);
   };
@@ -511,7 +514,7 @@ const EventCard: React.FC<EventCardProps> = ({
           onClick={() => openCompose('reply')}
           title="Reply"
         >
-          <span className="action-icon">💬</span>
+          <ReplyIcon className="action-icon" />
           <span className="action-count">{replyCount}</span>
         </button>
 
@@ -522,7 +525,7 @@ const EventCard: React.FC<EventCardProps> = ({
             disabled={reposting}
             title={reposted ? 'You reposted this' : 'Repost or quote'}
           >
-            <span className="action-icon">🔄</span>
+            <RepostIcon className="action-icon" filled={reposted} />
             <span className="action-count">{repostCount}</span>
           </button>
           {showRepostOptions && (
@@ -531,7 +534,7 @@ const EventCard: React.FC<EventCardProps> = ({
                 className="reply-option"
                 onClick={handleRepost}
               >
-                🔄 Repost
+                <RepostIcon className="reply-option-icon" /> Repost
               </button>
               <button
                 className="reply-option"
@@ -549,7 +552,11 @@ const EventCard: React.FC<EventCardProps> = ({
             onClick={() => setShowReactions(!showReactions)}
             title={reactionEmoji ? `You reacted with ${reactionEmoji}` : 'React'}
           >
-            <span className="action-icon">{reactionEmoji || '❤️'}</span>
+            {reactionEmoji ? (
+              <span className="action-icon">{reactionEmoji}</span>
+            ) : (
+              <HeartIcon className="action-icon" />
+            )}
             <span className="action-count">{likeCount}</span>
           </button>
           {showReactions && (
@@ -560,7 +567,7 @@ const EventCard: React.FC<EventCardProps> = ({
         </div>
 
         <ZapButton lud16={profile?.lud16} triggerClassName="action-btn" triggerTitle="Zap with lightning">
-          <span className="action-icon">⚡</span>
+          <ZapIcon className="action-icon" filled={zapSats > 0} />
           <span className="action-count">{formatSats(zapSats)}</span>
         </ZapButton>
       </div>

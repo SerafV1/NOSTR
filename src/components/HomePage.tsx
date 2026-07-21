@@ -29,10 +29,20 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   eventsRef.current = events;
   pendingRef.current = pendingEvents;
 
+  // Global feed is the same public content for everyone, so it's shared
+  // across identities on this browser. Home feed depends on who *you*
+  // follow, so it's cached per-pubkey — otherwise switching identities on
+  // the same browser would briefly flash the previous identity's home feed.
+  const feedCacheKey = (type: 'global' | 'home'): string => {
+    if (type === 'global') return 'feed_global';
+    const pubkey = CredentialManager.getPublicKey();
+    return pubkey ? `feed_home_${pubkey}` : 'feed_home';
+  };
+
   // Read a cached feed, dropping future-dated spam that older versions
   // may have persisted
   const readCachedFeed = (type: 'global' | 'home'): NostrEventSigned[] => {
-    const cached = PersistentCache.get<NostrEventSigned[]>(`feed_${type}`) || [];
+    const cached = PersistentCache.get<NostrEventSigned[]>(feedCacheKey(type)) || [];
     const maxTimestamp = Math.floor(Date.now() / 1000) + 300;
     return cached.filter(e => (e.created_at || 0) <= maxTimestamp);
   };
@@ -114,7 +124,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     setEvents(prev => {
       const ids = new Set(pending.map(e => e.id));
       const merged = [...pending, ...prev.filter(e => !ids.has(e.id))];
-      PersistentCache.set(`feed_${feedType}`, merged.slice(0, 100));
+      PersistentCache.set(feedCacheKey(feedType), merged.slice(0, 100));
       return merged;
     });
     setPendingEvents([]);
@@ -181,7 +191,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
       await NostrCore.fetchProfiles(merged.map(e => e.pubkey));
 
       setEvents(merged);
-      PersistentCache.set(`feed_${feedType}`, merged);
+      PersistentCache.set(feedCacheKey(feedType), merged);
     } catch (error) {
       console.error('Failed to fetch feed:', error);
       // Keep showing the cached feed (if any) on fetch failure

@@ -1,4 +1,14 @@
 import { useState, useEffect } from 'react';
+import {
+  Routes,
+  Route,
+  Navigate,
+  Link,
+  useNavigate,
+  useLocation,
+  useParams,
+  useSearchParams
+} from 'react-router-dom';
 import { CredentialManager, NostrCrypto } from './nostr/crypto';
 import { getRelayPool, DEFAULT_RELAYS } from './nostr/relay';
 import { NotificationCore, NotificationStore } from './nostr/notifications';
@@ -14,27 +24,125 @@ import NotificationsPage from './components/NotificationsPage';
 import MessagesPage from './components/MessagesPage';
 import ComposeModal from './components/ComposeModal';
 
-type Page = 'home' | 'profile' | 'search' | 'note' | 'settings' | 'notifications' | 'messages';
+// URL-safe encode/decode for note ids and pubkeys — bech32 (note1.../npub1...)
+// with a raw-hex fallback so malformed or hand-typed links still resolve
+function encodeNoteParam(noteId: string): string {
+  return NostrCrypto.encodeNote(noteId) || noteId;
+}
+
+function decodeNoteParam(param: string | undefined): string | null {
+  if (!param) return null;
+  if (/^[0-9a-fA-F]{64}$/.test(param)) return param;
+  return NostrCrypto.decodeNote(param);
+}
+
+function encodeNpubParam(pubkey: string): string {
+  return NostrCrypto.npubEncode(pubkey) || pubkey;
+}
+
+function decodeNpubParam(param: string | undefined): string | null {
+  if (!param) return null;
+  if (/^[0-9a-fA-F]{64}$/.test(param)) return param;
+  return NostrCrypto.npubDecode(param) || null;
+}
+
+interface RouteCallbacks {
+  relaysConnected: boolean;
+  publicKey: string;
+  onNavigateToProfile: (pubkey: string) => void;
+  onNavigateToNote: (noteId: string) => void;
+  onNavigateToTopic: (topic: string) => void;
+  onNavigateToMessages: (recipient?: string) => void;
+  onMarkNotificationsRead: () => void;
+  onMarkMessagesRead: () => void;
+}
+
+function ProfileRoute({ relaysConnected, publicKey, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, onNavigateToMessages }: RouteCallbacks) {
+  const { npub } = useParams();
+  const pubkey = decodeNpubParam(npub);
+
+  if (!pubkey) {
+    return <div className="profile-page"><div className="error">Invalid profile link</div></div>;
+  }
+
+  return (
+    <ProfilePage
+      pubkey={pubkey}
+      isOwnProfile={pubkey === publicKey}
+      relaysConnected={relaysConnected}
+      onNavigateToProfile={onNavigateToProfile}
+      onNavigateToNote={onNavigateToNote}
+      onNavigateToTopic={onNavigateToTopic}
+      onNavigateToMessages={onNavigateToMessages}
+    />
+  );
+}
+
+function NoteRoute({ relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }: RouteCallbacks) {
+  const { noteId: encodedId } = useParams();
+  const navigate = useNavigate();
+  const noteId = decodeNoteParam(encodedId);
+
+  if (!noteId) {
+    return <div className="note-page"><div className="error">Invalid note link</div></div>;
+  }
+
+  return (
+    <NotePage
+      noteId={noteId}
+      relaysConnected={relaysConnected}
+      onNavigateToProfile={onNavigateToProfile}
+      onNavigateToNote={onNavigateToNote}
+      onNavigateToTopic={onNavigateToTopic}
+      onBack={() => navigate(-1)}
+    />
+  );
+}
+
+function SearchRoute({ relaysConnected, onNavigateToProfile, onNavigateToNote }: RouteCallbacks) {
+  const [searchParams] = useSearchParams();
+  const topic = searchParams.get('topic');
+
+  return (
+    <SearchPage
+      // Remount on topic change so a fresh #hashtag navigation always
+      // re-runs the search instead of reusing stale component state
+      key={topic || ''}
+      relaysConnected={relaysConnected}
+      onNavigateToProfile={onNavigateToProfile}
+      onNavigateToNote={onNavigateToNote}
+      initialTopic={topic}
+    />
+  );
+}
+
+function MessagesRoute({ relaysConnected, publicKey, onNavigateToProfile, onMarkMessagesRead }: RouteCallbacks) {
+  const { npub } = useParams();
+  const recipient = decodeNpubParam(npub);
+
+  return (
+    <MessagesPage
+      pubkey={publicKey}
+      relaysConnected={relaysConnected}
+      onNavigateToProfile={onNavigateToProfile}
+      onMarkRead={onMarkMessagesRead}
+      initialRecipient={recipient}
+    />
+  );
+}
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(CredentialManager.isLoggedIn());
   const [publicKey, setPublicKey] = useState(CredentialManager.getPublicKey() || '');
-  const [currentPage, setCurrentPage] = useState<Page>('home');
-  const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
-  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
-  const [searchTopic, setSearchTopic] = useState<string | null>(null);
-  // Bumped on every topic navigation so SearchPage re-runs the search even
-  // when the same topic is clicked twice in a row
-  const [topicNavKey, setTopicNavKey] = useState(0);
-  // Where the user came from when opening a note, so Back can return there
-  const [noteReturnPage, setNoteReturnPage] = useState<Page>('home');
   const [relaysConnected, setRelaysConnected] = useState(false);
   const [relayInfos, setRelayInfos] = useState<{ url: string; connected: boolean; paid: boolean }[]>([]);
   const [showRelayPanel, setShowRelayPanel] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
-  const [messagesRecipient, setMessagesRecipient] = useState<string | null>(null);
   const [showComposeFab, setShowComposeFab] = useState(false);
+
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // Initialize relays on mount
   useEffect(() => {
@@ -46,7 +154,7 @@ function App() {
       const excludedRelays = relayPool.getExcludedRelays();
       const savedConfigs = relayPool.getAllSavedRelayConfigs();
       const savedUrls = new Set(savedConfigs.map(c => c.url));
-      
+
       // Combine DEFAULT_RELAYS with saved relays, excluding any that user removed
       const allRelayUrls = Array.from(
         new Set([
@@ -75,12 +183,12 @@ function App() {
       connectedCount = results.filter(Boolean).length;
 
       clearTimeout(timeout);
-      
+
       // Clean up any stale relay configs that don't have active relays
       relayPool.cleanupStaleConfigs();
-      
+
       setRelaysConnected(true);
-      
+
       const status = relayPool.getStatus();
       const actualConnected = Array.from(status.values()).filter(v => v).length;
       console.log(`[App] Relay initialization complete: ${actualConnected}/${allRelayUrls.length} connected`);
@@ -120,7 +228,7 @@ function App() {
   // Poll for the unread notification badge — skipped while the
   // Notifications page itself is open, since it manages the count directly
   useEffect(() => {
-    if (!isLoggedIn || !relaysConnected || !publicKey || currentPage === 'notifications') return;
+    if (!isLoggedIn || !relaysConnected || !publicKey || location.pathname === '/notifications') return;
 
     const refreshUnread = async () => {
       try {
@@ -134,12 +242,12 @@ function App() {
     refreshUnread();
     const interval = setInterval(refreshUnread, 30000);
     return () => clearInterval(interval);
-  }, [isLoggedIn, relaysConnected, publicKey, currentPage]);
+  }, [isLoggedIn, relaysConnected, publicKey, location.pathname]);
 
   // Poll for the unread message badge — skipped while Messages is open,
   // since it manages last-seen markers directly
   useEffect(() => {
-    if (!isLoggedIn || !relaysConnected || !publicKey || currentPage === 'messages') return;
+    if (!isLoggedIn || !relaysConnected || !publicKey || location.pathname.startsWith('/messages')) return;
 
     const refreshUnread = async () => {
       try {
@@ -154,7 +262,7 @@ function App() {
     refreshUnread();
     const interval = setInterval(refreshUnread, 30000);
     return () => clearInterval(interval);
-  }, [isLoggedIn, relaysConnected, publicKey, currentPage]);
+  }, [isLoggedIn, relaysConnected, publicKey, location.pathname]);
 
   const handleLogin = (privkey: string) => {
     try {
@@ -176,6 +284,7 @@ function App() {
 
       setPublicKey(pubkey);
       setIsLoggedIn(true);
+      navigate('/');
     } catch (error) {
       alert('Invalid private key or extension login failed');
     }
@@ -184,45 +293,44 @@ function App() {
   const handleLogout = () => {
     CredentialManager.clear();
     getRelayPool().closeAll();
+    // Nothing to clear here: the home feed and recent-searches caches are
+    // keyed per-pubkey (see HomePage/SearchPage) and the global feed cache
+    // is intentionally shared — it's the same public content for everyone.
     setIsLoggedIn(false);
     setPublicKey('');
-    setCurrentPage('home');
+    navigate('/');
   };
 
   const navigateToProfile = (pubkey: string) => {
-    setSelectedProfile(pubkey);
-    setCurrentPage('profile');
-  };
-
-  const navigateToSearch = () => {
-    setCurrentPage('search');
+    navigate(`/p/${encodeNpubParam(pubkey)}`);
   };
 
   const navigateToNote = (noteId: string) => {
-    setNoteReturnPage(prev => (currentPage === 'note' ? prev : currentPage));
-    setSelectedNoteId(noteId);
-    setCurrentPage('note');
+    navigate(`/e/${encodeNoteParam(noteId)}`);
   };
 
   const navigateToTopic = (topic: string) => {
-    setSearchTopic(topic);
-    setTopicNavKey(key => key + 1);
-    setCurrentPage('search');
+    navigate(`/search?topic=${encodeURIComponent(topic)}`);
   };
 
   const navigateToMessages = (recipient?: string) => {
-    setMessagesRecipient(recipient || null);
-    setCurrentPage('messages');
-  };
-
-  const navigateBackFromNote = () => {
-    setCurrentPage(noteReturnPage);
-    setSelectedNoteId(null);
+    navigate(recipient ? `/messages/${encodeNpubParam(recipient)}` : '/messages');
   };
 
   if (!isLoggedIn) {
     return <LoginPage onLogin={handleLogin} />;
   }
+
+  const callbacks: RouteCallbacks = {
+    relaysConnected,
+    publicKey,
+    onNavigateToProfile: navigateToProfile,
+    onNavigateToNote: navigateToNote,
+    onNavigateToTopic: navigateToTopic,
+    onNavigateToMessages: navigateToMessages,
+    onMarkNotificationsRead: () => setUnreadNotifications(0),
+    onMarkMessagesRead: () => setUnreadMessages(0)
+  };
 
   return (
     <div className="app">
@@ -230,51 +338,42 @@ function App() {
         <div className="header-content">
           <h1 className="app-title">⚡ NOSTR</h1>
           <nav className="header-nav">
-            <button 
-              className={`nav-btn ${currentPage === 'home' ? 'active' : ''}`}
-              onClick={() => setCurrentPage('home')}
-            >
+            <Link to="/" className={`nav-btn ${location.pathname === '/' ? 'active' : ''}`}>
               Home
-            </button>
-            <button 
-              className={`nav-btn ${currentPage === 'profile' ? 'active' : ''}`}
-              onClick={() => {
-                setCurrentPage('profile');
-                setSelectedProfile(publicKey);
-              }}
+            </Link>
+            <Link
+              to={`/p/${encodeNpubParam(publicKey)}`}
+              className={`nav-btn ${location.pathname.startsWith('/p/') ? 'active' : ''}`}
             >
               Profile
-            </button>
-            <button
-              className="nav-btn"
-              onClick={navigateToSearch}
-            >
+            </Link>
+            <Link to="/search" className={`nav-btn ${location.pathname === '/search' ? 'active' : ''}`}>
               Search
-            </button>
-            <button
-              className={`nav-btn ${currentPage === 'notifications' ? 'active' : ''}`}
-              onClick={() => setCurrentPage('notifications')}
+            </Link>
+            <Link
+              to="/notifications"
+              className={`nav-btn ${location.pathname === '/notifications' ? 'active' : ''}`}
             >
               🔔 Notifications
               {unreadNotifications > 0 && (
                 <span className="nav-badge">{unreadNotifications > 99 ? '99+' : unreadNotifications}</span>
               )}
-            </button>
-            <button
-              className={`nav-btn ${currentPage === 'messages' ? 'active' : ''}`}
-              onClick={() => navigateToMessages()}
+            </Link>
+            <Link
+              to="/messages"
+              className={`nav-btn ${location.pathname.startsWith('/messages') ? 'active' : ''}`}
             >
               ✉️ Messages
               {unreadMessages > 0 && (
                 <span className="nav-badge">{unreadMessages > 99 ? '99+' : unreadMessages}</span>
               )}
-            </button>
-            <button
-              className={`nav-btn ${currentPage === 'settings' ? 'active' : ''}`}
-              onClick={() => setCurrentPage('settings')}
+            </Link>
+            <Link
+              to="/settings"
+              className={`nav-btn ${location.pathname === '/settings' ? 'active' : ''}`}
             >
               ⚙️ Settings
-            </button>
+            </Link>
           </nav>
           <div className="header-right">
             <div className="relay-status-wrapper">
@@ -316,66 +415,41 @@ function App() {
       </header>
 
       <main className="app-main">
-        {currentPage === 'home' && (
-          <HomePage
-            relaysConnected={relaysConnected}
-            onNavigateToProfile={navigateToProfile}
-            onNavigateToNote={navigateToNote}
-            onNavigateToTopic={navigateToTopic}
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <HomePage
+                relaysConnected={relaysConnected}
+                onNavigateToProfile={navigateToProfile}
+                onNavigateToNote={navigateToNote}
+                onNavigateToTopic={navigateToTopic}
+              />
+            }
           />
-        )}
-        {currentPage === 'profile' && selectedProfile && (
-          <ProfilePage
-            pubkey={selectedProfile}
-            isOwnProfile={selectedProfile === publicKey}
-            relaysConnected={relaysConnected}
-            onNavigateToProfile={navigateToProfile}
-            onNavigateToNote={navigateToNote}
-            onNavigateToTopic={navigateToTopic}
-            onNavigateToMessages={navigateToMessages}
+          <Route path="/p/:npub" element={<ProfileRoute {...callbacks} />} />
+          <Route path="/e/:noteId" element={<NoteRoute {...callbacks} />} />
+          <Route path="/search" element={<SearchRoute {...callbacks} />} />
+          <Route
+            path="/notifications"
+            element={
+              <NotificationsPage
+                pubkey={publicKey}
+                relaysConnected={relaysConnected}
+                onNavigateToProfile={navigateToProfile}
+                onNavigateToNote={navigateToNote}
+                onMarkRead={callbacks.onMarkNotificationsRead}
+              />
+            }
           />
-        )}
-        {currentPage === 'search' && (
-          <SearchPage
-            onNavigateToProfile={navigateToProfile}
-            onNavigateToNote={navigateToNote}
-            initialTopic={searchTopic}
-            topicNavKey={topicNavKey}
-          />
-        )}
-        {currentPage === 'note' && selectedNoteId && (
-          <NotePage
-            noteId={selectedNoteId}
-            onNavigateToProfile={navigateToProfile}
-            onNavigateToNote={navigateToNote}
-            onNavigateToTopic={navigateToTopic}
-            onBack={navigateBackFromNote}
-          />
-        )}
-        {currentPage === 'notifications' && (
-          <NotificationsPage
-            pubkey={publicKey}
-            relaysConnected={relaysConnected}
-            onNavigateToProfile={navigateToProfile}
-            onNavigateToNote={navigateToNote}
-            onMarkRead={() => setUnreadNotifications(0)}
-          />
-        )}
-        {currentPage === 'messages' && (
-          <MessagesPage
-            pubkey={publicKey}
-            relaysConnected={relaysConnected}
-            onNavigateToProfile={navigateToProfile}
-            onMarkRead={() => setUnreadMessages(0)}
-            initialRecipient={messagesRecipient}
-          />
-        )}
-        {currentPage === 'settings' && (
-          <SettingsPage />
-        )}
+          <Route path="/messages" element={<MessagesRoute {...callbacks} />} />
+          <Route path="/messages/:npub" element={<MessagesRoute {...callbacks} />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </main>
 
-      {currentPage === 'home' && (
+      {location.pathname === '/' && (
         <button
           className="compose-fab"
           onClick={() => setShowComposeFab(true)}

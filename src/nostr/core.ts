@@ -218,39 +218,152 @@ export class NostrCore {
       console.error('Public key not found');
       return [];
     }
+    return this.fetchFollowingList(pubkey);
+  }
 
-    const filters: NostrFilter[] = [
-      {
-        kinds: [EVENT_KINDS.CONTACTS],
-        authors: [pubkey],
-        limit: 1
-      }
-    ];
-
+  /**
+   * Fetch the pubkeys any given account follows (kind 3) — same as
+   * fetchFollowedAccounts but for an arbitrary profile, not just yourself
+   */
+  static async fetchFollowingList(pubkey: string): Promise<string[]> {
     try {
-      const relayPool = getRelayPool();
-      const events = await relayPool.fetchEvents(filters);
-      
-      if (events.length === 0) {
-        // No contacts event, return empty list
-        return [];
-      }
-
-      const latestEvent = events.reduce((latest, current) => 
-        (current.created_at || 0) > (latest.created_at || 0) ? current : latest
-      );
-
-      // Extract pubkeys from tags (kind 3 has 'p' tags for each followed pubkey)
-      const followedPubkeys = latestEvent.tags
+      const existing = await this.fetchContactListEvent(pubkey);
+      if (!existing) return [];
+      return existing.tags
         .filter(tag => tag[0] === 'p')
         .map(tag => tag[1])
-        .filter((pubkey): pubkey is string => typeof pubkey === 'string' && pubkey.length > 0);
-
-      return followedPubkeys;
+        .filter((pk): pk is string => typeof pk === 'string' && pk.length > 0);
     } catch (error) {
-      console.error('Failed to fetch followed accounts:', error);
+      console.error('Failed to fetch following list:', error);
       return [];
     }
+  }
+
+  /**
+   * Count distinct accounts whose contact list includes this pubkey.
+   * Approximate — bounded by `limit` and by what the connected relays
+   * happen to have indexed, same tradeoff every Nostr client makes since
+   * there's no authoritative global follower count.
+   */
+  static async fetchFollowersCount(pubkey: string, limit: number = 1000): Promise<{ count: number; capped: boolean }> {
+    try {
+      const relayPool = getRelayPool();
+      const events = await relayPool.fetchEvents([
+        { kinds: [EVENT_KINDS.CONTACTS], '#p': [pubkey], limit }
+      ]);
+      const authors = new Set(events.map(e => e.pubkey));
+      return { count: authors.size, capped: events.length >= limit };
+    } catch (error) {
+      console.error('Failed to fetch followers count:', error);
+      return { count: 0, capped: false };
+    }
+  }
+
+  /**
+   * Best-effort account creation date — the earliest profile (kind 0)
+   * event we can find. Nostr has no real "join date"; like every client,
+   * this is an approximation bounded by relay retention.
+   */
+  static async fetchAccountCreatedAt(pubkey: string): Promise<number | null> {
+    try {
+      const relayPool = getRelayPool();
+      const events = await relayPool.fetchEvents([
+        { kinds: [EVENT_KINDS.SET_METADATA], authors: [pubkey], limit: 50 }
+      ]);
+      if (events.length === 0) return null;
+      return Math.min(...events.map(e => e.created_at || Infinity));
+    } catch (error) {
+      console.error('Failed to fetch account creation date:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch the latest raw kind-3 contact list event (not just the pubkeys)
+   * so follow/unfollow can preserve existing tags and content instead of
+   * wiping the list — kind 3 is a replaceable event, relays only keep
+   * whatever we last published.
+   */
+  private static async fetchContactListEvent(pubkey: string): Promise<NostrEventSigned | null> {
+    try {
+      const relayPool = getRelayPool();
+      const events = await relayPool.fetchEvents([
+        { kinds: [EVENT_KINDS.CONTACTS], authors: [pubkey], limit: 5 }
+      ]);
+      if (events.length === 0) return null;
+      return events.reduce((latest, current) =>
+        (current.created_at || 0) > (latest.created_at || 0) ? current : latest
+      );
+    } catch (error) {
+      console.error('Failed to fetch contact list event:', error);
+      return null;
+    }
+  }
+
+  private static async publishContactList(tags: string[][], content: string): Promise<boolean> {
+    const isExtension = CredentialManager.isExtensionMode();
+    if (!isExtension && !CredentialManager.getPrivateKey()) {
+      throw new Error('Private key not found');
+    }
+
+    const event: NostrEvent = { kind: EVENT_KINDS.CONTACTS, content, tags };
+
+    let signed: NostrEventSigned;
+    if (isExtension) {
+      signed = await this.signEventWithExtension(event);
+    } else {
+      const privkey = CredentialManager.getPrivateKey();
+      if (!privkey) throw new Error('Private key not found');
+      signed = NostrCrypto.signEvent(event, privkey);
+    }
+
+    const relayPool = getRelayPool();
+    const results = await relayPool.publishEvent(signed);
+    if (!Array.from(results.values()).some(Boolean)) {
+      throw new Error('No relay accepted the updated contact list');
+    }
+    return true;
+  }
+
+  /**
+   * Whether the logged-in user already follows this pubkey
+   */
+  static async isFollowing(targetPubkey: string): Promise<boolean> {
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey) return false;
+    const existing = await this.fetchContactListEvent(ownPubkey);
+    return !!existing?.tags.some(t => t[0] === 'p' && t[1] === targetPubkey);
+  }
+
+  /**
+   * Follow a pubkey — adds a `p` tag to the existing contact list (kind 3)
+   */
+  static async followUser(targetPubkey: string): Promise<boolean> {
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey) throw new Error('Public key not found');
+
+    const existing = await this.fetchContactListEvent(ownPubkey);
+    const tags = existing ? [...existing.tags] : [];
+    if (tags.some(t => t[0] === 'p' && t[1] === targetPubkey)) {
+      return true; // already following
+    }
+    tags.push(['p', targetPubkey]);
+
+    return this.publishContactList(tags, existing?.content || '');
+  }
+
+  /**
+   * Unfollow a pubkey — removes its `p` tag from the contact list (kind 3)
+   */
+  static async unfollowUser(targetPubkey: string): Promise<boolean> {
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey) throw new Error('Public key not found');
+
+    const existing = await this.fetchContactListEvent(ownPubkey);
+    if (!existing) return true; // nothing to unfollow
+
+    const tags = existing.tags.filter(t => !(t[0] === 'p' && t[1] === targetPubkey));
+    return this.publishContactList(tags, existing.content || '');
   }
 
   /**
@@ -906,6 +1019,107 @@ export class NostrCore {
 
     return totals;
   }
+
+  /**
+   * Pull recipient/sender/note/amount out of a zap receipt. The sender is
+   * only reliably known via the NIP-57 `P` (uppercase) tag; not every
+   * receipt has one, so this falls back to the embedded zap request's own
+   * `pubkey` (inside the `description` tag), which is always present and
+   * signed by the real sender.
+   */
+  private static parseZapReceipt(receipt: NostrEventSigned): {
+    recipientPubkey: string;
+    senderPubkey: string | null;
+    noteId?: string;
+    sats: number;
+    createdAt: number;
+  } {
+    const recipientPubkey = receipt.tags.find(t => t[0] === 'p')?.[1] || '';
+    let senderPubkey = receipt.tags.find(t => t[0] === 'P')?.[1] || null;
+
+    if (!senderPubkey) {
+      try {
+        const description = receipt.tags.find(t => t[0] === 'description')?.[1];
+        const zapRequest = description ? JSON.parse(description) : null;
+        if (zapRequest && typeof zapRequest.pubkey === 'string') {
+          senderPubkey = zapRequest.pubkey;
+        }
+      } catch {
+        // Malformed description — sender stays unknown
+      }
+    }
+
+    return {
+      recipientPubkey,
+      senderPubkey,
+      noteId: receipt.tags.find(t => t[0] === 'e')?.[1],
+      sats: this.parseZapAmountSats(receipt),
+      createdAt: receipt.created_at || 0
+    };
+  }
+
+  /**
+   * Fetch zaps this pubkey sent AND received, merged into one
+   * chronological activity feed. Best-effort like all zap attribution —
+   * bounded by `limit` per direction and by what receipts a relay has.
+   */
+  static async fetchZapActivity(pubkey: string, limit: number = 50): Promise<ZapActivity[]> {
+    try {
+      const relayPool = getRelayPool();
+      const [sentReceipts, receivedReceipts] = await Promise.all([
+        relayPool.fetchEvents([{ kinds: [EVENT_KINDS.ZAP_RECEIPT], '#P': [pubkey], limit }]),
+        relayPool.fetchEvents([{ kinds: [EVENT_KINDS.ZAP_RECEIPT], '#p': [pubkey], limit }])
+      ]);
+
+      const seen = new Set<string>();
+      const activity: ZapActivity[] = [];
+
+      for (const receipt of sentReceipts) {
+        if (seen.has(receipt.id)) continue;
+        seen.add(receipt.id);
+        const parsed = this.parseZapReceipt(receipt);
+        if (!parsed.recipientPubkey) continue;
+        activity.push({
+          id: receipt.id,
+          direction: 'sent',
+          counterpartyPubkey: parsed.recipientPubkey,
+          noteId: parsed.noteId,
+          sats: parsed.sats,
+          createdAt: parsed.createdAt
+        });
+      }
+
+      for (const receipt of receivedReceipts) {
+        if (seen.has(receipt.id)) continue; // e.g. a self-zap already counted above
+        seen.add(receipt.id);
+        const parsed = this.parseZapReceipt(receipt);
+        if (!parsed.senderPubkey) continue; // can't attribute who sent it
+        activity.push({
+          id: receipt.id,
+          direction: 'received',
+          counterpartyPubkey: parsed.senderPubkey,
+          noteId: parsed.noteId,
+          sats: parsed.sats,
+          createdAt: parsed.createdAt
+        });
+      }
+
+      return activity.sort((a, b) => b.createdAt - a.createdAt);
+    } catch (error) {
+      console.error('Failed to fetch zap activity:', error);
+      return [];
+    }
+  }
+}
+
+export interface ZapActivity {
+  id: string;
+  direction: 'sent' | 'received';
+  /** Who the zap was sent to (direction='sent') or received from (direction='received') */
+  counterpartyPubkey: string;
+  noteId?: string;
+  sats: number;
+  createdAt: number;
 }
 
 /**

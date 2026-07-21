@@ -1,16 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NostrEventSigned, UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
+import { CredentialManager } from '../nostr/crypto';
 import { formatAddress } from '../utils/helpers';
 import { extractImageUrls, extractVideoUrls, extractYouTubeIds } from '../utils/media';
 import EventCard from './EventCard';
 
-const RECENT_SEARCHES_KEY = 'nostr_recent_searches';
 const MAX_RECENT_SEARCHES = 8;
+
+// Per-pubkey so switching identities on the same browser never shows one
+// account's search history to another, while still caching for speed
+const recentSearchesKey = (): string => {
+  const pubkey = CredentialManager.getPublicKey();
+  return pubkey ? `nostr_recent_searches_${pubkey}` : 'nostr_recent_searches';
+};
 
 const loadRecentSearches = (): string[] => {
   try {
-    const raw = localStorage.getItem(RECENT_SEARCHES_KEY);
+    const raw = localStorage.getItem(recentSearchesKey());
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -21,7 +28,7 @@ const saveRecentSearch = (term: string): string[] => {
   const existing = loadRecentSearches().filter(t => t.toLowerCase() !== term.toLowerCase());
   const updated = [term, ...existing].slice(0, MAX_RECENT_SEARCHES);
   try {
-    localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
+    localStorage.setItem(recentSearchesKey(), JSON.stringify(updated));
   } catch {
     // storage full or unavailable — recent searches are best-effort
   }
@@ -29,6 +36,7 @@ const saveRecentSearch = (term: string): string[] => {
 };
 
 interface SearchPageProps {
+  relaysConnected: boolean;
   onNavigateToProfile: (pubkey: string) => void;
   onNavigateToNote?: (noteId: string) => void;
   /** Preset topic to search (e.g. from clicking a #hashtag elsewhere) */
@@ -54,7 +62,7 @@ const hasMedia = (content: string) =>
   extractVideoUrls(content).length > 0 ||
   extractYouTubeIds(content).length > 0;
 
-const SearchPage: React.FC<SearchPageProps> = ({ onNavigateToProfile, onNavigateToNote, initialTopic, topicNavKey }) => {
+const SearchPage: React.FC<SearchPageProps> = ({ relaysConnected, onNavigateToProfile, onNavigateToNote, initialTopic, topicNavKey }) => {
   const [query, setQuery] = useState('');
   const [searchedQuery, setSearchedQuery] = useState('');
   const [activeTab, setActiveTab] = useState<TabKey>('feeds');
@@ -177,13 +185,16 @@ const SearchPage: React.FC<SearchPageProps> = ({ onNavigateToProfile, onNavigate
   };
 
   // A #hashtag or the topic search input elsewhere in the app requested
-  // this specific topic — jump straight to the Topics tab for it
+  // this specific topic — jump straight to the Topics tab for it. Landing
+  // here straight from a refresh, wait for relays to (re)connect first —
+  // searching too early would find nothing and mark the topic as "loaded"
+  // with an empty result, blocking any later retry.
   useEffect(() => {
-    if (initialTopic) {
+    if (initialTopic && relaysConnected) {
       performSearch(initialTopic, 'topics');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topicNavKey]);
+  }, [topicNavKey, relaysConnected]);
 
   const handleTabClick = (tab: TabKey) => {
     setActiveTab(tab);
