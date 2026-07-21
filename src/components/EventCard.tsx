@@ -242,7 +242,7 @@ const EventCard: React.FC<EventCardProps> = ({
 
       // Add mention as link — prefer the NIP-05 handle, like @user@domain
       if (mentionProfile) {
-        const handle = mentionProfile.nip05 || mentionProfile.display_name || mentionProfile.name || formatAddress(pubkey);
+        const handle = mentionProfile.name || mentionProfile.display_name || mentionProfile.nip05 || formatAddress(pubkey);
         parts.push(
           <button
             key={`mention-${keyIndex}-${pubkey}`}

@@ -1,6 +1,7 @@
 /**
  * Utility functions for the NOSTR app
  */
+import { nip19 } from 'nostr-tools';
 
 /**
  * Format date to human-readable format
@@ -60,6 +61,40 @@ export function extractMentions(content: string): string[] {
   }
 
   return mentions;
+}
+
+/**
+ * Extract pubkeys referenced via nostr:npub1.../nostr:nprofile1... links,
+ * for tagging mentioned users with a 'p' tag on publish
+ */
+export function extractMentionPubkeys(content: string): string[] {
+  const pubkeys = new Set<string>();
+
+  const npubMatches = content.match(/nostr:npub1[a-z0-9]+/gi) || [];
+  npubMatches.forEach(link => {
+    try {
+      const decoded = nip19.decode(link.replace(/^nostr:/, ''));
+      if (decoded.type === 'npub' && typeof decoded.data === 'string') {
+        pubkeys.add(decoded.data);
+      }
+    } catch {
+      // malformed bech32 \u2014 skip
+    }
+  });
+
+  const nprofileMatches = content.match(/nostr:nprofile1[a-z0-9]+/gi) || [];
+  nprofileMatches.forEach(link => {
+    try {
+      const decoded = nip19.decode(link.replace(/^nostr:/, ''));
+      if (decoded.type === 'nprofile') {
+        pubkeys.add((decoded.data as { pubkey: string }).pubkey);
+      }
+    } catch {
+      // malformed bech32 \u2014 skip
+    }
+  });
+
+  return Array.from(pubkeys);
 }
 
 /**

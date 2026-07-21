@@ -19,23 +19,28 @@ export class NostrCore {
   static async publishNote(
     content: string,
     replyTo?: string,
-    hashtags?: string[]
+    hashtags?: string[],
+    mentionPubkeys?: string[]
   ): Promise<NostrEventSigned | null> {
     const isExtension = CredentialManager.isExtensionMode();
-    
+
     if (!isExtension && !CredentialManager.getPrivateKey()) {
       console.error('Private key not found');
       return null;
     }
 
     const tags: string[][] = [];
-    
+
     if (replyTo) {
       tags.push(['e', replyTo, '', 'reply']);
     }
 
     hashtags?.forEach(tag => {
       tags.push(['t', tag.toLowerCase()]);
+    });
+
+    mentionPubkeys?.forEach(pubkey => {
+      tags.push(['p', pubkey]);
     });
 
     const event: NostrEvent = {
@@ -104,6 +109,10 @@ export class NostrCore {
       if (!Array.from(results.values()).some(Boolean)) {
         throw new Error('No relay accepted the profile');
       }
+      // Update the cache immediately — otherwise anything reading
+      // EventCache (e.g. the header avatar) doesn't see this until the
+      // next relay fetch, even though we just published it ourselves
+      EventCache.addProfile({ ...profile, pubkey: signed.pubkey } as UserProfile);
       return signed;
     } catch (error) {
       console.error('Failed to publish profile:', error);
@@ -522,13 +531,15 @@ export class NostrCore {
    */
   static async fetchEventsByTag(
     tag: string,
-    limit: number = 100
+    limit: number = 100,
+    since?: number
   ): Promise<NostrEventSigned[]> {
     const filters: NostrFilter[] = [
       {
         kinds: [EVENT_KINDS.TEXT_NOTE],
         '#t': [tag.toLowerCase()],
-        limit
+        limit,
+        ...(since !== undefined ? { since } : {})
       }
     ];
 

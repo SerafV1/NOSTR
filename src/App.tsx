@@ -13,6 +13,8 @@ import { CredentialManager, NostrCrypto } from './nostr/crypto';
 import { getRelayPool, DEFAULT_RELAYS } from './nostr/relay';
 import { NotificationCore, NotificationStore } from './nostr/notifications';
 import { DirectMessageCore, DirectMessageStore } from './nostr/dm';
+import { NostrCore, EventCache } from './nostr/core';
+import { UserProfile } from './types';
 import './index.css';
 import LoginPage from './components/LoginPage';
 import HomePage from './components/HomePage';
@@ -23,6 +25,7 @@ import SettingsPage from './components/SettingsPage';
 import NotificationsPage from './components/NotificationsPage';
 import MessagesPage from './components/MessagesPage';
 import ComposeModal from './components/ComposeModal';
+import { BellIcon, MessageIcon } from './components/Icons';
 
 // URL-safe encode/decode for note ids and pubkeys — bech32 (note1.../npub1...)
 // with a raw-hex fallback so malformed or hand-typed links still resolve
@@ -135,8 +138,9 @@ function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(CredentialManager.isLoggedIn());
   const [publicKey, setPublicKey] = useState(CredentialManager.getPublicKey() || '');
   const [relaysConnected, setRelaysConnected] = useState(false);
-  const [relayInfos, setRelayInfos] = useState<{ url: string; connected: boolean; paid: boolean }[]>([]);
-  const [showRelayPanel, setShowRelayPanel] = useState(false);
+  const [ownProfile, setOwnProfile] = useState<UserProfile | null>(
+    () => EventCache.getProfile(CredentialManager.getPublicKey() || '') || null
+  );
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [showComposeFab, setShowComposeFab] = useState(false);
@@ -205,25 +209,24 @@ function App() {
     };
   }, [isLoggedIn]);
 
-  // Keep per-relay status (connected / paid) fresh for the header panel
+  // Load the logged-in user's own profile (for the header avatar) —
+  // instant from cache if we have it, refreshed once relays connect
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!relaysConnected || !publicKey) return;
+    let cancelled = false;
+    NostrCore.fetchUserProfile(publicKey).then(profile => {
+      if (!cancelled && profile) setOwnProfile(profile);
+    });
+    return () => { cancelled = true; };
+  }, [relaysConnected, publicKey]);
 
-    const refreshRelayInfos = () => {
-      const relayPool = getRelayPool();
-      const status = relayPool.getStatus();
-      const capabilities = relayPool.getAllCapabilities();
-      setRelayInfos(relayPool.getRelays().map(url => ({
-        url,
-        connected: status.get(url) || false,
-        paid: capabilities.get(url)?.paid ?? false
-      })));
-    };
-
-    refreshRelayInfos();
-    const interval = setInterval(refreshRelayInfos, 5000);
-    return () => clearInterval(interval);
-  }, [isLoggedIn, relaysConnected]);
+  // Re-sync from cache on every navigation — cheap and picks up a profile
+  // picture you just changed on the Edit Profile form without a reload
+  useEffect(() => {
+    if (!publicKey) return;
+    const cached = EventCache.getProfile(publicKey);
+    if (cached) setOwnProfile(cached);
+  }, [location.pathname, publicKey]);
 
   // Poll for the unread notification badge — skipped while the
   // Notifications page itself is open, since it manages the count directly
@@ -341,29 +344,23 @@ function App() {
             <Link to="/" className={`nav-btn ${location.pathname === '/' ? 'active' : ''}`}>
               Home
             </Link>
-            <Link
-              to={`/p/${encodeNpubParam(publicKey)}`}
-              className={`nav-btn ${location.pathname.startsWith('/p/') ? 'active' : ''}`}
-            >
-              Profile
-            </Link>
             <Link to="/search" className={`nav-btn ${location.pathname === '/search' ? 'active' : ''}`}>
               Search
             </Link>
             <Link
               to="/notifications"
-              className={`nav-btn ${location.pathname === '/notifications' ? 'active' : ''}`}
+              className={`nav-btn nav-btn-icon ${location.pathname === '/notifications' ? 'active' : ''}`}
             >
-              🔔 Notifications
+              <BellIcon /> Notifications
               {unreadNotifications > 0 && (
                 <span className="nav-badge">{unreadNotifications > 99 ? '99+' : unreadNotifications}</span>
               )}
             </Link>
             <Link
               to="/messages"
-              className={`nav-btn ${location.pathname.startsWith('/messages') ? 'active' : ''}`}
+              className={`nav-btn nav-btn-icon ${location.pathname.startsWith('/messages') ? 'active' : ''}`}
             >
-              ✉️ Messages
+              <MessageIcon /> Messages
               {unreadMessages > 0 && (
                 <span className="nav-badge">{unreadMessages > 99 ? '99+' : unreadMessages}</span>
               )}
@@ -376,37 +373,19 @@ function App() {
             </Link>
           </nav>
           <div className="header-right">
-            <div className="relay-status-wrapper">
-              <button
-                className="relay-status relay-status-toggle"
-                onClick={() => setShowRelayPanel(!showRelayPanel)}
-                title="Show relay details"
-              >
-                <span className={`status-dot ${relayInfos.some(r => r.connected) ? 'connected' : 'disconnected'}`}></span>
-                <span>
-                  {relayInfos.length > 0
-                    ? `${relayInfos.filter(r => r.connected).length}/${relayInfos.length} relays`
-                    : relaysConnected ? 'Connected' : 'Offline'}
-                </span>
-              </button>
-              {showRelayPanel && (
-                <div className="relay-status-panel">
-                  {relayInfos.length === 0 ? (
-                    <div className="relay-status-row">No relays configured</div>
-                  ) : (
-                    relayInfos.map(relay => (
-                      <div key={relay.url} className="relay-status-row">
-                        <span className={`status-dot ${relay.connected ? 'connected' : 'disconnected'}`}></span>
-                        <span className="relay-status-url">{relay.url.replace(/^wss?:\/\//, '')}</span>
-                        <span className={`relay-fee-badge ${relay.paid ? 'paid' : 'free'}`}>
-                          {relay.paid ? '💳 Paid' : 'Free'}
-                        </span>
-                      </div>
-                    ))
-                  )}
+            <Link
+              to={`/p/${encodeNpubParam(publicKey)}`}
+              className={`header-avatar-link ${location.pathname.startsWith('/p/') ? 'active' : ''}`}
+              title="Your profile"
+            >
+              {ownProfile?.picture ? (
+                <img src={ownProfile.picture} alt="" className="header-avatar" />
+              ) : (
+                <div className="header-avatar-placeholder">
+                  {(ownProfile?.display_name || ownProfile?.name || '?').charAt(0).toUpperCase()}
                 </div>
               )}
-            </div>
+            </Link>
             <button className="logout-btn" onClick={handleLogout}>
               Logout
             </button>

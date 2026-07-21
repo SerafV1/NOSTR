@@ -4,6 +4,7 @@ import { NostrCore, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
 import { formatAddress } from '../utils/helpers';
 import { extractImageUrls, extractVideoUrls, extractYouTubeIds } from '../utils/media';
+import { loadCustomFeeds, addCustomFeed } from '../utils/customFeeds';
 import EventCard from './EventCard';
 
 const MAX_RECENT_SEARCHES = 8;
@@ -74,6 +75,7 @@ const SearchPage: React.FC<SearchPageProps> = ({ relaysConnected, onNavigateToPr
   const [mediaResults, setMediaResults] = useState<NostrEventSigned[]>([]);
   const [zapResults, setZapResults] = useState<ZappedNote[]>([]);
   const [topicResults, setTopicResults] = useState<NostrEventSigned[]>([]);
+  const [customFeeds, setCustomFeeds] = useState<string[]>(() => loadCustomFeeds());
 
   // As-you-type suggestions dropdown
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -211,6 +213,13 @@ const SearchPage: React.FC<SearchPageProps> = ({ relaysConnected, onNavigateToPr
 
   const selectTopicSuggestion = (topic: string) => {
     performSearch(topic, 'topics');
+  };
+
+  const currentTopicTag = searchedQuery.replace(/^#/, '').toLowerCase();
+  const isTopicSaved = customFeeds.includes(currentTopicTag);
+
+  const handleAddTopicFeed = () => {
+    setCustomFeeds(addCustomFeed(currentTopicTag));
   };
 
   const selectRecentSearch = (term: string) => {
@@ -361,6 +370,16 @@ const SearchPage: React.FC<SearchPageProps> = ({ relaysConnected, onNavigateToPr
           {hasSearched && !isLoading && (
             <div className="results-info">
               <h2>{currentCount} result{currentCount === 1 ? '' : 's'} for "{searchedQuery}"</h2>
+              {activeTab === 'topics' && (
+                <button
+                  type="button"
+                  className={`btn btn-small ${isTopicSaved ? 'btn-outline' : 'btn-primary'}`}
+                  onClick={handleAddTopicFeed}
+                  disabled={isTopicSaved}
+                >
+                  {isTopicSaved ? '✓ Feed added' : '+ Add Feed'}
+                </button>
+              )}
             </div>
           )}
 

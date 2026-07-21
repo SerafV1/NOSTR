@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { NostrEventSigned } from '../types';
 import { NostrCore, PersistentCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
+import { loadCustomFeeds, saveCustomFeeds } from '../utils/customFeeds';
 import EventCard from './EventCard';
 
 interface HomePageProps {
@@ -11,10 +12,17 @@ interface HomePageProps {
   onNavigateToTopic?: (topic: string) => void;
 }
 
+type FeedType = 'home' | 'global' | 'topic';
+
 const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
   const [events, setEvents] = useState<NostrEventSigned[]>([]);
   const [loading, setLoading] = useState(true);
-  const [feedType, setFeedType] = useState<'global' | 'home'>('home');
+  const [feedType, setFeedType] = useState<FeedType>('home');
+  const [activeTopic, setActiveTopic] = useState<string | null>(null);
+  const [customFeeds, setCustomFeeds] = useState<string[]>(() => loadCustomFeeds());
+  const [showFeedDropdown, setShowFeedDropdown] = useState(false);
+  const [showAddFeedInput, setShowAddFeedInput] = useState(false);
+  const [newFeedHashtag, setNewFeedHashtag] = useState('');
   const [hasFollows, setHasFollows] = useState<boolean | null>(null);
   const [contentTab, setContentTab] = useState<'posts' | 'replies'>('posts');
   // New posts found by background polling, shown behind an X-style
@@ -26,23 +34,38 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   const eventsRef = useRef<NostrEventSigned[]>([]);
   const pendingRef = useRef<NostrEventSigned[]>([]);
   const followedRef = useRef<string[]>([]);
+  const feedDropdownRef = useRef<HTMLDivElement>(null);
   eventsRef.current = events;
   pendingRef.current = pendingEvents;
 
-  // Global feed is the same public content for everyone, so it's shared
-  // across identities on this browser. Home feed depends on who *you*
-  // follow, so it's cached per-pubkey — otherwise switching identities on
-  // the same browser would briefly flash the previous identity's home feed.
-  const feedCacheKey = (type: 'global' | 'home'): string => {
-    if (type === 'global') return 'feed_global';
+  // Close the feed dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (feedDropdownRef.current && !feedDropdownRef.current.contains(e.target as Node)) {
+        setShowFeedDropdown(false);
+        setShowAddFeedInput(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Global and topic feeds are the same public content for everyone, so
+  // they're shared across identities on this browser. Home feed depends on
+  // who *you* follow, so it's cached per-pubkey — otherwise switching
+  // identities on the same browser would briefly flash the previous
+  // identity's home feed.
+  const feedCacheKey = (): string => {
+    if (feedType === 'global') return 'feed_global';
+    if (feedType === 'topic' && activeTopic) return `feed_topic_${activeTopic}`;
     const pubkey = CredentialManager.getPublicKey();
     return pubkey ? `feed_home_${pubkey}` : 'feed_home';
   };
 
   // Read a cached feed, dropping future-dated spam that older versions
   // may have persisted
-  const readCachedFeed = (type: 'global' | 'home'): NostrEventSigned[] => {
-    const cached = PersistentCache.get<NostrEventSigned[]>(feedCacheKey(type)) || [];
+  const readCachedFeed = (): NostrEventSigned[] => {
+    const cached = PersistentCache.get<NostrEventSigned[]>(feedCacheKey()) || [];
     const maxTimestamp = Math.floor(Date.now() / 1000) + 300;
     return cached.filter(e => (e.created_at || 0) <= maxTimestamp);
   };
@@ -52,7 +75,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
       fetchFeed();
     } else {
       // Relays not ready yet — show the cached feed instantly if we have one
-      const cached = readCachedFeed(feedType);
+      const cached = readCachedFeed();
       if (cached && cached.length > 0) {
         setEvents(cached);
         setLoading(false);
@@ -60,12 +83,12 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
         setLoading(true);
       }
     }
-  }, [feedType, relaysConnected]);
+  }, [feedType, activeTopic, relaysConnected]);
 
   // Discard pending new posts when switching feeds
   useEffect(() => {
     setPendingEvents([]);
-  }, [feedType]);
+  }, [feedType, activeTopic]);
 
   // Poll for posts newer than the newest one we show; they stack up behind
   // the "N new posts" button instead of shifting the feed
@@ -87,6 +110,8 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
         const authors = followedRef.current;
         if (feedType === 'home' && authors.length > 0) {
           fresh = await NostrCore.fetchHomeFeed(authors, 50, newest + 1);
+        } else if (feedType === 'topic' && activeTopic) {
+          fresh = await NostrCore.fetchEventsByTag(activeTopic, 50, newest + 1);
         } else {
           fresh = await NostrCore.fetchGlobalFeed(50, newest + 1);
         }
@@ -116,7 +141,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
       clearTimeout(firstCheck);
       clearInterval(interval);
     };
-  }, [relaysConnected, feedType]);
+  }, [relaysConnected, feedType, activeTopic]);
 
   const showPendingPosts = () => {
     const pending = pendingRef.current;
@@ -124,7 +149,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     setEvents(prev => {
       const ids = new Set(pending.map(e => e.id));
       const merged = [...pending, ...prev.filter(e => !ids.has(e.id))];
-      PersistentCache.set(feedCacheKey(feedType), merged.slice(0, 100));
+      PersistentCache.set(feedCacheKey(), merged.slice(0, 100));
       return merged;
     });
     setPendingEvents([]);
@@ -134,7 +159,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   const fetchFeed = async () => {
     // Stale-while-revalidate: render the cached feed immediately, then
     // fetch fresh events and silently replace it
-    const cached = readCachedFeed(feedType);
+    const cached = readCachedFeed();
     if (cached && cached.length > 0) {
       setEvents(cached);
       setLoading(false);
@@ -144,14 +169,17 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     }
     try {
       let fetchedEvents: NostrEventSigned[];
-      
+
       if (feedType === 'global') {
         console.log('Fetching global feed...');
         fetchedEvents = await NostrCore.fetchGlobalFeed(100);
+      } else if (feedType === 'topic' && activeTopic) {
+        console.log('Fetching topic feed:', activeTopic);
+        fetchedEvents = await NostrCore.fetchEventsByTag(activeTopic, 100);
       } else {
         console.log('Fetching home feed from followed accounts...');
         // First try to get followed accounts
-        const followedAccounts = await (NostrCore as any).fetchFollowedAccounts();
+        const followedAccounts = await NostrCore.fetchFollowedAccounts();
         console.log('Followed accounts:', followedAccounts);
         followedRef.current = followedAccounts;
 
@@ -163,7 +191,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
         } else {
           setHasFollows(true);
           // Fetch from followed accounts
-          fetchedEvents = await (NostrCore as any).fetchHomeFeed(followedAccounts, 100);
+          fetchedEvents = await NostrCore.fetchHomeFeed(followedAccounts, 100);
         }
       }
 
@@ -171,7 +199,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
 
       // Merge fresh events with the cached feed instead of replacing it —
       // a thin fresh result (slow relays skipped) must not regress the feed
-      const cachedNow = readCachedFeed(feedType);
+      const cachedNow = readCachedFeed();
       const freshIds = new Set(fetchedEvents.map(e => e.id));
       let merged = [...fetchedEvents, ...cachedNow.filter(e => !freshIds.has(e.id))]
         .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
@@ -191,7 +219,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
       await NostrCore.fetchProfiles(merged.map(e => e.pubkey));
 
       setEvents(merged);
-      PersistentCache.set(feedCacheKey(feedType), merged);
+      PersistentCache.set(feedCacheKey(), merged);
     } catch (error) {
       console.error('Failed to fetch feed:', error);
       // Keep showing the cached feed (if any) on fetch failure
@@ -204,24 +232,129 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   const isReply = (e: NostrEventSigned) => e.tags.some(t => t[0] === 'e');
   const visibleEvents = events.filter(e => (contentTab === 'replies' ? isReply(e) : !isReply(e)));
 
+  const selectFeed = (type: FeedType, topic?: string) => {
+    setFeedType(type);
+    setActiveTopic(topic || null);
+    setShowFeedDropdown(false);
+    setShowAddFeedInput(false);
+  };
+
+  const handleAddFeed = (e: React.FormEvent) => {
+    e.preventDefault();
+    const tag = newFeedHashtag.trim().replace(/^#/, '').toLowerCase();
+    if (!tag) return;
+    if (!customFeeds.includes(tag)) {
+      const updated = [...customFeeds, tag];
+      setCustomFeeds(updated);
+      saveCustomFeeds(updated);
+    }
+    setNewFeedHashtag('');
+    selectFeed('topic', tag);
+  };
+
+  const handleRemoveFeed = (tag: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = customFeeds.filter(t => t !== tag);
+    setCustomFeeds(updated);
+    saveCustomFeeds(updated);
+    if (feedType === 'topic' && activeTopic === tag) {
+      selectFeed('home');
+    }
+  };
+
+  const currentFeedLabel = feedType === 'global'
+    ? 'Global Feed'
+    : feedType === 'topic'
+      ? `#${activeTopic}`
+      : 'Home Feed';
+
   return (
     <div className="home-page">
       <div className="home-container">
         <aside className="home-sidebar">
           <div className="sidebar-card">
-            <h3>Feed Options</h3>
-            <button 
-              className={`option-btn ${feedType === 'global' ? 'active' : ''}`}
-              onClick={() => setFeedType('global')}
-            >
-              Global Feed
-            </button>
-            <button 
-              className={`option-btn ${feedType === 'home' ? 'active' : ''}`}
-              onClick={() => setFeedType('home')}
-            >
-              Home Feed
-            </button>
+            <h3>Feed</h3>
+            <div className="feed-dropdown-wrapper" ref={feedDropdownRef}>
+              <button
+                type="button"
+                className="feed-dropdown-toggle"
+                onClick={() => setShowFeedDropdown(show => !show)}
+              >
+                <span>{currentFeedLabel}</span>
+                <span className="feed-dropdown-caret">▾</span>
+              </button>
+
+              {showFeedDropdown && (
+                <div className="feed-dropdown-menu">
+                  <button
+                    type="button"
+                    className={`feed-dropdown-item ${feedType === 'home' ? 'active' : ''}`}
+                    onClick={() => selectFeed('home')}
+                  >
+                    Home Feed
+                  </button>
+                  <button
+                    type="button"
+                    className={`feed-dropdown-item ${feedType === 'global' ? 'active' : ''}`}
+                    onClick={() => selectFeed('global')}
+                  >
+                    Global Feed
+                  </button>
+
+                  {customFeeds.length > 0 && <div className="feed-dropdown-divider" />}
+                  {customFeeds.map(tag => (
+                    <div
+                      key={tag}
+                      className={`feed-dropdown-item feed-dropdown-item-custom ${feedType === 'topic' && activeTopic === tag ? 'active' : ''}`}
+                    >
+                      <button
+                        type="button"
+                        className="feed-dropdown-item-label"
+                        onClick={() => selectFeed('topic', tag)}
+                      >
+                        #{tag}
+                      </button>
+                      <button
+                        type="button"
+                        className="feed-dropdown-remove"
+                        onClick={(e) => handleRemoveFeed(tag, e)}
+                        title="Remove feed"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+
+                  <div className="feed-dropdown-divider" />
+                  {showAddFeedInput ? (
+                    <form className="feed-dropdown-add-form" onSubmit={handleAddFeed}>
+                      <input
+                        autoFocus
+                        type="text"
+                        placeholder="hashtag"
+                        value={newFeedHashtag}
+                        onChange={(e) => setNewFeedHashtag(e.target.value)}
+                      />
+                      <button
+                        type="submit"
+                        className="btn btn-primary btn-small"
+                        disabled={!newFeedHashtag.trim()}
+                      >
+                        Add
+                      </button>
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      className="feed-dropdown-item feed-dropdown-add"
+                      onClick={() => setShowAddFeedInput(true)}
+                    >
+                      + Add Feed
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </aside>
 
@@ -230,9 +363,11 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
             <h2>
               {feedType === 'global'
                 ? 'Global Feed'
-                : hasFollows === false
-                  ? 'Global Feed (Follow accounts to build your home feed)'
-                  : 'Home Feed'}
+                : feedType === 'topic'
+                  ? `#${activeTopic}`
+                  : hasFollows === false
+                    ? 'Global Feed (Follow accounts to build your home feed)'
+                    : 'Home Feed'}
             </h2>
           </div>
 
@@ -270,9 +405,11 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
                   ? 'No replies in this feed'
                   : feedType === 'global'
                     ? 'No public notes found'
-                    : hasFollows === false
-                      ? 'Start by following some accounts to build your home feed'
-                      : 'No notes from accounts you follow'}
+                    : feedType === 'topic'
+                      ? `No posts found for #${activeTopic}`
+                      : hasFollows === false
+                        ? 'Start by following some accounts to build your home feed'
+                        : 'No notes from accounts you follow'}
               </p>
             </div>
           )}
