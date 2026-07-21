@@ -98,7 +98,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
       const [userProfile, userNotes, userReposts] = await Promise.all([
         NostrCore.fetchUserProfile(pubkey),
         NostrCore.fetchUserNotes(pubkey, 50),
-        NostrCore.fetchUserReposts(pubkey, 50)
+        NostrCore.fetchReposts([pubkey], 50)
       ]);
 
       // On background refresh keep showing cached data if relays return nothing
@@ -407,7 +407,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                 <div className="events-list">
                   {timelineItems.map((item) => item.type === 'repost' ? (
                     <div key={item.key} className="reposted-item">
-                      <div className="reposted-label">🔄 {displayName} Reposted</div>
+                      <div className="reposted-label">
+                        {profile.picture && <img src={profile.picture} alt="" className="reposted-avatar" />}
+                        {displayName} Reposted
+                      </div>
                       <EventCard
                         event={item.original}
                         onNavigateToProfile={onNavigateToProfile}

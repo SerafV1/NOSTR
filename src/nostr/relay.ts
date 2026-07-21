@@ -631,8 +631,22 @@ export class RelayPool {
 
       try {
         let sub: any;
-        
-        if (relay.subscribe && typeof relay.subscribe === 'function') {
+
+        // nostr-tools relayInit (v1.x, what's actually installed) returns
+        // .sub(filters) + .on('event'|'eose', cb) — not the newer
+        // Relay-class .subscribe(filters, {onevent, oneose}) shape. Support
+        // both so this doesn't silently no-op again on a version bump.
+        if (relay.sub && typeof relay.sub === 'function') {
+          sub = relay.sub(filters);
+          sub.on('event', (event: NostrEventSigned) => {
+            callback(event);
+          });
+          if (eoseCallback) {
+            sub.on('eose', () => {
+              eoseCallback();
+            });
+          }
+        } else if (relay.subscribe && typeof relay.subscribe === 'function') {
           sub = relay.subscribe(filters, {
             onevent: (event: NostrEventSigned) => {
               callback(event);

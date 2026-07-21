@@ -75,6 +75,128 @@ export class NostrCore {
   }
 
   /**
+   * Publish a poll (kind 1068, draft NIP-69). `pollType` "user" maps to the
+   * standard singlechoice poll — one response per voter. "zap" isn't part
+   * of the draft spec; it's tagged as its own polltype value and just
+   * records intent for now (weighting votes by zap amount is a follow-up —
+   * this only covers publishing the poll itself).
+   */
+  static async publishPoll(
+    question: string,
+    options: string[],
+    pollType: 'user' | 'zap',
+    endsAt?: number
+  ): Promise<NostrEventSigned | null> {
+    const isExtension = CredentialManager.isExtensionMode();
+
+    if (!isExtension && !CredentialManager.getPrivateKey()) {
+      console.error('Private key not found');
+      return null;
+    }
+
+    const tags: string[][] = options.map((option, i) => ['option', String(i), option]);
+    tags.push(['polltype', pollType === 'zap' ? 'zap' : 'singlechoice']);
+    if (endsAt !== undefined) tags.push(['endsAt', String(endsAt)]);
+
+    const relayPool = getRelayPool();
+    relayPool.getRelays().slice(0, 3).forEach(url => tags.push(['relay', url]));
+
+    const event: NostrEvent = {
+      kind: EVENT_KINDS.POLL,
+      content: question,
+      tags
+    };
+
+    try {
+      let signed: NostrEventSigned;
+
+      if (isExtension) {
+        signed = await this.signEventWithExtension(event);
+      } else {
+        const privkey = CredentialManager.getPrivateKey();
+        if (!privkey) throw new Error('Private key not found');
+        signed = NostrCrypto.signEvent(event, privkey);
+      }
+
+      if (!signed) throw new Error('Failed to sign event');
+
+      const results = await relayPool.publishEvent(signed);
+      if (!Array.from(results.values()).some(Boolean)) {
+        throw new Error('No relay accepted the poll');
+      }
+      return signed;
+    } catch (error) {
+      console.error('Failed to publish poll:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Vote on a poll (kind 1018) — publishing a new response for the same
+   * poll supersedes the previous one, since tally reads only the latest
+   * response per voter.
+   */
+  static async publishPollResponse(pollId: string, optionId: string): Promise<NostrEventSigned | null> {
+    const isExtension = CredentialManager.isExtensionMode();
+
+    if (!isExtension && !CredentialManager.getPrivateKey()) {
+      console.error('Private key not found');
+      return null;
+    }
+
+    const event: NostrEvent = {
+      kind: EVENT_KINDS.POLL_RESPONSE,
+      content: '',
+      tags: [
+        ['e', pollId],
+        ['response', optionId]
+      ]
+    };
+
+    try {
+      let signed: NostrEventSigned;
+
+      if (isExtension) {
+        signed = await this.signEventWithExtension(event);
+      } else {
+        const privkey = CredentialManager.getPrivateKey();
+        if (!privkey) throw new Error('Private key not found');
+        signed = NostrCrypto.signEvent(event, privkey);
+      }
+
+      if (!signed) throw new Error('Failed to sign event');
+
+      const relayPool = getRelayPool();
+      const results = await relayPool.publishEvent(signed);
+      if (!Array.from(results.values()).some(Boolean)) {
+        throw new Error('No relay accepted the vote');
+      }
+      return signed;
+    } catch (error) {
+      console.error('Failed to publish poll response:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch all responses (kind 1018) for a poll — tally by taking only the
+   * latest response per voter (a later vote overrides an earlier one)
+   */
+  static async fetchPollResponses(pollId: string, limit: number = 500): Promise<NostrEventSigned[]> {
+    const filters: NostrFilter[] = [
+      { kinds: [EVENT_KINDS.POLL_RESPONSE], '#e': [pollId], limit }
+    ];
+
+    try {
+      const relayPool = getRelayPool();
+      return await relayPool.fetchEvents(filters);
+    } catch (error) {
+      console.error('Failed to fetch poll responses:', error);
+      return [];
+    }
+  }
+
+  /**
    * Publish user metadata (kind 0)
    */
   static async publishProfile(profile: Partial<UserProfile>): Promise<NostrEventSigned | null> {
@@ -408,7 +530,7 @@ export class NostrCore {
   ): Promise<NostrEventSigned[]> {
     const filters: NostrFilter[] = [
       {
-        kinds: [EVENT_KINDS.TEXT_NOTE],
+        kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.POLL],
         authors: [pubkey],
         limit
       }
@@ -425,16 +547,18 @@ export class NostrCore {
   }
 
   /**
-   * Fetch a user's reposts (kind 6), paired with the original note.
-   * NIP-18 embeds the original event as JSON in the repost's content —
+   * Fetch reposts (kind 6) by one or more authors, paired with the original
+   * note. NIP-18 embeds the original event as JSON in the repost's content —
    * used when present; falls back to fetching by the repost's `e` tag
    * for reposts that only include the tag (some clients omit content).
    */
-  static async fetchUserReposts(pubkey: string, limit: number = 50): Promise<{ repost: NostrEventSigned; original: NostrEventSigned }[]> {
+  static async fetchReposts(authors: string[], limit: number = 50): Promise<{ repost: NostrEventSigned; original: NostrEventSigned }[]> {
+    if (authors.length === 0) return [];
+
     const filters: NostrFilter[] = [
       {
         kinds: [EVENT_KINDS.REPOST],
-        authors: [pubkey],
+        authors,
         limit
       }
     ];
@@ -472,7 +596,7 @@ export class NostrCore {
 
       return results.sort((a, b) => (b.repost.created_at || 0) - (a.repost.created_at || 0));
     } catch (error) {
-      console.error('Failed to fetch user reposts:', error);
+      console.error('Failed to fetch reposts:', error);
       return [];
     }
   }
@@ -487,7 +611,7 @@ export class NostrCore {
   ): Promise<NostrEventSigned[]> {
     const filters: NostrFilter[] = [
       {
-        kinds: [EVENT_KINDS.TEXT_NOTE],
+        kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.POLL],
         authors,
         limit,
         ...(since !== undefined ? { since } : {})
@@ -510,7 +634,7 @@ export class NostrCore {
   static async fetchGlobalFeed(limit: number = 100, since?: number): Promise<NostrEventSigned[]> {
     const filters: NostrFilter[] = [
       {
-        kinds: [EVENT_KINDS.TEXT_NOTE],
+        kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.POLL],
         limit,
         ...(since !== undefined ? { since } : {})
       }
@@ -536,7 +660,7 @@ export class NostrCore {
   ): Promise<NostrEventSigned[]> {
     const filters: NostrFilter[] = [
       {
-        kinds: [EVENT_KINDS.TEXT_NOTE],
+        kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.POLL],
         '#t': [tag.toLowerCase()],
         limit,
         ...(since !== undefined ? { since } : {})
@@ -551,6 +675,23 @@ export class NostrCore {
       console.error('Failed to fetch events by tag:', error);
       return [];
     }
+  }
+
+  /**
+   * Open a live REQ subscription — relays reply with any stored events
+   * matching `filters` first, then keep streaming new ones as they're
+   * published. Unlike the `fetch*Feed` methods (one-shot query, meant to
+   * be re-run on a timer), this rides the open WebSocket connection, so
+   * new posts arrive immediately even while the tab is in the background
+   * — background tabs throttle JS timers, not already-open socket traffic.
+   */
+  static subscribeLive(filters: NostrFilter[], onEvent: (event: NostrEventSigned) => void): string {
+    const relayPool = getRelayPool();
+    return relayPool.subscribe(filters, onEvent);
+  }
+
+  static unsubscribeLive(subscriptionId: string): void {
+    getRelayPool().unsubscribe(subscriptionId);
   }
 
   /**
@@ -886,6 +1027,46 @@ export class NostrCore {
     } catch (error) {
       console.error('Failed to fetch event by address:', error);
       return null;
+    }
+  }
+
+  /**
+   * Fetch live events (NIP-53, kind 30311), optionally by status and/or
+   * authors. Addressable events can arrive from multiple relays at
+   * different revisions — dedupe by (pubkey, d-tag), keeping the newest.
+   */
+  static async fetchLiveEvents(
+    status?: 'planned' | 'live' | 'ended',
+    authors?: string[],
+    limit: number = 100
+  ): Promise<NostrEventSigned[]> {
+    const filters: NostrFilter[] = [
+      {
+        kinds: [EVENT_KINDS.LIVE_EVENT],
+        limit,
+        ...(status ? { '#status': [status] } : {}),
+        ...(authors ? { authors } : {})
+      }
+    ];
+
+    try {
+      const relayPool = getRelayPool();
+      const events = await relayPool.fetchEvents(filters);
+
+      const latestByAddress = new Map<string, NostrEventSigned>();
+      events.forEach(event => {
+        const dTag = event.tags.find(t => t[0] === 'd')?.[1] || '';
+        const address = `${event.pubkey}:${dTag}`;
+        const existing = latestByAddress.get(address);
+        if (!existing || (event.created_at || 0) > (existing.created_at || 0)) {
+          latestByAddress.set(address, event);
+        }
+      });
+
+      return Array.from(latestByAddress.values()).sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+    } catch (error) {
+      console.error('Failed to fetch live events:', error);
+      return [];
     }
   }
 

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { nip19 } from 'nostr-tools';
-import { NostrEventSigned, UserProfile } from '../types';
+import { NostrEventSigned, UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
+import { CredentialManager } from '../nostr/crypto';
 import { formatDate, formatAddress } from '../utils/helpers';
 import {
   extractImageUrls,
@@ -17,7 +18,7 @@ import QuotedNoteCard from './QuotedNoteCard';
 import LinkPreviewCard from './LinkPreviewCard';
 import EmojiPicker from './EmojiPicker';
 import ZapButton from './ZapButton';
-import { ReplyIcon, RepostIcon, HeartIcon, ZapIcon } from './Icons';
+import { ReplyIcon, RepostIcon, HeartIcon, ZapIcon, PersonIcon } from './Icons';
 
 interface EventCardProps {
   event: NostrEventSigned;
@@ -46,15 +47,84 @@ const EventCard: React.FC<EventCardProps> = ({
   const [reactionEmoji, setReactionEmoji] = useState('');
   const [showReactions, setShowReactions] = useState(false);
   const [mentionedProfiles, setMentionedProfiles] = useState<Record<string, UserProfile>>({});
-  const [enlargedImage, setEnlargedImage] = useState<string | null>(null);
+  const [enlargedIndex, setEnlargedIndex] = useState<number | null>(null);
   const [quotedNote, setQuotedNote] = useState<NostrEventSigned | null>(null);
+  const [pollResponses, setPollResponses] = useState<NostrEventSigned[]>([]);
+  const [votingOption, setVotingOption] = useState<string | null>(null);
 
   useEffect(() => {
     loadProfile();
     loadEngagement();
     loadMentionedProfiles();
     loadQuotedNote();
+    if (event.kind === EVENT_KINDS.POLL) loadPollResponses();
   }, [event]);
+
+  // Arrow keys step through the enlarged-image modal like a standard lightbox
+  useEffect(() => {
+    if (enlargedIndex === null) return;
+    const images = extractImageUrls(event.content);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setEnlargedIndex(null);
+      else if (e.key === 'ArrowLeft') setEnlargedIndex(i => (i !== null && i > 0 ? i - 1 : i));
+      else if (e.key === 'ArrowRight') setEnlargedIndex(i => (i !== null && i < images.length - 1 ? i + 1 : i));
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [enlargedIndex, event.content]);
+
+  const loadPollResponses = async () => {
+    try {
+      const responses = await NostrCore.fetchPollResponses(event.id);
+      setPollResponses(responses);
+    } catch (error) {
+      console.error('Failed to load poll responses:', error);
+    }
+  };
+
+  // Tally by the latest response per voter — a later vote overrides an
+  // earlier one, so re-voting just supersedes your previous choice
+  const tallyPollVotes = (responses: NostrEventSigned[]): { counts: Record<string, number>; total: number; myVote: string | null } => {
+    const latestByVoter = new Map<string, NostrEventSigned>();
+    responses.forEach(r => {
+      const existing = latestByVoter.get(r.pubkey);
+      if (!existing || (r.created_at || 0) > (existing.created_at || 0)) {
+        latestByVoter.set(r.pubkey, r);
+      }
+    });
+
+    const counts: Record<string, number> = {};
+    let myVote: string | null = null;
+    const myPubkey = CredentialManager.getPublicKey();
+    latestByVoter.forEach(r => {
+      const optionId = r.tags.find(t => t[0] === 'response')?.[1];
+      if (!optionId) return;
+      counts[optionId] = (counts[optionId] || 0) + 1;
+      if (myPubkey && r.pubkey === myPubkey) myVote = optionId;
+    });
+
+    return { counts, total: latestByVoter.size, myVote };
+  };
+
+  const handleVote = async (optionId: string) => {
+    if (votingOption) return;
+    setVotingOption(optionId);
+    try {
+      const responseEvent = await NostrCore.publishPollResponse(event.id, optionId);
+      if (responseEvent) {
+        setPollResponses(prev => [...prev, responseEvent]);
+      } else {
+        alert('Vote was not accepted by any relay — check your connection');
+      }
+    } catch (error) {
+      console.error('Failed to vote:', error);
+      alert('Failed to publish vote');
+    } finally {
+      setVotingOption(null);
+    }
+  };
 
   const loadEngagement = async () => {
     try {
@@ -434,6 +504,68 @@ const EventCard: React.FC<EventCardProps> = ({
         {stripMediaUrls(event.content) && (
           <p>{renderContentWithMentions(stripMediaUrls(event.content))}</p>
         )}
+        {event.kind === EVENT_KINDS.POLL && (() => {
+          const isZapPoll = event.tags.find(t => t[0] === 'polltype')?.[1] === 'zap';
+          const endsAtTag = event.tags.find(t => t[0] === 'endsAt')?.[1];
+          const isClosed = !!endsAtTag && Number(endsAtTag) * 1000 <= Date.now();
+          const { counts, total, myVote } = tallyPollVotes(pollResponses);
+          // Zap-weighted voting isn't implemented yet — those polls just
+          // show the static option list. Otherwise, reveal result bars
+          // once you've voted or the poll has closed; before that, options
+          // are clickable buttons.
+          const showResults = isZapPoll || isClosed || myVote !== null;
+
+          return (
+            <div className="poll-display">
+              <div className="poll-display-options">
+                {event.tags.filter(t => t[0] === 'option').map((t) => {
+                  const optionId = t[1];
+                  const label = t[2];
+
+                  if (showResults) {
+                    const count = counts[optionId] || 0;
+                    const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                    const isMine = myVote === optionId;
+                    return (
+                      <div
+                        className={`poll-display-option poll-result ${isMine ? 'poll-result-mine' : ''}`}
+                        key={optionId}
+                      >
+                        <div className="poll-result-bar" style={{ width: `${pct}%` }} />
+                        <span className="poll-result-label">{label}{isMine && ' ✓'}</span>
+                        <span className="poll-result-pct">{pct}%</span>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <button
+                      type="button"
+                      className="poll-display-option poll-option-vote"
+                      key={optionId}
+                      disabled={votingOption !== null}
+                      onClick={(e) => { e.stopPropagation(); handleVote(optionId); }}
+                    >
+                      {votingOption === optionId ? 'Voting…' : label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="poll-display-meta">
+                {isZapPoll ? (
+                  <span><ZapIcon className="poll-display-meta-icon" /> Zap Poll (voting coming soon)</span>
+                ) : (
+                  <span><PersonIcon className="poll-display-meta-icon" /> {total} {total === 1 ? 'vote' : 'votes'}</span>
+                )}
+                {endsAtTag && (
+                  <span className="poll-display-ends">
+                    {' · '}{isClosed ? 'Poll ended' : `Ends ${formatDate(new Date(Number(endsAtTag) * 1000))}`}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })()}
         {event.tags.filter(t => t[0] === 't').length > 0 && (
           <div className="event-hashtags">
             {event.tags
@@ -455,7 +587,7 @@ const EventCard: React.FC<EventCardProps> = ({
               <button
                 key={index}
                 className="event-image-preview"
-                onClick={(e) => { e.stopPropagation(); setEnlargedImage(imageUrl); }}
+                onClick={(e) => { e.stopPropagation(); setEnlargedIndex(index); }}
                 style={{ border: 'none', padding: 0, background: 'none', cursor: 'pointer' }}
               >
                 <img
@@ -583,16 +715,44 @@ const EventCard: React.FC<EventCardProps> = ({
         />
       )}
 
-      {enlargedImage && (
-        <div className="image-modal" onClick={() => setEnlargedImage(null)}>
-          <div className="image-modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="image-modal-close" onClick={() => setEnlargedImage(null)}>
-              ✕
-            </button>
-            <img src={enlargedImage} alt="Enlarged" className="image-modal-img" />
+      {enlargedIndex !== null && (() => {
+        const images = extractImageUrls(event.content);
+        const currentUrl = images[enlargedIndex];
+        const hasPrev = enlargedIndex > 0;
+        const hasNext = enlargedIndex < images.length - 1;
+
+        return (
+          <div className="image-modal" onClick={() => setEnlargedIndex(null)}>
+            {hasPrev && (
+              <button
+                className="image-modal-nav image-modal-prev"
+                onClick={(e) => { e.stopPropagation(); setEnlargedIndex(i => (i ?? 0) - 1); }}
+                title="Previous image"
+              >
+                ‹
+              </button>
+            )}
+            <div className="image-modal-content" onClick={(e) => e.stopPropagation()}>
+              <button className="image-modal-close" onClick={() => setEnlargedIndex(null)}>
+                ✕
+              </button>
+              <img src={currentUrl} alt="Enlarged" className="image-modal-img" />
+              {images.length > 1 && (
+                <div className="image-modal-counter">{enlargedIndex + 1} / {images.length}</div>
+              )}
+            </div>
+            {hasNext && (
+              <button
+                className="image-modal-nav image-modal-next"
+                onClick={(e) => { e.stopPropagation(); setEnlargedIndex(i => (i ?? 0) + 1); }}
+                title="Next image"
+              >
+                ›
+              </button>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

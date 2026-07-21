@@ -2,10 +2,15 @@ import React, { useState, useRef, useEffect } from 'react';
 import { nip19 } from 'nostr-tools';
 import { NostrEventSigned, UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
+import { BlossomClient } from '../nostr/blossom';
+import { loadBlossomServers } from '../utils/blossomServers';
 import { extractImageUrls, extractVideoUrls, extractYouTubeIds } from '../utils/media';
 import { extractMentionPubkeys, formatAddress } from '../utils/helpers';
 import VideoPlayer from './VideoPlayer';
 import EmojiPicker from './EmojiPicker';
+import { PollIcon, PersonIcon, ZapIcon, ImageIcon } from './Icons';
+
+const MAX_POLL_OPTIONS = 4;
 
 interface ComposeNoteProps {
   onPublished?: (event: NostrEventSigned) => void;
@@ -20,6 +25,22 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
   const [publishing, setPublishing] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const [showPoll, setShowPoll] = useState(false);
+  const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
+  const [pollType, setPollType] = useState<'user' | 'zap'>('user');
+  const [pollDays, setPollDays] = useState(1);
+  const [pollHours, setPollHours] = useState(0);
+  const [pollMinutes, setPollMinutes] = useState(0);
+
+  const [uploads, setUploads] = useState<{ name: string; progress: number }[]>([]);
+  const [mediaServers] = useState(() => loadBlossomServers().filter(s => s.enabled));
+  const [targetServer, setTargetServer] = useState(''); // '' = try every enabled server in order
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Mirrors `content` so concurrent uploads each append to the latest text
+  // instead of racing against each other's stale closure
+  const contentRef = useRef('');
+  contentRef.current = content;
 
   // @mention autocomplete: mentionStart is the index of the triggering '@'
   // in `content`, or null when we're not in mention-typing mode
@@ -139,6 +160,48 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
     });
   };
 
+  const updatePollOption = (index: number, value: string) => {
+    setPollOptions(prev => prev.map((o, i) => (i === index ? value : o)));
+  };
+
+  const addPollOption = () => {
+    setPollOptions(prev => (prev.length < MAX_POLL_OPTIONS ? [...prev, ''] : prev));
+  };
+
+  const removePollOption = (index: number) => {
+    setPollOptions(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const removePoll = () => {
+    setShowPoll(false);
+    setPollOptions(['', '']);
+    setPollType('user');
+    setPollDays(1);
+    setPollHours(0);
+    setPollMinutes(0);
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = ''; // allow re-selecting the same file later
+
+    for (const file of files) {
+      setUploads(prev => [...prev, { name: file.name, progress: 0 }]);
+      try {
+        const blob = await BlossomClient.uploadFile(file, targetServer || undefined, (progress) => {
+          setUploads(prev => prev.map(u => (u.name === file.name ? { ...u, progress } : u)));
+        });
+        const separator = contentRef.current && !contentRef.current.endsWith('\n') ? '\n' : '';
+        updateContent(`${contentRef.current}${separator}${blob.url} `);
+      } catch (error) {
+        console.error('Failed to upload file:', error);
+        alert(error instanceof Error ? error.message : 'Failed to upload file');
+      } finally {
+        setUploads(prev => prev.filter(u => u.name !== file.name));
+      }
+    }
+  };
+
   const insertEmoji = (emoji: string) => {
     const textarea = textareaRef.current;
     if (!textarea) {
@@ -217,37 +280,48 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
   const handlePublish = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim()) return;
+    const trimmedOptions = pollOptions.map(o => o.trim()).filter(Boolean);
+    if (showPoll && trimmedOptions.length < 2) return;
 
     setPublishing(true);
     try {
-      let finalContent = resolveMentionHandles(content.trim());
-      if (quoteNoteId) {
-        try {
-          finalContent += `\n\nnostr:${nip19.noteEncode(quoteNoteId)}`;
-        } catch {
-          finalContent += `\n\nnostr:${quoteNoteId}`;
-        }
-      }
+      let event: NostrEventSigned | null;
 
-      const event = await NostrCore.publishNote(
-        finalContent,
-        replyTo,
-        hashtags,
-        extractMentionPubkeys(finalContent)
-      );
+      if (showPoll) {
+        const totalSeconds = pollDays * 86400 + pollHours * 3600 + pollMinutes * 60;
+        const endsAt = totalSeconds > 0 ? Math.floor(Date.now() / 1000) + totalSeconds : undefined;
+        event = await NostrCore.publishPoll(content.trim(), trimmedOptions, pollType, endsAt);
+      } else {
+        let finalContent = resolveMentionHandles(content.trim());
+        if (quoteNoteId) {
+          try {
+            finalContent += `\n\nnostr:${nip19.noteEncode(quoteNoteId)}`;
+          } catch {
+            finalContent += `\n\nnostr:${quoteNoteId}`;
+          }
+        }
+
+        event = await NostrCore.publishNote(
+          finalContent,
+          replyTo,
+          hashtags,
+          extractMentionPubkeys(finalContent)
+        );
+      }
 
       if (event) {
         setContent('');
         setHashtags([]);
         setShowEmojiPicker(false);
         mentionMapRef.current.clear();
+        removePoll();
         onPublished?.(event);
       } else {
-        alert('Failed to publish note — check that you are logged in');
+        alert(`Failed to publish ${showPoll ? 'poll' : 'note'} — check that you are logged in`);
       }
     } catch (error) {
-      console.error('Error publishing note:', error);
-      alert(error instanceof Error ? error.message : 'Error publishing note');
+      console.error(`Error publishing ${showPoll ? 'poll' : 'note'}:`, error);
+      alert(error instanceof Error ? error.message : `Error publishing ${showPoll ? 'poll' : 'note'}`);
     } finally {
       setPublishing(false);
     }
@@ -259,7 +333,7 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
         <textarea
           ref={textareaRef}
           className="compose-textarea"
-          placeholder={quoteNoteId ? 'Add a comment...' : "What's on your mind?"}
+          placeholder={showPoll ? 'Ask a question...' : quoteNoteId ? 'Add a comment...' : "What's on your mind?"}
           value={content}
           onChange={handleContentChange}
           onKeyDown={handleKeyDown}
@@ -290,7 +364,90 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
         )}
       </div>
 
-      {(() => {
+      {showPoll && (
+        <div className="compose-poll">
+          {pollOptions.map((option, i) => (
+            <div className="poll-option-row" key={i}>
+              <input
+                type="text"
+                className="poll-option-input"
+                placeholder={`Choice ${i + 1}`}
+                value={option}
+                maxLength={40}
+                onChange={(e) => updatePollOption(i, e.target.value)}
+                disabled={publishing}
+              />
+              {i >= 2 && (
+                <button
+                  type="button"
+                  className="poll-option-remove"
+                  onClick={() => removePollOption(i)}
+                  title="Remove choice"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+
+          {pollOptions.length < MAX_POLL_OPTIONS && (
+            <button type="button" className="poll-add-choice" onClick={addPollOption}>
+              + Add choice
+            </button>
+          )}
+
+          <div className="poll-divider" />
+
+          <div className="poll-section-label">
+            Poll type <span className="poll-help" title="User Poll: one vote per person. Zap Poll: votes are weighted by zap amount.">?</span>
+          </div>
+          <div className="poll-type-toggle">
+            <button
+              type="button"
+              className={`poll-type-btn ${pollType === 'user' ? 'active' : ''}`}
+              onClick={() => setPollType('user')}
+            >
+              <PersonIcon /> User Poll
+            </button>
+            <button
+              type="button"
+              className={`poll-type-btn ${pollType === 'zap' ? 'active' : ''}`}
+              onClick={() => setPollType('zap')}
+            >
+              <ZapIcon /> Zap Poll
+            </button>
+          </div>
+
+          <div className="poll-divider" />
+
+          <div className="poll-section-label">Poll length</div>
+          <div className="poll-length-row">
+            <select value={pollDays} onChange={(e) => setPollDays(Number(e.target.value))}>
+              {Array.from({ length: 8 }, (_, i) => i).map(d => (
+                <option key={d} value={d}>{d} days</option>
+              ))}
+            </select>
+            <select value={pollHours} onChange={(e) => setPollHours(Number(e.target.value))}>
+              {Array.from({ length: 24 }, (_, i) => i).map(h => (
+                <option key={h} value={h}>{h} hours</option>
+              ))}
+            </select>
+            <select value={pollMinutes} onChange={(e) => setPollMinutes(Number(e.target.value))}>
+              {Array.from({ length: 60 }, (_, i) => i).map(m => (
+                <option key={m} value={m}>{m} minutes</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="poll-divider" />
+
+          <button type="button" className="poll-remove-btn" onClick={removePoll}>
+            🗑 Remove poll
+          </button>
+        </div>
+      )}
+
+      {!showPoll && (() => {
         // Live preview of the composed text, with mentions/hashtags styled
         // the same way they'll look once published
         const previewParts = renderLivePreview();
@@ -305,7 +462,7 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
         );
       })()}
 
-      {(() => {
+      {!showPoll && (() => {
         // Live preview of media links while typing
         const previewImages = extractImageUrls(content);
         const previewVideos = extractVideoUrls(content);
@@ -341,28 +498,89 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
         );
       })()}
 
-      <div className="compose-actions">
-        <div className="compose-emoji-wrapper">
-          <button
-            type="button"
-            className="compose-emoji-btn"
-            onClick={() => setShowEmojiPicker(show => !show)}
-            title="Add emoji"
-          >
-            😊
-          </button>
-          {showEmojiPicker && (
-            <div className="compose-emoji-popup">
-              <EmojiPicker onSelect={insertEmoji} />
+      {uploads.length > 0 && (
+        <div className="compose-upload-status">
+          {uploads.map(u => (
+            <div key={u.name} className="compose-upload-row">
+              <span className="compose-upload-name">{u.name}</span>
+              <div className="compose-upload-bar">
+                <div className="compose-upload-bar-fill" style={{ width: `${u.progress}%` }} />
+              </div>
+              <span className="compose-upload-pct">{u.progress}%</span>
             </div>
+          ))}
+        </div>
+      )}
+
+      <div className="compose-actions">
+        <div className="compose-actions-left">
+          {!showPoll && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                hidden
+                onChange={handleFileSelect}
+              />
+              <button
+                type="button"
+                className="compose-media-btn"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploads.length > 0}
+                title="Add photo/video"
+              >
+                <ImageIcon />
+              </button>
+              {mediaServers.length > 1 && (
+                <select
+                  className="compose-server-select"
+                  value={targetServer}
+                  onChange={(e) => setTargetServer(e.target.value)}
+                  title="Media server to upload to"
+                  disabled={uploads.length > 0}
+                >
+                  <option value="">Auto (try all)</option>
+                  {mediaServers.map(s => (
+                    <option key={s.url} value={s.url}>{s.url.replace(/^https?:\/\//, '')}</option>
+                  ))}
+                </select>
+              )}
+            </>
           )}
+          {!replyTo && !quoteNoteId && !showPoll && (
+            <button
+              type="button"
+              className="compose-poll-btn"
+              onClick={() => setShowPoll(true)}
+              title="Add poll"
+            >
+              <PollIcon />
+            </button>
+          )}
+          <div className="compose-emoji-wrapper">
+            <button
+              type="button"
+              className="compose-emoji-btn"
+              onClick={() => setShowEmojiPicker(show => !show)}
+              title="Add emoji"
+            >
+              😊
+            </button>
+            {showEmojiPicker && (
+              <div className="compose-emoji-popup">
+                <EmojiPicker onSelect={insertEmoji} />
+              </div>
+            )}
+          </div>
         </div>
         <button
           type="submit"
           className="btn btn-primary"
-          disabled={!content.trim() || publishing}
+          disabled={!content.trim() || publishing || uploads.length > 0 || (showPoll && pollOptions.filter(o => o.trim()).length < 2)}
         >
-          {publishing ? 'Publishing...' : (replyTo ? 'Reply' : quoteNoteId ? 'Quote' : 'Publish')}
+          {publishing ? 'Publishing...' : showPoll ? 'Post' : (replyTo ? 'Reply' : quoteNoteId ? 'Quote' : 'Publish')}
         </button>
       </div>
     </form>

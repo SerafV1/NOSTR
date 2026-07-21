@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { NostrEventSigned } from '../types';
-import { NostrCore, PersistentCache } from '../nostr/core';
+import { useNavigate } from 'react-router-dom';
+import { NostrEventSigned, NostrFilter, EVENT_KINDS, UserProfile } from '../types';
+import { NostrCore, PersistentCache, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
 import { loadCustomFeeds, saveCustomFeeds } from '../utils/customFeeds';
+import { parseLiveEvent, encodeLiveNaddr, LiveStreamInfo } from '../utils/liveStream';
 import EventCard from './EventCard';
 
 interface HomePageProps {
@@ -28,6 +30,13 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   // New posts found by background polling, shown behind an X-style
   // "N new posts" button instead of jumping into the feed
   const [pendingEvents, setPendingEvents] = useState<NostrEventSigned[]>([]);
+  // Reposts from followed accounts — only shown on the home feed's Posts
+  // tab, interleaved with your own notes X-style (fetched once per feed
+  // load, not part of the live-subscription/pending mechanism above)
+  const [reposts, setReposts] = useState<{ repost: NostrEventSigned; original: NostrEventSigned }[]>([]);
+  const [liveStreams, setLiveStreams] = useState<LiveStreamInfo[]>([]);
+  const [liveProfiles, setLiveProfiles] = useState<Map<string, UserProfile>>(new Map());
+  const navigate = useNavigate();
 
   // Refs mirror state so the polling interval reads fresh values without
   // re-creating itself on every feed update
@@ -85,63 +94,123 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     }
   }, [feedType, activeTopic, relaysConnected]);
 
-  // Discard pending new posts when switching feeds
+  // Discard pending new posts and stale reposts when switching feeds
   useEffect(() => {
     setPendingEvents([]);
+    setReposts([]);
   }, [feedType, activeTopic]);
 
-  // Poll for posts newer than the newest one we show; they stack up behind
-  // the "N new posts" button instead of shifting the feed
+  // Check whether anyone you follow is currently live (NIP-53) so the Home
+  // feed can surface it — refreshed periodically since a stream can start
+  // any time, not just when this page first loads
   useEffect(() => {
-    if (!relaysConnected) return;
+    if (!relaysConnected || feedType !== 'home' || !hasFollows) {
+      setLiveStreams([]);
+      return;
+    }
 
-    const checkForNewPosts = async () => {
-      const shown = [...pendingRef.current, ...eventsRef.current];
-      if (shown.length === 0) return;
-      // Clamp to now — a single future-dated event would otherwise push
-      // `since` into the future and the poll would never match anything
-      const newest = Math.min(
-        Math.max(...shown.map(e => e.created_at || 0)),
-        Math.floor(Date.now() / 1000)
-      );
-
+    let cancelled = false;
+    const loadLiveStreams = async () => {
       try {
-        let fresh: NostrEventSigned[];
-        const authors = followedRef.current;
-        if (feedType === 'home' && authors.length > 0) {
-          fresh = await NostrCore.fetchHomeFeed(authors, 50, newest + 1);
-        } else if (feedType === 'topic' && activeTopic) {
-          fresh = await NostrCore.fetchEventsByTag(activeTopic, 50, newest + 1);
-        } else {
-          fresh = await NostrCore.fetchGlobalFeed(50, newest + 1);
+        const events = await NostrCore.fetchLiveEvents('live', followedRef.current);
+        if (cancelled) return;
+        const infos = events.map(parseLiveEvent).filter(s => s.streamingUrl);
+        setLiveStreams(infos);
+        if (infos.length > 0) {
+          const profiles = await NostrCore.fetchProfiles(infos.map(s => s.pubkey));
+          if (!cancelled) setLiveProfiles(profiles);
         }
-
-        const seen = new Set(shown.map(e => e.id));
-        const newOnes = fresh.filter(e => !seen.has(e.id));
-        if (newOnes.length === 0) return;
-
-        // Prefetch author profiles so the cards render instantly on click
-        await NostrCore.fetchProfiles(newOnes.map(e => e.pubkey));
-
-        setPendingEvents(prev => {
-          const ids = new Set(prev.map(e => e.id));
-          const merged = [...newOnes.filter(e => !ids.has(e.id)), ...prev];
-          merged.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-          return merged.slice(0, 50);
-        });
       } catch (error) {
-        console.error('Failed to check for new posts:', error);
+        console.error('Failed to check for live streams:', error);
       }
     };
 
-    // First check soon after load, then every 30s
-    const firstCheck = setTimeout(checkForNewPosts, 10000);
-    const interval = setInterval(checkForNewPosts, 30000);
+    loadLiveStreams();
+    const interval = setInterval(loadLiveStreams, 60000);
     return () => {
-      clearTimeout(firstCheck);
+      cancelled = true;
       clearInterval(interval);
     };
-  }, [relaysConnected, feedType, activeTopic]);
+  }, [relaysConnected, feedType, hasFollows]);
+
+  // Live feed: keep a REQ subscription open on the relay socket instead of
+  // polling on a timer. A relay replies to `since` with anything stored
+  // since that cursor, then keeps streaming new matches as they're
+  // published — so posts stack up behind the "N new posts" button in real
+  // time, including while the tab is backgrounded. Browsers throttle JS
+  // timers in hidden tabs, but not traffic on a socket that's already open,
+  // which is why polling used to stall until you switched back.
+  useEffect(() => {
+    if (!relaysConnected) return;
+    // Home feed depends on knowing who you follow first (set by fetchFeed)
+    if (feedType === 'home' && hasFollows === null) return;
+
+    const buildFilters = (since: number): NostrFilter[] => {
+      const kinds = [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.POLL];
+      if (feedType === 'topic' && activeTopic) {
+        return [{ kinds, '#t': [activeTopic.toLowerCase()], since }];
+      }
+      if (feedType === 'home' && hasFollows) {
+        return [{ kinds, authors: followedRef.current, since }];
+      }
+      return [{ kinds, since }];
+    };
+
+    const handleEvent = async (event: NostrEventSigned) => {
+      const maxTimestamp = Math.floor(Date.now() / 1000) + 300; // 5 min clock-skew tolerance
+      if ((event.created_at || 0) > maxTimestamp) return;
+
+      const shown = [...pendingRef.current, ...eventsRef.current];
+      if (shown.some(e => e.id === event.id)) return;
+
+      // A real home feed only contains followed authors (plus your own
+      // posts) — mirrors the filter fetchFeed applies to its merged result
+      if (feedType === 'home' && hasFollows) {
+        const followedSet = new Set(followedRef.current);
+        const ownPubkey = CredentialManager.getPublicKey();
+        if (ownPubkey) followedSet.add(ownPubkey);
+        if (!followedSet.has(event.pubkey)) return;
+      }
+
+      // Prefetch the author's profile so the card renders instantly on click
+      await NostrCore.fetchProfiles([event.pubkey]);
+
+      setPendingEvents(prev => {
+        if (prev.some(e => e.id === event.id)) return prev;
+        const merged = [event, ...prev];
+        merged.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        return merged.slice(0, 50);
+      });
+    };
+
+    let subId: string | null = null;
+    const resubscribe = () => {
+      if (subId) NostrCore.unsubscribeLive(subId);
+      const shown = [...pendingRef.current, ...eventsRef.current];
+      // Clamp to now — a single future-dated event would otherwise push
+      // the cursor into the future and the subscription would replay nothing
+      const cursor = shown.length > 0
+        ? Math.min(Math.max(...shown.map(e => e.created_at || 0)) + 1, Math.floor(Date.now() / 1000))
+        : Math.floor(Date.now() / 1000);
+      subId = NostrCore.subscribeLive(buildFilters(cursor), handleEvent);
+    };
+
+    resubscribe();
+
+    // A backgrounded tab's socket can die silently without ever firing
+    // onclose. Resubscribing on return rides the freshly reconnected socket
+    // (see App's visibilitychange handler) and replays anything missed
+    // in the gap via the `since` cursor above.
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') resubscribe();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (subId) NostrCore.unsubscribeLive(subId);
+    };
+  }, [relaysConnected, feedType, activeTopic, hasFollows]);
 
   const showPendingPosts = () => {
     const pending = pendingRef.current;
@@ -220,6 +289,16 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
 
       setEvents(merged);
       PersistentCache.set(feedCacheKey(), merged);
+
+      // Reposts only make sense for the home feed — showing everyone's
+      // reposts on Global/Topic would be unfilterable noise
+      if (feedType === 'home' && followedRef.current.length > 0) {
+        const repostResults = await NostrCore.fetchReposts(followedRef.current, 50);
+        await NostrCore.fetchProfiles(repostResults.map(r => r.repost.pubkey));
+        setReposts(repostResults);
+      } else {
+        setReposts([]);
+      }
     } catch (error) {
       console.error('Failed to fetch feed:', error);
       // Keep showing the cached feed (if any) on fetch failure
@@ -231,6 +310,29 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   // A kind-1 note referencing another event is a reply
   const isReply = (e: NostrEventSigned) => e.tags.some(t => t[0] === 'e');
   const visibleEvents = events.filter(e => (contentTab === 'replies' ? isReply(e) : !isReply(e)));
+  // pendingEvents mixes posts and replies — only count/show the ones that
+  // actually match the active tab, otherwise the "N new posts" button can
+  // fire and merge in items the current filter hides, looking like a no-op
+  const visiblePendingEvents = pendingEvents.filter(e => (contentTab === 'replies' ? isReply(e) : !isReply(e)));
+
+  // Posts tab interleaves your notes with what followed accounts have
+  // reposted, X-style, sorted newest first by whichever action is newer
+  type TimelineItem =
+    | { type: 'note'; key: string; createdAt: number; event: NostrEventSigned }
+    | { type: 'repost'; key: string; createdAt: number; repost: NostrEventSigned; original: NostrEventSigned };
+
+  const timelineItems: TimelineItem[] = contentTab === 'replies'
+    ? visibleEvents.map(event => ({ type: 'note', key: event.id, createdAt: event.created_at || 0, event }))
+    : [
+        ...visibleEvents.map(event => ({ type: 'note' as const, key: event.id, createdAt: event.created_at || 0, event })),
+        ...reposts.map(({ repost, original }) => ({
+          type: 'repost' as const,
+          key: repost.id,
+          createdAt: repost.created_at || 0,
+          repost,
+          original
+        }))
+      ].sort((a, b) => b.createdAt - a.createdAt);
 
   const selectFeed = (type: FeedType, topic?: string) => {
     setFeedType(type);
@@ -371,6 +473,27 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
             </h2>
           </div>
 
+          {liveStreams.length > 0 && (
+            <div className="live-banner">
+              {liveStreams.map(stream => {
+                const profile = liveProfiles.get(stream.pubkey);
+                const hostName = profile?.display_name || profile?.name || 'Someone you follow';
+                const naddr = encodeLiveNaddr(EVENT_KINDS.LIVE_EVENT, stream.pubkey, stream.dTag);
+                return (
+                  <button
+                    key={`${stream.pubkey}:${stream.dTag}`}
+                    className="live-banner-item"
+                    onClick={() => navigate(`/live/${naddr}`)}
+                  >
+                    <span className="live-banner-badge">LIVE</span>
+                    {profile?.picture && <img src={profile.picture} alt="" className="live-banner-avatar" />}
+                    <span className="live-banner-text"><strong>{hostName}</strong> is live now — {stream.title}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div className="feed-tabs">
             <button
               className={`feed-tab ${contentTab === 'posts' ? 'active' : ''}`}
@@ -386,9 +509,9 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
             </button>
           </div>
 
-          {pendingEvents.length > 0 && (
+          {visiblePendingEvents.length > 0 && (
             <button className="new-posts-btn" onClick={showPendingPosts}>
-              ↑ Show {pendingEvents.length} new {pendingEvents.length === 1 ? 'post' : 'posts'}
+              ↑ Show {visiblePendingEvents.length} new {visiblePendingEvents.length === 1 ? 'post' : 'posts'}
             </button>
           )}
 
@@ -398,7 +521,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
             </div>
           )}
 
-          {!loading && visibleEvents.length === 0 && (
+          {!loading && timelineItems.length === 0 && (
             <div className="empty-state">
               <p>
                 {contentTab === 'replies'
@@ -415,16 +538,39 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
           )}
 
           <div className="events-list">
-            {visibleEvents.map((event) => (
-              <EventCard 
-                key={event.id}
-                event={event}
-                onNavigateToProfile={onNavigateToProfile}
-                onNavigateToNote={onNavigateToNote}
-                onNavigateToTopic={onNavigateToTopic}
-                onRefresh={fetchFeed}
-              />
-            ))}
+            {timelineItems.map((item) => {
+              if (item.type === 'repost') {
+                const reposterProfile = EventCache.getProfile(item.repost.pubkey);
+                const reposterName = reposterProfile?.display_name || reposterProfile?.name || 'Someone you follow';
+                return (
+                  <div key={item.key} className="reposted-item">
+                    <div className="reposted-label">
+                      {reposterProfile?.picture && (
+                        <img src={reposterProfile.picture} alt="" className="reposted-avatar" />
+                      )}
+                      {reposterName} Reposted
+                    </div>
+                    <EventCard
+                      event={item.original}
+                      onNavigateToProfile={onNavigateToProfile}
+                      onNavigateToNote={onNavigateToNote}
+                      onNavigateToTopic={onNavigateToTopic}
+                      onRefresh={fetchFeed}
+                    />
+                  </div>
+                );
+              }
+              return (
+                <EventCard
+                  key={item.key}
+                  event={item.event}
+                  onNavigateToProfile={onNavigateToProfile}
+                  onNavigateToNote={onNavigateToNote}
+                  onNavigateToTopic={onNavigateToTopic}
+                  onRefresh={fetchFeed}
+                />
+              );
+            })}
           </div>
         </main>
 

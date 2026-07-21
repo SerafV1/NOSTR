@@ -25,7 +25,10 @@ import SettingsPage from './components/SettingsPage';
 import NotificationsPage from './components/NotificationsPage';
 import MessagesPage from './components/MessagesPage';
 import ComposeModal from './components/ComposeModal';
-import { BellIcon, MessageIcon } from './components/Icons';
+import LivePage from './components/LivePage';
+import LiveStreamPage from './components/LiveStreamPage';
+import { BellIcon, MessageIcon, SettingsIcon } from './components/Icons';
+import { decodeLiveNaddr } from './utils/liveStream';
 
 // URL-safe encode/decode for note ids and pubkeys — bech32 (note1.../npub1...)
 // with a raw-hex fallback so malformed or hand-typed links still resolve
@@ -119,6 +122,24 @@ function SearchRoute({ relaysConnected, onNavigateToProfile, onNavigateToNote }:
   );
 }
 
+function LiveStreamRoute({ onNavigateToProfile }: RouteCallbacks) {
+  const { naddr } = useParams();
+  const address = naddr ? decodeLiveNaddr(naddr) : null;
+
+  if (!address) {
+    return <div className="live-stream-page"><div className="error">Invalid stream link</div></div>;
+  }
+
+  return (
+    <LiveStreamPage
+      kind={address.kind}
+      pubkey={address.pubkey}
+      identifier={address.identifier}
+      onNavigateToProfile={onNavigateToProfile}
+    />
+  );
+}
+
 function MessagesRoute({ relaysConnected, publicKey, onNavigateToProfile, onMarkMessagesRead }: RouteCallbacks) {
   const { npub } = useParams();
   const recipient = decodeNpubParam(npub);
@@ -207,6 +228,22 @@ function App() {
       // Cleanup on unmount
       // getRelayPool().closeAll();
     };
+  }, [isLoggedIn]);
+
+  // Background tabs get their relay WebSockets closed/throttled by the
+  // browser. Without this, returning to the tab shows a stale "N new
+  // posts"/notification badge that needs a couple of polls to actually
+  // load, since the underlying sockets are dead until something reconnects
+  // them. Reconnect proactively the moment the tab becomes visible again.
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        getRelayPool().refreshConnectionStatus();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, [isLoggedIn]);
 
   // Load the logged-in user's own profile (for the header avatar) —
@@ -344,6 +381,9 @@ function App() {
             <Link to="/" className={`nav-btn ${location.pathname === '/' ? 'active' : ''}`}>
               Home
             </Link>
+            <Link to="/live" className={`nav-btn ${location.pathname.startsWith('/live') ? 'active' : ''}`}>
+              Live
+            </Link>
             <Link to="/search" className={`nav-btn ${location.pathname === '/search' ? 'active' : ''}`}>
               Search
             </Link>
@@ -366,10 +406,10 @@ function App() {
               )}
             </Link>
             <Link
-              to="/settings"
-              className={`nav-btn ${location.pathname === '/settings' ? 'active' : ''}`}
+              to="/settings/relays"
+              className={`nav-btn nav-btn-icon ${location.pathname.startsWith('/settings') ? 'active' : ''}`}
             >
-              ⚙️ Settings
+              <SettingsIcon /> Settings
             </Link>
           </nav>
           <div className="header-right">
@@ -409,6 +449,8 @@ function App() {
           <Route path="/p/:npub" element={<ProfileRoute {...callbacks} />} />
           <Route path="/e/:noteId" element={<NoteRoute {...callbacks} />} />
           <Route path="/search" element={<SearchRoute {...callbacks} />} />
+          <Route path="/live" element={<LivePage relaysConnected={relaysConnected} />} />
+          <Route path="/live/:naddr" element={<LiveStreamRoute {...callbacks} />} />
           <Route
             path="/notifications"
             element={
@@ -423,7 +465,9 @@ function App() {
           />
           <Route path="/messages" element={<MessagesRoute {...callbacks} />} />
           <Route path="/messages/:npub" element={<MessagesRoute {...callbacks} />} />
-          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings" element={<Navigate to="/settings/relays" replace />} />
+          <Route path="/settings/relays" element={<SettingsPage />} />
+          <Route path="/settings/media" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
