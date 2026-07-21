@@ -9,16 +9,23 @@ interface LiveStreamPageProps {
   kind: number;
   pubkey: string;
   identifier: string;
+  relaysConnected: boolean;
   onNavigateToProfile: (pubkey: string) => void;
 }
 
-const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifier, onNavigateToProfile }) => {
+const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifier, relaysConnected, onNavigateToProfile }) => {
   const [stream, setStream] = useState<LiveStreamInfo | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
+    // On a hard refresh, relay connections start from scratch and take a
+    // few seconds — fetching before they're up meant a genuinely live
+    // stream would wrongly come back "not found" just because none of the
+    // relays that actually have it had finished connecting yet.
+    if (!relaysConnected) return;
+
     let cancelled = false;
 
     (async () => {
@@ -43,10 +50,14 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
     })();
 
     return () => { cancelled = true; };
-  }, [kind, pubkey, identifier]);
+  }, [kind, pubkey, identifier, relaysConnected]);
 
-  if (loading) {
-    return <div className="live-stream-page"><div className="loading">Loading stream...</div></div>;
+  if (loading || !relaysConnected) {
+    return (
+      <div className="live-stream-page">
+        <div className="loading">{!relaysConnected ? 'Connecting to relays...' : 'Loading stream...'}</div>
+      </div>
+    );
   }
 
   if (notFound || !stream) {

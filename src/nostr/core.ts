@@ -8,6 +8,7 @@ import {
 } from '../types';
 import { NostrCrypto, CredentialManager, ExtensionManager } from './crypto';
 import { getRelayPool } from './relay';
+import { isEffectivelyLive } from '../utils/liveStream';
 
 /**
  * Core NOSTR protocol operations
@@ -1008,20 +1009,33 @@ export class NostrCore {
     pubkey: string,
     identifier: string
   ): Promise<NostrEventSigned | null> {
-    const filters: NostrFilter[] = [
-      {
-        kinds: [kind],
-        authors: [pubkey],
-        '#d': [identifier],
-        limit: 10
-      }
-    ];
+    // Filter by author/`d` tag client-side rather than via relay-side
+    // filters — not every relay indexes arbitrary tags (or combines them
+    // with an authors filter) reliably, and silently returns nothing
+    // instead of erroring (same issue fetchLiveEvents had with '#status').
+    const matchesAddress = (e: NostrEventSigned) =>
+      e.pubkey === pubkey && (e.tags.find(t => t[0] === 'd')?.[1] || '') === identifier;
 
     try {
       const relayPool = getRelayPool();
-      const events = await relayPool.fetchEvents(filters);
-      if (events.length === 0) return null;
-      return events.reduce((latest, current) =>
+
+      // waitForAll: true — a single specific event must not be lost just
+      // because some other, faster relay answered first with unrelated
+      // matches of the same kind (the default early-exit optimization is
+      // tuned for feed loads, not a single-item lookup like this one)
+      let events = await relayPool.fetchEvents([{ kinds: [kind], authors: [pubkey], limit: 50 }], true);
+      let matches = events.filter(matchesAddress);
+
+      // Narrow query came up empty — some relays don't reliably answer a
+      // combined kind+authors filter. Fall back to a kind-only query and
+      // filter client-side instead.
+      if (matches.length === 0) {
+        events = await relayPool.fetchEvents([{ kinds: [kind], limit: 200 }], true);
+        matches = events.filter(matchesAddress);
+      }
+
+      if (matches.length === 0) return null;
+      return matches.reduce((latest, current) =>
         (current.created_at || 0) > (latest.created_at || 0) ? current : latest
       );
     } catch (error) {
@@ -1040,18 +1054,26 @@ export class NostrCore {
     authors?: string[],
     limit: number = 100
   ): Promise<NostrEventSigned[]> {
+    // Filter status client-side rather than via a relay-side '#status' tag
+    // filter — plenty of relays don't reliably index arbitrary tags,
+    // especially combined with an `authors` filter, and silently return
+    // nothing instead of erroring. It also has to happen after the dedupe
+    // below anyway: an older cached "live" revision must lose to a newer
+    // "ended" one, not the other way around.
     const filters: NostrFilter[] = [
       {
         kinds: [EVENT_KINDS.LIVE_EVENT],
         limit,
-        ...(status ? { '#status': [status] } : {}),
         ...(authors ? { authors } : {})
       }
     ];
 
     try {
       const relayPool = getRelayPool();
-      const events = await relayPool.fetchEvents(filters);
+      // waitForAll — live event volume is low, so it's worth the extra
+      // latency to not have a slower relay's stream cut off by a faster
+      // relay's unrelated results (see fetchEventByAddress above)
+      const events = await relayPool.fetchEvents(filters, true);
 
       const latestByAddress = new Map<string, NostrEventSigned>();
       events.forEach(event => {
@@ -1063,11 +1085,164 @@ export class NostrCore {
         }
       });
 
-      return Array.from(latestByAddress.values()).sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+      let results = Array.from(latestByAddress.values());
+      if (status === 'live') {
+        // A stale "live" tag (broadcaster never published "ended") doesn't
+        // count as actually live — see isEffectivelyLive
+        results = results.filter(isEffectivelyLive);
+      } else if (status) {
+        results = results.filter(e => (e.tags.find(t => t[0] === 'status')?.[1] || 'ended') === status);
+      }
+
+      return results.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
       console.error('Failed to fetch live events:', error);
       return [];
     }
+  }
+
+  /**
+   * NIP-65: each author's own published relay list (kind 10002) — their
+   * write relays are where they actually publish, which may not overlap
+   * at all with our default relay set.
+   */
+  static async fetchRelayLists(authors: string[]): Promise<Map<string, string[]>> {
+    if (authors.length === 0) return new Map();
+
+    try {
+      const relayPool = getRelayPool();
+      const events = await relayPool.fetchEvents(
+        [{ kinds: [10002], authors, limit: authors.length * 2 }],
+        true
+      );
+
+      const latestByAuthor = new Map<string, NostrEventSigned>();
+      events.forEach(event => {
+        const existing = latestByAuthor.get(event.pubkey);
+        if (!existing || (event.created_at || 0) > (existing.created_at || 0)) {
+          latestByAuthor.set(event.pubkey, event);
+        }
+      });
+
+      const result = new Map<string, string[]>();
+      latestByAuthor.forEach((event, pubkey) => {
+        const writeRelays = event.tags
+          .filter(t => t[0] === 'r' && (t[2] === undefined || t[2] === 'write'))
+          .map(t => t[1]);
+        if (writeRelays.length > 0) result.set(pubkey, writeRelays);
+      });
+      return result;
+    } catch (error) {
+      console.error('Failed to fetch relay lists:', error);
+      return new Map();
+    }
+  }
+
+  /**
+   * Like fetchLiveEvents, but also checks each author's own NIP-65 write
+   * relays for any we're not already connected to — the "outbox model".
+   * Without this, a broadcaster whose client publishes only to their own
+   * relay (not our default set) would never show up as live here even
+   * though they're publishing correctly.
+   */
+  static async fetchLiveEventsOutbox(authors: string[], limit: number = 100): Promise<NostrEventSigned[]> {
+    const poolResults = await this.fetchLiveEvents('live', authors, limit);
+
+    try {
+      const relayPool = getRelayPool();
+      const knownRelays = new Set(relayPool.getRelayConfigs().map(c => c.url));
+      const relayLists = await this.fetchRelayLists(authors);
+
+      const extraRelays = new Set<string>();
+      relayLists.forEach(urls => urls.forEach(u => {
+        if (!knownRelays.has(u)) extraRelays.add(u);
+      }));
+
+      if (extraRelays.size === 0) return poolResults;
+
+      const extraEvents = await relayPool.fetchEventsFromExtraRelays(
+        Array.from(extraRelays),
+        [{ kinds: [EVENT_KINDS.LIVE_EVENT], authors, limit }]
+      );
+
+      const combined = new Map<string, NostrEventSigned>();
+      [...poolResults, ...extraEvents].forEach(e => combined.set(e.id, e));
+
+      const latestByAddress = new Map<string, NostrEventSigned>();
+      combined.forEach(event => {
+        const dTag = event.tags.find(t => t[0] === 'd')?.[1] || '';
+        const address = `${event.pubkey}:${dTag}`;
+        const existing = latestByAddress.get(address);
+        if (!existing || (event.created_at || 0) > (existing.created_at || 0)) {
+          latestByAddress.set(address, event);
+        }
+      });
+
+      return Array.from(latestByAddress.values())
+        .filter(isEffectivelyLive)
+        .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+    } catch (error) {
+      console.error('Outbox live event lookup failed:', error);
+      return poolResults;
+    }
+  }
+
+  /**
+   * Live streams relevant to a set of followed accounts — either they
+   * authored the stream themselves (fetchLiveEventsOutbox), or NIP-53
+   * tagged them as a participant (host/speaker/guest) on someone else's
+   * stream via a 'p' tag. Returns each match paired with which followed
+   * pubkey it's relevant through, since that's not always the event author.
+   */
+  static async fetchLiveEventsForFollows(
+    authors: string[],
+    limit: number = 100
+  ): Promise<{ event: NostrEventSigned; matchedPubkey: string }[]> {
+    if (authors.length === 0) return [];
+
+    const authored = await this.fetchLiveEventsOutbox(authors, limit);
+
+    let participantEvents: NostrEventSigned[] = [];
+    try {
+      const relayPool = getRelayPool();
+      const raw = await relayPool.fetchEvents(
+        [{ kinds: [EVENT_KINDS.LIVE_EVENT], '#p': authors, limit }],
+        true
+      );
+
+      const latestByAddress = new Map<string, NostrEventSigned>();
+      raw.forEach(event => {
+        const dTag = event.tags.find(t => t[0] === 'd')?.[1] || '';
+        const address = `${event.pubkey}:${dTag}`;
+        const existing = latestByAddress.get(address);
+        if (!existing || (event.created_at || 0) > (existing.created_at || 0)) {
+          latestByAddress.set(address, event);
+        }
+      });
+
+      participantEvents = Array.from(latestByAddress.values()).filter(isEffectivelyLive);
+    } catch (error) {
+      console.error('Failed to fetch participant live events:', error);
+    }
+
+    const followedSet = new Set(authors);
+    const results = new Map<string, { event: NostrEventSigned; matchedPubkey: string }>();
+
+    authored.forEach(event => {
+      const address = `${event.pubkey}:${event.tags.find(t => t[0] === 'd')?.[1] || ''}`;
+      results.set(address, { event, matchedPubkey: event.pubkey });
+    });
+
+    participantEvents.forEach(event => {
+      const address = `${event.pubkey}:${event.tags.find(t => t[0] === 'd')?.[1] || ''}`;
+      if (results.has(address)) return; // already counted via authorship
+      const participantPubkey = event.tags.find(t => t[0] === 'p' && followedSet.has(t[1]))?.[1];
+      if (participantPubkey) results.set(address, { event, matchedPubkey: participantPubkey });
+    });
+
+    return Array.from(results.values()).sort(
+      (a, b) => (b.event.created_at || 0) - (a.event.created_at || 0)
+    );
   }
 
   /**

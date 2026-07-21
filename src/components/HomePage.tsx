@@ -34,7 +34,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   // tab, interleaved with your own notes X-style (fetched once per feed
   // load, not part of the live-subscription/pending mechanism above)
   const [reposts, setReposts] = useState<{ repost: NostrEventSigned; original: NostrEventSigned }[]>([]);
-  const [liveStreams, setLiveStreams] = useState<LiveStreamInfo[]>([]);
+  const [liveStreams, setLiveStreams] = useState<{ info: LiveStreamInfo; followedPubkey: string }[]>([]);
   const [liveProfiles, setLiveProfiles] = useState<Map<string, UserProfile>>(new Map());
   const navigate = useNavigate();
 
@@ -112,12 +112,17 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     let cancelled = false;
     const loadLiveStreams = async () => {
       try {
-        const events = await NostrCore.fetchLiveEvents('live', followedRef.current);
+        // Checks streams a followed account authored (with NIP-65 outbox
+        // lookup for their own relays) AND streams where they're merely
+        // tagged as a participant/guest via a 'p' tag on someone else's event
+        const results = await NostrCore.fetchLiveEventsForFollows(followedRef.current);
         if (cancelled) return;
-        const infos = events.map(parseLiveEvent).filter(s => s.streamingUrl);
+        const infos = results
+          .map(({ event, matchedPubkey }) => ({ info: parseLiveEvent(event), followedPubkey: matchedPubkey }))
+          .filter(x => x.info.streamingUrl);
         setLiveStreams(infos);
         if (infos.length > 0) {
-          const profiles = await NostrCore.fetchProfiles(infos.map(s => s.pubkey));
+          const profiles = await NostrCore.fetchProfiles(infos.map(x => x.followedPubkey));
           if (!cancelled) setLiveProfiles(profiles);
         }
       } catch (error) {
@@ -473,27 +478,6 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
             </h2>
           </div>
 
-          {liveStreams.length > 0 && (
-            <div className="live-banner">
-              {liveStreams.map(stream => {
-                const profile = liveProfiles.get(stream.pubkey);
-                const hostName = profile?.display_name || profile?.name || 'Someone you follow';
-                const naddr = encodeLiveNaddr(EVENT_KINDS.LIVE_EVENT, stream.pubkey, stream.dTag);
-                return (
-                  <button
-                    key={`${stream.pubkey}:${stream.dTag}`}
-                    className="live-banner-item"
-                    onClick={() => navigate(`/live/${naddr}`)}
-                  >
-                    <span className="live-banner-badge">LIVE</span>
-                    {profile?.picture && <img src={profile.picture} alt="" className="live-banner-avatar" />}
-                    <span className="live-banner-text"><strong>{hostName}</strong> is live now — {stream.title}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
           <div className="feed-tabs">
             <button
               className={`feed-tab ${contentTab === 'posts' ? 'active' : ''}`}
@@ -576,13 +560,32 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
 
         <aside className="home-sidebar-right">
           <div className="sidebar-card">
-            <h3>Stats</h3>
-            <div className="stats">
-              <div className="stat-item">
-                <span className="stat-label">Notes in Feed</span>
-                <span className="stat-value">{events.length}</span>
+            <h3>Live Now</h3>
+            {liveStreams.length === 0 ? (
+              <p className="live-sidebar-empty">No one you follow is live right now.</p>
+            ) : (
+              <div className="live-banner">
+                {liveStreams.map(({ info, followedPubkey }) => {
+                  const profile = liveProfiles.get(followedPubkey);
+                  const name = profile?.display_name || profile?.name || 'Someone you follow';
+                  const isGuest = followedPubkey !== info.pubkey;
+                  const naddr = encodeLiveNaddr(EVENT_KINDS.LIVE_EVENT, info.pubkey, info.dTag);
+                  return (
+                    <button
+                      key={`${info.pubkey}:${info.dTag}`}
+                      className="live-banner-item"
+                      onClick={() => navigate(`/live/${naddr}`)}
+                    >
+                      <span className="live-banner-badge">LIVE</span>
+                      {profile?.picture && <img src={profile.picture} alt="" className="live-banner-avatar" />}
+                      <span className="live-banner-text">
+                        <strong>{name}</strong> {isGuest ? 'is a guest on' : 'is live now —'} {info.title}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-            </div>
+            )}
           </div>
         </aside>
       </div>

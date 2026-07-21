@@ -17,11 +17,28 @@ export interface LiveStreamInfo {
   hashtags: string[];
 }
 
+// Plenty of broadcasters never publish an "ended" update when they stop
+// streaming — their kind 30311 event just sits there tagged "live"
+// forever. A genuinely active stream's client keeps republishing it
+// (viewer counts, etc.), so a "live" tag that hasn't been refreshed in
+// hours is almost certainly stale, not actually live.
+const LIVE_STALE_SECONDS = 3 * 60 * 60;
+
+export function isEffectivelyLive(event: NostrEventSigned): boolean {
+  const status = event.tags.find(t => t[0] === 'status')?.[1];
+  if (status !== 'live') return false;
+  const age = Math.floor(Date.now() / 1000) - (event.created_at || 0);
+  return age <= LIVE_STALE_SECONDS;
+}
+
 // NIP-53 live event (kind 30311) is addressable — parse its tags into a
 // plain object once, instead of re-scanning event.tags everywhere it's used
 export function parseLiveEvent(event: NostrEventSigned): LiveStreamInfo {
   const tag = (name: string) => event.tags.find(t => t[0] === name)?.[1];
-  const status = tag('status');
+  const rawStatus = tag('status');
+  const status: LiveStreamStatus = rawStatus === 'planned'
+    ? 'planned'
+    : (rawStatus === 'live' && isEffectivelyLive(event)) ? 'live' : 'ended';
 
   return {
     id: event.id,
@@ -31,7 +48,7 @@ export function parseLiveEvent(event: NostrEventSigned): LiveStreamInfo {
     summary: tag('summary') || '',
     image: tag('image') || '',
     streamingUrl: tag('streaming') || '',
-    status: status === 'live' || status === 'planned' ? status : 'ended',
+    status,
     starts: tag('starts') ? Number(tag('starts')) : undefined,
     currentParticipants: tag('current_participants') ? Number(tag('current_participants')) : undefined,
     hashtags: event.tags.filter(t => t[0] === 't').map(t => t[1])

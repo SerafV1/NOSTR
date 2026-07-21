@@ -55,6 +55,7 @@ export class RelayPool {
         console.log(`[Relay] Loaded ${this.relayConfigs.length} relays from storage`);
       }
       this.migrateRetiredRelays();
+      this.migrateBrokenZapStreamRelay();
     } catch (error) {
       console.error(`[Relay] Failed to load relay configs: ${error}`);
     }
@@ -74,6 +75,25 @@ export class RelayPool {
     this.relayConfigs = this.relayConfigs.filter(c => !retired.includes(c.url));
     if (this.relayConfigs.length !== before) {
       console.log(`[Relay] Migration: removed ${before - this.relayConfigs.length} retired relays`);
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.relayConfigs));
+    }
+    localStorage.setItem(MIGRATION_KEY, 'done');
+  }
+
+  /**
+   * One-time cleanup: "wss://relay.zap.stream" was briefly a default relay
+   * here, but the domain doesn't actually exist (a wrong guess) — anyone
+   * who loaded the app during that window has it stuck in their saved
+   * config, retrying a connection that can never succeed.
+   */
+  private migrateBrokenZapStreamRelay(): void {
+    const MIGRATION_KEY = 'nostr_relay_migration_v3';
+    if (localStorage.getItem(MIGRATION_KEY)) return;
+
+    const before = this.relayConfigs.length;
+    this.relayConfigs = this.relayConfigs.filter(c => c.url !== 'wss://relay.zap.stream');
+    if (this.relayConfigs.length !== before) {
+      console.log('[Relay] Migration: removed nonexistent wss://relay.zap.stream');
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.relayConfigs));
     }
     localStorage.setItem(MIGRATION_KEY, 'done');
@@ -692,9 +712,15 @@ export class RelayPool {
   }
 
   /**
-   * Fetch events from relays (query-based)
+   * Fetch events from relays (query-based). By default returns ~800ms
+   * after the first relay delivers any data, instead of waiting for the
+   * slowest one — good for feed loads where a fast partial result beats a
+   * slow complete one. Pass `waitForAll: true` for lookups where a single
+   * slow-but-correct relay must not be cut off by a faster relay that
+   * simply has other, unrelated matches (e.g. fetching one specific
+   * addressable event by coordinate).
    */
-  async fetchEvents(filters: NostrFilter[]): Promise<NostrEventSigned[]> {
+  async fetchEvents(filters: NostrFilter[], waitForAll: boolean = false): Promise<NostrEventSigned[]> {
     const events: Map<string, NostrEventSigned> = new Map();
     const promises: Promise<void>[] = [];
 
@@ -753,12 +779,68 @@ export class RelayPool {
       );
     }
 
-    // Don't wait for the slowest relay: return 800ms after the first relay
-    // delivers data — enough for the fast majority to contribute
-    const earlyExit = firstData.then(
-      () => new Promise<void>(resolve => setTimeout(resolve, 800))
-    );
-    await Promise.race([Promise.all(promises).then(() => undefined), earlyExit]);
+    if (waitForAll) {
+      await Promise.all(promises);
+    } else {
+      // Don't wait for the slowest relay: return 800ms after the first relay
+      // delivers data — enough for the fast majority to contribute
+      const earlyExit = firstData.then(
+        () => new Promise<void>(resolve => setTimeout(resolve, 800))
+      );
+      await Promise.race([Promise.all(promises).then(() => undefined), earlyExit]);
+    }
+
+    return Array.from(events.values());
+  }
+
+  /**
+   * Query relays outside our configured pool — a one-off lookup, nothing
+   * gets added to relayConfigs or persisted. Used for the NIP-65 "outbox"
+   * case: an author's own write relays, which might not be anywhere in
+   * our default set, so their events (e.g. a live stream) would otherwise
+   * never be found even though they're publishing correctly.
+   */
+  async fetchEventsFromExtraRelays(urls: string[], filters: NostrFilter[]): Promise<NostrEventSigned[]> {
+    const events: Map<string, NostrEventSigned> = new Map();
+
+    await Promise.all(urls.map(async (url) => {
+      // Reuse an already-connected relay instead of opening a second
+      // connection to the same server
+      const existing = this.relays.get(url);
+      let relay = existing;
+      let temporary = false;
+
+      try {
+        if (!relay) {
+          temporary = true;
+          if (!(nostrTools as any).relayInit) return;
+          relay = await Promise.race([
+            (nostrTools as any).relayInit(url),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 5000))
+          ]);
+        }
+
+        const queryPromise = relay.querySync ? relay.querySync(filters)
+          : relay.query ? relay.query(filters)
+          : relay.list ? relay.list(filters)
+          : Promise.resolve([]);
+
+        const relayEvents: NostrEventSigned[] = await Promise.race([
+          queryPromise,
+          new Promise<NostrEventSigned[]>(resolve => setTimeout(() => resolve([]), 4000))
+        ]);
+
+        relayEvents.forEach(event => {
+          if (!events.has(event.id)) events.set(event.id, event);
+        });
+      } catch (error) {
+        console.warn(`[Relay] Outbox lookup failed for ${url}:`, error);
+      } finally {
+        if (temporary && relay?.close) {
+          try { relay.close(); } catch { /* already closed */ }
+        }
+      }
+    }));
 
     return Array.from(events.values());
   }
@@ -857,12 +939,20 @@ export class RelayPool {
 // Default relay list — free relays that reliably answer queries.
 // Dropped: relay.nostr.band (unreachable), relay.snort.social (returns no
 // data), nostr.wine (paid). purplepag.es specializes in profile metadata.
+// relay.primal.net, relay.fountain.fm and relay.divine.video are in
+// zap.stream's own default relay set (github.com/v0l/zap.stream) — that's
+// where it actually publishes NIP-53 live events. "relay.zap.stream" (used
+// here previously) doesn't exist as a domain — a wrong guess, not a real
+// zap.stream relay.
 export const DEFAULT_RELAYS = [
   'wss://relay.damus.io',
   'wss://nos.lol',
   'wss://nostr.mom',
   'wss://relay.nostr.net',
   'wss://purplepag.es',
+  'wss://relay.primal.net',
+  'wss://relay.fountain.fm',
+  'wss://relay.divine.video',
   'wss://nostr-pub.wellorder.net'
 ];
 
