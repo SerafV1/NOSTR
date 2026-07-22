@@ -131,7 +131,11 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     };
 
     loadLiveStreams();
-    const interval = setInterval(loadLiveStreams, 60000);
+    // This does a NIP-65 outbox lookup across every followed account,
+    // opening short-lived connections to whatever relays that turns up —
+    // expensive for anyone following a lot of people, so it runs rarely,
+    // not every minute
+    const interval = setInterval(loadLiveStreams, 300000);
     return () => {
       cancelled = true;
       clearInterval(interval);

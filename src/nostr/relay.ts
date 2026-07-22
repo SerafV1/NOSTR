@@ -744,11 +744,23 @@ export class RelayPool {
           try {
             let relayEvents: NostrEventSigned[] = [];
 
-            // A socket that died quietly (backgrounded tab, sleep, network
-            // drop) just hangs a query until our own timeout below — give
-            // it a quick chance to reconnect first instead of assuming it's
-            // still the open connection it was when added.
-            if (!this.isActuallyConnected(relay) && relay.connect && typeof relay.connect === 'function') {
+            const readyState = this.getReadyState(relay);
+
+            if (readyState === WebSocket.CONNECTING) {
+              // Already mid-connect (e.g. app startup's initial addRelay(),
+              // if a query fires before that settles) — wait for THAT
+              // attempt instead of calling connect() again, which would
+              // start a second concurrent attempt on the same relay object
+              // and could stomp on the one already in flight.
+              const start = Date.now();
+              while (this.getReadyState(relay) === WebSocket.CONNECTING && Date.now() - start < 4000) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+            } else if (readyState !== WebSocket.OPEN && relay.connect && typeof relay.connect === 'function') {
+              // Actually closed/closing — a socket that died quietly
+              // (backgrounded tab, sleep, network drop) just hangs a query
+              // until our own timeout below, so give it a quick chance to
+              // reconnect first instead of assuming it's still open.
               try {
                 await Promise.race([
                   relay.connect(),
@@ -758,8 +770,8 @@ export class RelayPool {
                 // Still couldn't connect — fall through and let the query
                 // below time out/fail quickly rather than retrying here
               }
-              this.relayConnectionState.set(url, this.isActuallyConnected(relay));
             }
+            this.relayConnectionState.set(url, this.isActuallyConnected(relay));
 
             // Try different query methods with timeout
             const queryPromise = (async () => {
@@ -854,13 +866,19 @@ export class RelayPool {
       const existing = this.relays.get(url);
       let relay = existing;
       let temporary = false;
+      // The raw connect call, kept separate from the timeout race below —
+      // if it resolves *after* we've already given up on it, the socket it
+      // opened has no reference left anywhere and leaks open forever
+      // unless we go back and close it once it finally does resolve.
+      let connectPromise: Promise<any> | null = null;
 
       try {
         if (!relay) {
           temporary = true;
           if (!(nostrTools as any).relayInit) return;
+          connectPromise = (nostrTools as any).relayInit(url);
           relay = await Promise.race([
-            (nostrTools as any).relayInit(url),
+            connectPromise,
             new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 5000))
           ]);
         }
@@ -880,6 +898,11 @@ export class RelayPool {
         });
       } catch (error) {
         console.warn(`[Relay] Outbox lookup failed for ${url}:`, error);
+        if (temporary && connectPromise) {
+          connectPromise
+            .then((lateRelay: any) => { try { lateRelay?.close?.(); } catch { /* already gone */ } })
+            .catch(() => { /* never connected at all — nothing to close */ });
+        }
       } finally {
         if (temporary && relay?.close) {
           try { relay.close(); } catch { /* already closed */ }
@@ -933,9 +956,22 @@ export class RelayPool {
    * the old check here compared against, so it never actually matched.
    */
   private isActuallyConnected(relay: any): boolean {
-    if (relay?.socket) return relay.socket.readyState === WebSocket.OPEN;
-    if (typeof relay?.status === 'number') return relay.status === WebSocket.OPEN;
-    return relay?.status === 'connected';
+    return this.getReadyState(relay) === WebSocket.OPEN;
+  }
+
+  /**
+   * Raw readyState (0 CONNECTING, 1 OPEN, 2 CLOSING, 3 CLOSED). Distinct
+   * from isActuallyConnected because callers that decide whether to call
+   * .connect() need to tell "still connecting" apart from "actually dead"
+   * — calling connect() again on a relay that's already mid-connect (e.g.
+   * app startup's initial connection racing a click that happens right
+   * away) starts a second concurrent connection attempt on the same relay
+   * object, which can stomp on the first one instead of helping it.
+   */
+  private getReadyState(relay: any): number {
+    if (relay?.socket) return relay.socket.readyState;
+    if (typeof relay?.status === 'number') return relay.status;
+    return relay?.status === 'connected' ? WebSocket.OPEN : WebSocket.CLOSED;
   }
 
   /**

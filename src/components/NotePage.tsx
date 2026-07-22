@@ -42,7 +42,11 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
         const replyTag = eTags.find((t: string[]) => t[3] === 'reply') || eTags[eTags.length - 1];
         if (replyTag) {
           try {
-            const parent = await (NostrCore as any).fetchEventById(replyTag[1]);
+            // The tag's own relay hint (NIP-10: ['e', id, relayHint, marker])
+            // matters here — a Fediverse-bridged root/parent often lives
+            // only on the bridge's relay, nowhere in our default set
+            const hintRelay = replyTag[2] ? [replyTag[2]] : undefined;
+            const parent = await (NostrCore as any).fetchEventById(replyTag[1], hintRelay);
             setParentNote(parent);
           } catch (error) {
             console.error('Failed to fetch parent note:', error);

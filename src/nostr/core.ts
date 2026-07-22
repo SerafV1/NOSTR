@@ -996,23 +996,62 @@ export class NostrCore {
   }
 
   /**
-   * Fetch event by ID
+   * Fetch event by ID. If a note only lives on one or two of our relays,
+   * whether this succeeds can come down to whether that specific relay
+   * happened to answer inside our timeout window on this particular
+   * attempt — normal variance on a decentralized network, not something
+   * a single try can paper over. Retry a couple of times, a beat apart,
+   * before actually reporting it missing.
+   *
+   * `hintRelays` are relay hints carried by an nevent/nprofile/naddr
+   * reference itself (NIP-19) — the whole point of embedding them is that
+   * the referenced event might not be on any relay we'd otherwise think to
+   * ask, e.g. a note bridged in from the Fediverse living only on a bridge
+   * relay. Tried after our own pool comes up empty.
    */
-  static async fetchEventById(eventId: string): Promise<NostrEventSigned | null> {
+  static async fetchEventById(eventId: string, hintRelays?: string[]): Promise<NostrEventSigned | null> {
     const filters: NostrFilter[] = [
       {
         ids: [eventId]
       }
     ];
+    const relayPool = getRelayPool();
 
-    try {
-      const relayPool = getRelayPool();
+    // Our own pool and the reference's relay hints are tried in parallel,
+    // not the hint only after the pool gives up — that used to mean up to
+    // ~12s of retrying relays that were never going to have this event
+    // before even touching the one relay that actually does.
+    const poolAttempt = async (): Promise<NostrEventSigned | null> => {
       // waitForAll — a single-note lookup only has one relay that can ever
       // answer (an exact id match), so the early-exit optimization (built
       // for "a fast relay's results are good enough") has nothing to gain
       // here and can only cost us the note if that one relay is slow.
-      const events = await relayPool.fetchEvents(filters, true);
+      // Retried a couple of times, a beat apart: whether this succeeds can
+      // come down to whether the one relay that has it happened to answer
+      // inside our timeout window on this particular attempt.
+      for (let i = 0; i < 2; i++) {
+        const events = await relayPool.fetchEvents(filters, true);
+        if (events[0]) return events[0];
+        if (i === 0) await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      return null;
+    };
+
+    const hintAttempt = async (): Promise<NostrEventSigned | null> => {
+      if (!hintRelays || hintRelays.length === 0) return null;
+      const knownRelays = new Set(relayPool.getRelayConfigs().map(c => c.url));
+      const extraRelays = hintRelays.filter(url => !knownRelays.has(url));
+      if (extraRelays.length === 0) return null;
+      const events = await relayPool.fetchEventsFromExtraRelays(extraRelays, filters);
       return events[0] || null;
+    };
+
+    try {
+      const results = await Promise.allSettled([poolAttempt(), hintAttempt()]);
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value) return result.value;
+      }
+      return null;
     } catch (error) {
       console.error('Failed to fetch event:', error);
       return null;

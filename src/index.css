@@ -1452,6 +1452,15 @@ button.poll-option-vote:disabled {
   border-radius: 999px;
 }
 
+.quoted-note-status {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
 /* Quoted note — X-style compact embed, not a full nested post */
 .quoted-note-card {
   border: 1px solid var(--border-color);

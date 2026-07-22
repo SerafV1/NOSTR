@@ -3,6 +3,7 @@ import { NostrEventSigned, UserProfile } from '../types';
 import { NostrCore, PersistentCache } from '../nostr/core';
 import { NotificationCore, NotificationStore, NostrNotification, NotificationType } from '../nostr/notifications';
 import { formatDate, formatAddress } from '../utils/helpers';
+import { stripMediaUrls } from '../utils/media';
 
 interface NotificationsPageProps {
   pubkey: string;
@@ -114,12 +115,21 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
   };
 
   const renderPreview = (notification: NostrNotification): string | null => {
+    let rawContent: string | undefined;
     if (notification.type === 'reply' || notification.type === 'mention') {
-      return notification.event.content || null;
+      rawContent = notification.event.content;
+    } else {
+      const targetId = notification.event.tags.find(t => t[0] === 'e')?.[1];
+      rawContent = targetId ? targetNotes[targetId]?.content : undefined;
     }
-    const targetId = notification.event.tags.find(t => t[0] === 'e')?.[1];
-    if (!targetId) return null;
-    return targetNotes[targetId]?.content || null;
+    if (!rawContent) return null;
+
+    // Raw content can be just a "nostr:nevent1..."/"note1..." quote
+    // reference with no other text — strip it like EventCard does instead
+    // of showing that literal string, falling back to a plain label when
+    // stripping leaves nothing else to preview
+    const stripped = stripMediaUrls(rawContent);
+    return stripped || '🔁 Quoted a post';
   };
 
   return (

@@ -49,6 +49,7 @@ const EventCard: React.FC<EventCardProps> = ({
   const [mentionedProfiles, setMentionedProfiles] = useState<Record<string, UserProfile>>({});
   const [enlargedIndex, setEnlargedIndex] = useState<number | null>(null);
   const [quotedNote, setQuotedNote] = useState<NostrEventSigned | null>(null);
+  const [quotedNoteStatus, setQuotedNoteStatus] = useState<'none' | 'loading' | 'loaded' | 'failed'>('none');
   const [pollResponses, setPollResponses] = useState<NostrEventSigned[]>([]);
   const [votingOption, setVotingOption] = useState<string | null>(null);
 
@@ -172,33 +173,50 @@ const EventCard: React.FC<EventCardProps> = ({
   };
 
   const loadQuotedNote = async () => {
+    // Look for a nostr:note1..., nostr:nevent1... or nostr:naddr1... reference
+    const matches = event.content.match(/nostr:(?:note1|nevent1|naddr1)[a-z0-9]+/gi);
+    if (!matches || matches.length === 0) {
+      setQuotedNoteStatus('none');
+      return;
+    }
+
+    setQuotedNoteStatus('loading');
     try {
-      // Look for a nostr:note1..., nostr:nevent1... or nostr:naddr1... reference
-      const matches = event.content.match(/nostr:(?:note1|nevent1|naddr1)[a-z0-9]+/gi);
+      const link = matches[0];
+      const linkLower = link.toLowerCase();
 
-      if (matches && matches.length > 0) {
-        const link = matches[0];
-        const linkLower = link.toLowerCase();
-
-        if (linkLower.includes('naddr1')) {
-          const address = decodeNaddr(link);
-          if (address) {
-            const note = await NostrCore.fetchEventByAddress(address.kind, address.pubkey, address.identifier);
-            if (note) setQuotedNote(note);
-          }
-          return;
-        }
-
-        const decodedId = linkLower.includes('nevent1') ? decodeNevent(link) : decodeNote(link);
-        if (decodedId) {
-          const note = await NostrCore.fetchEventById(decodedId);
+      if (linkLower.includes('naddr1')) {
+        const address = decodeNaddr(link);
+        if (address) {
+          const note = await NostrCore.fetchEventByAddress(address.kind, address.pubkey, address.identifier);
           if (note) {
             setQuotedNote(note);
+            setQuotedNoteStatus('loaded');
+            return;
           }
         }
+        setQuotedNoteStatus('failed');
+        return;
       }
+
+      const decoded = linkLower.includes('nevent1') ? decodeNevent(link) : decodeNote(link);
+      const decodedId = typeof decoded === 'string' ? decoded : decoded?.id;
+      const hintRelays = typeof decoded === 'string' ? undefined : decoded?.relays;
+      if (decodedId) {
+        // A relay hint in the reference itself (NIP-19) is the whole reason
+        // it's there — e.g. a Fediverse-bridged note that only lives on
+        // the bridge's own relay, nowhere in our default set
+        const note = await NostrCore.fetchEventById(decodedId, hintRelays);
+        if (note) {
+          setQuotedNote(note);
+          setQuotedNoteStatus('loaded');
+          return;
+        }
+      }
+      setQuotedNoteStatus('failed');
     } catch (error) {
       console.error('Failed to load quoted note:', error);
+      setQuotedNoteStatus('failed');
     }
   };
 
@@ -212,10 +230,12 @@ const EventCard: React.FC<EventCardProps> = ({
     }
   };
 
-  const decodeNevent = (neventLink: string): string | null => {
+  const decodeNevent = (neventLink: string): { id: string; relays?: string[] } | null => {
     try {
       const decoded = nip19.decode(neventLink.replace(/^nostr:/, ''));
-      return decoded.type === 'nevent' ? (decoded.data as { id: string }).id : null;
+      if (decoded.type !== 'nevent') return null;
+      const { id, relays } = decoded.data as { id: string; relays?: string[] };
+      return { id, relays };
     } catch (error) {
       console.error('Failed to decode nevent:', error);
       return null;
@@ -631,6 +651,14 @@ const EventCard: React.FC<EventCardProps> = ({
             </div>
         )}
       </div>
+
+      {quotedNoteStatus === 'loading' && (
+        <div className="quoted-note-status">Loading quoted post…</div>
+      )}
+
+      {quotedNoteStatus === 'failed' && (
+        <div className="quoted-note-status">⚠️ Quoted post unavailable</div>
+      )}
 
       {quotedNote && (
         <QuotedNoteCard
