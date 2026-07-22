@@ -20,6 +20,11 @@ export class RelayPool {
   private relayConfigs: RelayConfig[] = [];
   private relayConnectionState: Map<string, boolean> = new Map();
   private relayCapabilities: Map<string, any> = new Map();
+  // Consecutive query timeouts per relay — readyState reports OPEN for a
+  // "zombie" connection (server/proxy dropped it without a close
+  // handshake), so it never looks disconnected. Repeated silent timeouts
+  // are the only real signal something's actually wrong with the socket.
+  private relayTimeoutCounts: Map<string, number> = new Map();
   private excludedRelayUrls: Set<string> = new Set();
   private readonly STORAGE_KEY = 'nostr_relay_configs';
   private readonly EXCLUDED_KEY = 'nostr_excluded_relays';
@@ -739,6 +744,23 @@ export class RelayPool {
           try {
             let relayEvents: NostrEventSigned[] = [];
 
+            // A socket that died quietly (backgrounded tab, sleep, network
+            // drop) just hangs a query until our own timeout below — give
+            // it a quick chance to reconnect first instead of assuming it's
+            // still the open connection it was when added.
+            if (!this.isActuallyConnected(relay) && relay.connect && typeof relay.connect === 'function') {
+              try {
+                await Promise.race([
+                  relay.connect(),
+                  new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Reconnect timeout')), 4000))
+                ]);
+              } catch {
+                // Still couldn't connect — fall through and let the query
+                // below time out/fail quickly rather than retrying here
+              }
+              this.relayConnectionState.set(url, this.isActuallyConnected(relay));
+            }
+
             // Try different query methods with timeout
             const queryPromise = (async () => {
               if (relay.querySync && typeof relay.querySync === 'function') {
@@ -752,15 +774,38 @@ export class RelayPool {
             })();
 
             // Add 3 second timeout for each relay query
+            let timedOut = false;
             relayEvents = await Promise.race([
               queryPromise,
               new Promise<NostrEventSigned[]>((resolve) =>
                 setTimeout(() => {
                   console.warn(`Query timeout for relay ${url}`);
+                  timedOut = true;
                   resolve([]);
                 }, 3000)
               )
             ]);
+
+            if (timedOut) {
+              const count = (this.relayTimeoutCounts.get(url) || 0) + 1;
+              this.relayTimeoutCounts.set(url, count);
+              // Two in a row despite readyState saying OPEN — that's a
+              // zombie connection. Force it closed and reconnect so the
+              // *next* query actually stands a chance, rather than looking
+              // "connected" forever and timing out every single time.
+              if (count >= 2) {
+                console.warn(`[Relay] ${url} timed out ${count}x in a row — forcing reconnect`);
+                this.relayTimeoutCounts.set(url, 0);
+                try {
+                  relay.close?.();
+                } catch { /* already gone */ }
+                relay.connect?.().catch((error: unknown) =>
+                  console.warn(`[Relay] Forced reconnect failed for ${url}:`, error)
+                );
+              }
+            } else {
+              this.relayTimeoutCounts.set(url, 0);
+            }
 
             relayEvents.forEach(event => {
               if (!events.has(event.id)) {
@@ -876,14 +921,33 @@ export class RelayPool {
   }
 
   /**
+   * Whether a relay's underlying socket is actually open right now — reads
+   * the live WebSocket readyState instead of our own tracked
+   * relayConnectionState, which only ever gets updated by code that
+   * explicitly touches it (addRelay, a reconnect attempt). A socket that
+   * dies quietly in the background (tab backgrounded, laptop sleep, network
+   * drop) never flips that tracked flag, so anything that trusted it alone
+   * kept believing a dead relay was still connected — nostr-tools'
+   * relayInit relay exposes a `status` getter that's the raw
+   * WebSocket.readyState *number* (1 === OPEN), not the string 'connected'
+   * the old check here compared against, so it never actually matched.
+   */
+  private isActuallyConnected(relay: any): boolean {
+    if (relay?.socket) return relay.socket.readyState === WebSocket.OPEN;
+    if (typeof relay?.status === 'number') return relay.status === WebSocket.OPEN;
+    return relay?.status === 'connected';
+  }
+
+  /**
    * Refresh connection status for all relays and reconnect if needed
    */
   async refreshConnectionStatus(): Promise<void> {
     console.log(`[Status] Refreshing connection status for ${this.relays.size} relays`);
-    
+
     for (const [url, relay] of this.relays) {
       try {
-        const currentStatus = this.relayConnectionState.get(url) || false;
+        const currentStatus = this.isActuallyConnected(relay);
+        this.relayConnectionState.set(url, currentStatus);
         console.log(`[Status] Checking ${url}: currently ${currentStatus ? 'connected' : 'disconnected'}`);
 
         // If relay is not connected, try to reconnect
@@ -892,12 +956,12 @@ export class RelayPool {
             console.log(`[Status] Attempting to reconnect to ${url}`);
             await Promise.race([
               relay.connect(),
-              new Promise<void>((_, reject) => 
+              new Promise<void>((_, reject) =>
                 setTimeout(() => reject(new Error('Reconnection timeout')), 10000)
               )
             ]);
             console.log(`[Status] ✓ Reconnected to ${url}`);
-            this.relayConnectionState.set(url, true);
+            this.relayConnectionState.set(url, this.isActuallyConnected(relay));
           } catch (error) {
             console.log(`[Status] Reconnection failed for ${url}: ${error}`);
             this.relayConnectionState.set(url, false);
@@ -915,20 +979,10 @@ export class RelayPool {
   getStatus(): Map<string, boolean> {
     const status = new Map<string, boolean>();
     console.log(`[Status] Getting status for ${this.relays.size} relays`);
-    
+
     for (const [url, relay] of this.relays) {
-      let isConnected = this.relayConnectionState.get(url) || false;
-
-      // If we don't have state, check relay object
-      if (!isConnected && relay) {
-        if (relay.connected === true || relay.status === 'connected') {
-          isConnected = true;
-        } else if (relay.socket && relay.socket.readyState === WebSocket.OPEN) {
-          isConnected = true;
-        }
-        this.relayConnectionState.set(url, isConnected);
-      }
-
+      const isConnected = this.isActuallyConnected(relay);
+      this.relayConnectionState.set(url, isConnected);
       status.set(url, isConnected);
       console.log(`[Status] ${url}: ${isConnected ? '🟢 CONNECTED' : '🔴 DISCONNECTED'}`);
     }
@@ -937,13 +991,17 @@ export class RelayPool {
 }
 
 // Default relay list — free relays that reliably answer queries.
-// Dropped: relay.nostr.band (unreachable), relay.snort.social (returns no
-// data), nostr.wine (paid). purplepag.es specializes in profile metadata.
-// relay.primal.net, relay.fountain.fm and relay.divine.video are in
-// zap.stream's own default relay set (github.com/v0l/zap.stream) — that's
-// where it actually publishes NIP-53 live events. "relay.zap.stream" (used
-// here previously) doesn't exist as a domain — a wrong guess, not a real
-// zap.stream relay.
+// Dropped: relay.nostr.band (unreachable — reconfirmed by direct WebSocket
+// probe), relay.snort.social (returns no data), relayable.org (unreachable),
+// relay.nostr.bg (connection error), nostr.wine (paid). purplepag.es
+// specializes in profile metadata. relay.primal.net, relay.fountain.fm and
+// relay.divine.video are in zap.stream's own default relay set
+// (github.com/v0l/zap.stream) — that's where it actually publishes NIP-53
+// live events. "relay.zap.stream" (used here previously) doesn't exist as a
+// domain — a wrong guess, not a real zap.stream relay. eden.nostr.land,
+// offchain.pub, nostr21.com, relay.mostr.pub and nostr.oxtr.dev were all
+// probed directly (WebSocket connect + REQ round-trip) and added for
+// broader, more redundant coverage.
 export const DEFAULT_RELAYS = [
   'wss://relay.damus.io',
   'wss://nos.lol',
@@ -953,7 +1011,12 @@ export const DEFAULT_RELAYS = [
   'wss://relay.primal.net',
   'wss://relay.fountain.fm',
   'wss://relay.divine.video',
-  'wss://nostr-pub.wellorder.net'
+  'wss://nostr-pub.wellorder.net',
+  'wss://eden.nostr.land',
+  'wss://offchain.pub',
+  'wss://nostr21.com',
+  'wss://relay.mostr.pub',
+  'wss://nostr.oxtr.dev'
 ];
 
 // Singleton instance

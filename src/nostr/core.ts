@@ -419,9 +419,15 @@ export class NostrCore {
   private static async fetchContactListEvent(pubkey: string): Promise<NostrEventSigned | null> {
     try {
       const relayPool = getRelayPool();
-      const events = await relayPool.fetchEvents([
-        { kinds: [EVENT_KINDS.CONTACTS], authors: [pubkey], limit: 5 }
-      ]);
+      // waitForAll — this drives whether the home feed is author-filtered
+      // at all. A false "you follow no one" (because some other relay
+      // answered empty before the one relay holding your real, possibly
+      // large contact list got a chance to) silently turns the home feed
+      // into the unfiltered global feed, which looks like random posts.
+      const events = await relayPool.fetchEvents(
+        [{ kinds: [EVENT_KINDS.CONTACTS], authors: [pubkey], limit: 5 }],
+        true
+      );
       if (events.length === 0) return null;
       return events.reduce((latest, current) =>
         (current.created_at || 0) > (latest.created_at || 0) ? current : latest
@@ -693,6 +699,16 @@ export class NostrCore {
 
   static unsubscribeLive(subscriptionId: string): void {
     getRelayPool().unsubscribe(subscriptionId);
+  }
+
+  /**
+   * Reconnects any relay whose socket has dropped (e.g. closed by the
+   * browser while the tab was backgrounded). Callers that resubscribe or
+   * refetch right after this should await it first — sending a REQ to a
+   * relay that's still mid-reconnect silently goes nowhere.
+   */
+  static async refreshRelayConnections(): Promise<void> {
+    await getRelayPool().refreshConnectionStatus();
   }
 
   /**
@@ -991,7 +1007,11 @@ export class NostrCore {
 
     try {
       const relayPool = getRelayPool();
-      const events = await relayPool.fetchEvents(filters);
+      // waitForAll — a single-note lookup only has one relay that can ever
+      // answer (an exact id match), so the early-exit optimization (built
+      // for "a fast relay's results are good enough") has nothing to gain
+      // here and can only cost us the note if that one relay is slow.
+      const events = await relayPool.fetchEvents(filters, true);
       return events[0] || null;
     } catch (error) {
       console.error('Failed to fetch event:', error);

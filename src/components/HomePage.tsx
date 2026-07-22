@@ -189,6 +189,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     };
 
     let subId: string | null = null;
+    let cancelled = false;
     const resubscribe = () => {
       if (subId) NostrCore.unsubscribeLive(subId);
       const shown = [...pendingRef.current, ...eventsRef.current];
@@ -203,15 +204,22 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     resubscribe();
 
     // A backgrounded tab's socket can die silently without ever firing
-    // onclose. Resubscribing on return rides the freshly reconnected socket
-    // (see App's visibilitychange handler) and replays anything missed
-    // in the gap via the `since` cursor above.
+    // onclose. Sending the fresh REQ immediately on visibilitychange used
+    // to race App's relay reconnect (same event, but that one's async) —
+    // the REQ went out before the socket was actually back up and just
+    // got lost, so the catch-up only showed up later, whenever something
+    // else happened to resubscribe. Wait for reconnection to actually
+    // finish before resubscribing.
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') resubscribe();
+      if (document.visibilityState !== 'visible') return;
+      NostrCore.refreshRelayConnections().then(() => {
+        if (!cancelled) resubscribe();
+      });
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
+      cancelled = true;
       document.removeEventListener('visibilitychange', onVisibilityChange);
       if (subId) NostrCore.unsubscribeLive(subId);
     };

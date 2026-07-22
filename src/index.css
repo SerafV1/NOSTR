@@ -3176,9 +3176,24 @@ button.poll-option-vote:disabled {
   border-radius: 0;
 }
 
-.note-thread > .event-card:first-child {
+.note-thread > .event-card:first-child,
+.note-thread > .note-parent-context:first-child .event-card {
   border-top-left-radius: var(--border-radius);
   border-top-right-radius: var(--border-radius);
+}
+
+/* The post being replied to, shown above the reply for context */
+.note-parent-context {
+  position: relative;
+}
+
+.note-parent-connector {
+  position: absolute;
+  left: calc(var(--spacing-lg) + 23px);
+  bottom: -1px;
+  width: 2px;
+  height: var(--spacing-lg);
+  background: var(--border-color);
 }
 
 .note-thread > .event-card:last-child {

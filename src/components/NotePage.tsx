@@ -14,6 +14,7 @@ interface NotePageProps {
 
 const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, onBack }) => {
   const [note, setNote] = useState<NostrEventSigned | null>(null);
+  const [parentNote, setParentNote] = useState<NostrEventSigned | null>(null);
   const [replies, setReplies] = useState<NostrEventSigned[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -32,7 +33,25 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
       const fetchedNote = await (NostrCore as any).fetchEventById(noteId);
       if (fetchedNote) {
         setNote(fetchedNote);
-        
+
+        // If this note is itself a reply, show the post it's replying to
+        // above it for context — NIP-10: prefer the 'e' tag marked
+        // 'reply' (the direct parent); fall back to the last 'e' tag for
+        // notes using the older, unmarked positional convention
+        const eTags = fetchedNote.tags.filter((t: string[]) => t[0] === 'e');
+        const replyTag = eTags.find((t: string[]) => t[3] === 'reply') || eTags[eTags.length - 1];
+        if (replyTag) {
+          try {
+            const parent = await (NostrCore as any).fetchEventById(replyTag[1]);
+            setParentNote(parent);
+          } catch (error) {
+            console.error('Failed to fetch parent note:', error);
+            setParentNote(null);
+          }
+        } else {
+          setParentNote(null);
+        }
+
         // Fetch replies to this note
         try {
           const fetchedReplies = await NostrCore.fetchReplies(noteId, 100);
@@ -43,11 +62,13 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
         }
       } else {
         setNote(null);
+        setParentNote(null);
         setReplies([]);
       }
     } catch (error) {
       console.error('Failed to load note:', error);
       setNote(null);
+      setParentNote(null);
       setReplies([]);
     } finally {
       setLoading(false);
@@ -78,6 +99,17 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
 
         {note && (
           <div className="note-thread">
+            {parentNote && (
+              <div className="note-parent-context">
+                <EventCard
+                  event={parentNote}
+                  onNavigateToProfile={onNavigateToProfile}
+                  onNavigateToNote={onNavigateToNote}
+                  onNavigateToTopic={onNavigateToTopic}
+                />
+                <div className="note-parent-connector" />
+              </div>
+            )}
             <EventCard
               event={note}
               onNavigateToProfile={onNavigateToProfile}

@@ -247,6 +247,25 @@ function App() {
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, [isLoggedIn]);
 
+  // A WebSocket can go "zombie" — the browser still reports readyState
+  // OPEN, but the server (or an idle proxy in between) silently dropped it
+  // long ago with no close handshake — especially over a long-running SPA
+  // session that never does a full page reload. This alone is why "note
+  // not found, refresh the page, note loads fine" happens: a hard refresh
+  // always gets fresh sockets, staying in the app doesn't. Periodically
+  // re-validate every relay while the tab is visible, on top of the
+  // visibilitychange check above, instead of only ever revisiting this at
+  // tab-switch time.
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        getRelayPool().refreshConnectionStatus();
+      }
+    }, 90000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn]);
+
   // Load the logged-in user's own profile (for the header avatar) —
   // instant from cache if we have it, refreshed once relays connect
   useEffect(() => {
