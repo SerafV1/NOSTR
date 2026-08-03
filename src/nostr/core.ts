@@ -1270,12 +1270,16 @@ export class NostrCore {
    * though they're publishing correctly.
    */
   static async fetchLiveEventsOutbox(authors: string[], limit: number = 100): Promise<NostrEventSigned[]> {
-    const poolResults = await this.fetchLiveEvents('live', authors, limit);
+    // Neither lookup depends on the other's result, so run them
+    // concurrently instead of paying both round-trips back to back
+    const [poolResults, relayLists] = await Promise.all([
+      this.fetchLiveEvents('live', authors, limit),
+      this.fetchRelayLists(authors)
+    ]);
 
     try {
       const relayPool = getRelayPool();
       const knownRelays = new Set(relayPool.getRelayConfigs().map(c => c.url));
-      const relayLists = await this.fetchRelayLists(authors);
 
       const extraRelays = new Set<string>();
       relayLists.forEach(urls => urls.forEach(u => {
@@ -1324,30 +1328,35 @@ export class NostrCore {
   ): Promise<{ event: NostrEventSigned; matchedPubkey: string }[]> {
     if (authors.length === 0) return [];
 
-    const authored = await this.fetchLiveEventsOutbox(authors, limit);
+    // Authored-stream lookup and participant-tag lookup are independent
+    // queries — run them concurrently rather than one after the other
+    const [authored, participantEvents] = await Promise.all([
+      this.fetchLiveEventsOutbox(authors, limit),
+      (async (): Promise<NostrEventSigned[]> => {
+        try {
+          const relayPool = getRelayPool();
+          const raw = await relayPool.fetchEvents(
+            [{ kinds: [EVENT_KINDS.LIVE_EVENT], '#p': authors, limit }],
+            true
+          );
 
-    let participantEvents: NostrEventSigned[] = [];
-    try {
-      const relayPool = getRelayPool();
-      const raw = await relayPool.fetchEvents(
-        [{ kinds: [EVENT_KINDS.LIVE_EVENT], '#p': authors, limit }],
-        true
-      );
+          const latestByAddress = new Map<string, NostrEventSigned>();
+          raw.forEach(event => {
+            const dTag = event.tags.find(t => t[0] === 'd')?.[1] || '';
+            const address = `${event.pubkey}:${dTag}`;
+            const existing = latestByAddress.get(address);
+            if (!existing || (event.created_at || 0) > (existing.created_at || 0)) {
+              latestByAddress.set(address, event);
+            }
+          });
 
-      const latestByAddress = new Map<string, NostrEventSigned>();
-      raw.forEach(event => {
-        const dTag = event.tags.find(t => t[0] === 'd')?.[1] || '';
-        const address = `${event.pubkey}:${dTag}`;
-        const existing = latestByAddress.get(address);
-        if (!existing || (event.created_at || 0) > (existing.created_at || 0)) {
-          latestByAddress.set(address, event);
+          return Array.from(latestByAddress.values()).filter(isEffectivelyLive);
+        } catch (error) {
+          console.error('Failed to fetch participant live events:', error);
+          return [];
         }
-      });
-
-      participantEvents = Array.from(latestByAddress.values()).filter(isEffectivelyLive);
-    } catch (error) {
-      console.error('Failed to fetch participant live events:', error);
-    }
+      })()
+    ]);
 
     const followedSet = new Set(authors);
     const results = new Map<string, { event: NostrEventSigned; matchedPubkey: string }>();

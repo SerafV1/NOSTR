@@ -100,6 +100,15 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     setReposts([]);
   }, [feedType, activeTopic]);
 
+  // Home-feed-local cache of the last live-stream check, so navigating away
+  // and back doesn't leave the sidebar empty for the many seconds the NIP-65
+  // outbox lookup below takes to redo from scratch — show the last known
+  // result instantly, then refresh in the background
+  const liveStreamsCacheKey = (): string => {
+    const pubkey = CredentialManager.getPublicKey();
+    return pubkey ? `live_streams_${pubkey}` : 'live_streams';
+  };
+
   // Check whether anyone you follow is currently live (NIP-53) so the Home
   // feed can surface it — refreshed periodically since a stream can start
   // any time, not just when this page first loads
@@ -110,6 +119,20 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     }
 
     let cancelled = false;
+
+    const cached = PersistentCache.get<{ event: NostrEventSigned; matchedPubkey: string }[]>(liveStreamsCacheKey());
+    if (cached && cached.length > 0) {
+      const infos = cached
+        .map(({ event, matchedPubkey }) => ({ info: parseLiveEvent(event), followedPubkey: matchedPubkey }))
+        .filter(x => x.info.streamingUrl);
+      setLiveStreams(infos);
+      if (infos.length > 0) {
+        NostrCore.fetchProfiles(infos.map(x => x.followedPubkey)).then(profiles => {
+          if (!cancelled) setLiveProfiles(profiles);
+        });
+      }
+    }
+
     const loadLiveStreams = async () => {
       try {
         // Checks streams a followed account authored (with NIP-65 outbox
@@ -117,6 +140,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
         // tagged as a participant/guest via a 'p' tag on someone else's event
         const results = await NostrCore.fetchLiveEventsForFollows(followedRef.current);
         if (cancelled) return;
+        PersistentCache.set(liveStreamsCacheKey(), results);
         const infos = results
           .map(({ event, matchedPubkey }) => ({ info: parseLiveEvent(event), followedPubkey: matchedPubkey }))
           .filter(x => x.info.streamingUrl);
