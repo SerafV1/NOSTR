@@ -71,3 +71,9 @@ export function decodeLiveNaddr(naddr: string): { kind: number; pubkey: string; 
     return null;
   }
 }
+
+// The "<kind>:<pubkey>:<d-tag>" coordinate NIP-53 live chat messages (kind
+// 1311) reference in their 'a' tag to say which stream they belong to
+export function liveEventAddress(kind: number, pubkey: string, dTag: string): string {
+  return `${kind}:${pubkey}:${dTag}`;
+}

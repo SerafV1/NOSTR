@@ -712,6 +712,71 @@ export class NostrCore {
   }
 
   /**
+   * Fetch chat messages for a live stream (NIP-53, kind 1311) — filtered
+   * by the 'a' tag coordinate ("<kind>:<pubkey>:<d-tag>") of the live
+   * event they belong to. Returned oldest-first, ready to render top to
+   * bottom like a normal chat log.
+   */
+  static async fetchLiveChatMessages(address: string, limit: number = 200): Promise<NostrEventSigned[]> {
+    try {
+      const relayPool = getRelayPool();
+      const events = await relayPool.fetchEvents([
+        { kinds: [EVENT_KINDS.LIVE_CHAT_MESSAGE], '#a': [address], limit }
+      ]);
+      return events.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+    } catch (error) {
+      console.error('Failed to fetch live chat messages:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Post a chat message to a live stream (NIP-53, kind 1311).
+   */
+  static async publishLiveChatMessage(
+    address: string,
+    relayHint: string | undefined,
+    content: string
+  ): Promise<NostrEventSigned | null> {
+    const isExtension = CredentialManager.isExtensionMode();
+
+    if (!isExtension && !CredentialManager.getPrivateKey()) {
+      console.error('Private key not found');
+      return null;
+    }
+
+    const event: NostrEvent = {
+      kind: EVENT_KINDS.LIVE_CHAT_MESSAGE,
+      content,
+      tags: [['a', address, relayHint || '', 'root']]
+    };
+
+    try {
+      let signed: NostrEventSigned;
+
+      if (isExtension) {
+        signed = await this.signEventWithExtension(event);
+      } else {
+        const privkey = CredentialManager.getPrivateKey();
+        if (!privkey) throw new Error('Private key not found');
+        signed = NostrCrypto.signEvent(event, privkey);
+      }
+
+      if (!signed) throw new Error('Failed to sign event');
+
+      const relayPool = getRelayPool();
+      const results = await relayPool.publishEvent(signed);
+      if (!Array.from(results.values()).some(Boolean)) {
+        throw new Error('No relay accepted the chat message');
+      }
+      return signed;
+    } catch (error) {
+      console.error('Failed to publish live chat message:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Fetch replies to an event
    */
   static async fetchReplies(eventId: string, limit: number = 50): Promise<NostrEventSigned[]> {

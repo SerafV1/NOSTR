@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { UserProfile } from '../types';
 import { NostrCore } from '../nostr/core';
-import { parseLiveEvent, LiveStreamInfo } from '../utils/liveStream';
+import { parseLiveEvent, LiveStreamInfo, liveEventAddress } from '../utils/liveStream';
 import { formatAddress } from '../utils/helpers';
 import LiveVideoPlayer from './LiveVideoPlayer';
+import LiveChatPanel from './LiveChatPanel';
 
 interface LiveStreamPageProps {
   kind: number;
@@ -11,9 +12,10 @@ interface LiveStreamPageProps {
   identifier: string;
   relaysConnected: boolean;
   onNavigateToProfile: (pubkey: string) => void;
+  onNavigateToNote: (noteId: string) => void;
 }
 
-const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifier, relaysConnected, onNavigateToProfile }) => {
+const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifier, relaysConnected, onNavigateToProfile, onNavigateToNote }) => {
   const [stream, setStream] = useState<LiveStreamInfo | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,48 +72,59 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
 
   const hostName = profile?.display_name || profile?.name || formatAddress(stream.pubkey);
 
+  const address = liveEventAddress(kind, stream.pubkey, stream.dTag);
+
   return (
     <div className="live-stream-page">
-      <div className="live-stream-page-container">
-        {stream.status === 'live' ? (
-          <LiveVideoPlayer src={stream.streamingUrl} className="live-stream-video" />
-        ) : (
-          <div className="live-stream-offline">
-            {stream.status === 'planned' ? '📅 This stream hasn\'t started yet' : '⏹ This stream has ended'}
-          </div>
-        )}
-
-        <div className="live-stream-details">
-          <div className="live-stream-details-header">
-            <h1>{stream.title}</h1>
-            {stream.status === 'live' && (
-              <span className="live-stream-badge">LIVE</span>
-            )}
-          </div>
-
-          <button className="live-stream-host-link" onClick={() => onNavigateToProfile(stream.pubkey)}>
-            {profile?.picture ? (
-              <img src={profile.picture} alt="" className="live-stream-host-avatar" />
-            ) : (
-              <div className="live-stream-host-avatar-placeholder">{hostName.charAt(0).toUpperCase()}</div>
-            )}
-            <span>{hostName}</span>
-          </button>
-
-          {stream.currentParticipants !== undefined && (
-            <div className="live-stream-viewers-count">👁 {stream.currentParticipants} watching</div>
-          )}
-
-          {stream.summary && <p className="live-stream-summary">{stream.summary}</p>}
-
-          {stream.hashtags.length > 0 && (
-            <div className="event-hashtags">
-              {stream.hashtags.map(tag => (
-                <span key={tag} className="event-hashtag">#{tag}</span>
-              ))}
+      <div className="live-stream-page-layout">
+        <div className="live-stream-page-container">
+          {stream.status === 'live' ? (
+            <LiveVideoPlayer src={stream.streamingUrl} className="live-stream-video" />
+          ) : (
+            <div className="live-stream-offline">
+              {stream.status === 'planned' ? '📅 This stream hasn\'t started yet' : '⏹ This stream has ended'}
             </div>
           )}
+
+          <div className="live-stream-details">
+            <div className="live-stream-details-header">
+              <h1>{stream.title}</h1>
+              {stream.status === 'live' && (
+                <span className="live-stream-badge">LIVE</span>
+              )}
+            </div>
+
+            <button className="live-stream-host-link" onClick={() => onNavigateToProfile(stream.pubkey)}>
+              {profile?.picture ? (
+                <img src={profile.picture} alt="" className="live-stream-host-avatar" />
+              ) : (
+                <div className="live-stream-host-avatar-placeholder">{hostName.charAt(0).toUpperCase()}</div>
+              )}
+              <span>{hostName}</span>
+            </button>
+
+            {stream.currentParticipants !== undefined && (
+              <div className="live-stream-viewers-count">👁 {stream.currentParticipants} watching</div>
+            )}
+
+            {stream.summary && <p className="live-stream-summary">{stream.summary}</p>}
+
+            {stream.hashtags.length > 0 && (
+              <div className="event-hashtags">
+                {stream.hashtags.map(tag => (
+                  <span key={tag} className="event-hashtag">#{tag}</span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+
+        <LiveChatPanel
+          address={address}
+          disabled={stream.status !== 'live'}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNote={onNavigateToNote}
+        />
       </div>
     </div>
   );

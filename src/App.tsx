@@ -122,7 +122,7 @@ function SearchRoute({ relaysConnected, onNavigateToProfile, onNavigateToNote }:
   );
 }
 
-function LiveStreamRoute({ relaysConnected, onNavigateToProfile }: RouteCallbacks) {
+function LiveStreamRoute({ relaysConnected, onNavigateToProfile, onNavigateToNote }: RouteCallbacks) {
   const { naddr } = useParams();
   const address = naddr ? decodeLiveNaddr(naddr) : null;
 
@@ -137,6 +137,7 @@ function LiveStreamRoute({ relaysConnected, onNavigateToProfile }: RouteCallback
       identifier={address.identifier}
       relaysConnected={relaysConnected}
       onNavigateToProfile={onNavigateToProfile}
+      onNavigateToNote={onNavigateToNote}
     />
   );
 }
