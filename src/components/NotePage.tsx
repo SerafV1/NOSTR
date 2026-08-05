@@ -14,7 +14,10 @@ interface NotePageProps {
 
 const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, onBack }) => {
   const [note, setNote] = useState<NostrEventSigned | null>(null);
-  const [parentNote, setParentNote] = useState<NostrEventSigned | null>(null);
+  // Root-first: index 0 is the top of the thread, last item is the note's
+  // direct parent — a reply-to-a-reply needs the whole chain shown, not
+  // just the one post immediately above it
+  const [parentNotes, setParentNotes] = useState<NostrEventSigned[]>([]);
   const [replies, setReplies] = useState<NostrEventSigned[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -34,27 +37,40 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
       if (fetchedNote) {
         setNote(fetchedNote);
 
-        // If this note is itself a reply, show the post it's replying to
-        // above it for context — NIP-10: prefer the 'e' tag marked
-        // 'reply' (the direct parent); fall back to the last 'e' tag for
-        // notes using the older, unmarked positional convention
-        const eTags = fetchedNote.tags.filter((t: string[]) => t[0] === 'e');
-        const replyTag = eTags.find((t: string[]) => t[3] === 'reply') || eTags[eTags.length - 1];
-        if (replyTag) {
-          try {
+        // NIP-10: prefer the 'e' tag marked 'reply' (the direct parent);
+        // fall back to the last 'e' tag for notes using the older,
+        // unmarked positional convention
+        const findReplyTag = (ev: NostrEventSigned): string[] | undefined => {
+          const eTags = ev.tags.filter((t) => t[0] === 'e');
+          return eTags.find((t) => t[3] === 'reply') || eTags[eTags.length - 1];
+        };
+
+        // If this note is itself a reply, walk all the way up the chain to
+        // the root and show every ancestor for context — a reply-to-a-reply
+        // needs the whole thread above it, not just the one direct parent
+        const ancestors: NostrEventSigned[] = [];
+        try {
+          const seenIds = new Set<string>([fetchedNote.id]);
+          let current = fetchedNote;
+          for (let i = 0; i < 20; i++) {
+            const replyTag = findReplyTag(current);
+            if (!replyTag) break;
+            const parentId = replyTag[1];
+            if (seenIds.has(parentId)) break; // malformed/cyclic tags
+            seenIds.add(parentId);
             // The tag's own relay hint (NIP-10: ['e', id, relayHint, marker])
-            // matters here — a Fediverse-bridged root/parent often lives
-            // only on the bridge's relay, nowhere in our default set
+            // matters here — a Fediverse-bridged ancestor often lives only
+            // on the bridge's relay, nowhere in our default set
             const hintRelay = replyTag[2] ? [replyTag[2]] : undefined;
-            const parent = await (NostrCore as any).fetchEventById(replyTag[1], hintRelay);
-            setParentNote(parent);
-          } catch (error) {
-            console.error('Failed to fetch parent note:', error);
-            setParentNote(null);
+            const parent: NostrEventSigned | null = await (NostrCore as any).fetchEventById(parentId, hintRelay);
+            if (!parent) break;
+            ancestors.unshift(parent);
+            current = parent;
           }
-        } else {
-          setParentNote(null);
+        } catch (error) {
+          console.error('Failed to fetch parent note chain:', error);
         }
+        setParentNotes(ancestors);
 
         // Fetch replies to this note
         try {
@@ -66,13 +82,13 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
         }
       } else {
         setNote(null);
-        setParentNote(null);
+        setParentNotes([]);
         setReplies([]);
       }
     } catch (error) {
       console.error('Failed to load note:', error);
       setNote(null);
-      setParentNote(null);
+      setParentNotes([]);
       setReplies([]);
     } finally {
       setLoading(false);
@@ -103,15 +119,19 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
 
         {note && (
           <div className="note-thread">
-            {parentNote && (
+            {parentNotes.length > 0 && (
               <div className="note-parent-context">
-                <EventCard
-                  event={parentNote}
-                  onNavigateToProfile={onNavigateToProfile}
-                  onNavigateToNote={onNavigateToNote}
-                  onNavigateToTopic={onNavigateToTopic}
-                />
-                <div className="note-parent-connector" />
+                {parentNotes.map((parent) => (
+                  <React.Fragment key={parent.id}>
+                    <EventCard
+                      event={parent}
+                      onNavigateToProfile={onNavigateToProfile}
+                      onNavigateToNote={onNavigateToNote}
+                      onNavigateToTopic={onNavigateToTopic}
+                    />
+                    <div className="note-parent-connector" />
+                  </React.Fragment>
+                ))}
               </div>
             )}
             <EventCard
