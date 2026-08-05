@@ -210,6 +210,12 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
 
       setPendingEvents(prev => {
         if (prev.some(e => e.id === event.id)) return prev;
+        // Re-check against events too, not just at the top of this
+        // function — an authoritative fetchFeed() refresh can land while
+        // the fetchProfiles() await above was in flight and already show
+        // this same post, which the earlier check (run before that await)
+        // wouldn't have caught yet
+        if (eventsRef.current.some(e => e.id === event.id)) return prev;
         const merged = [event, ...prev];
         merged.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
         return merged.slice(0, 50);
