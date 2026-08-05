@@ -331,6 +331,16 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
       setEvents(merged);
       PersistentCache.set(feedCacheKey(), merged);
 
+      // The live subscription can start streaming "new" posts while this
+      // fetch is still in flight (it doesn't wait for `events` to be ready
+      // before computing its cursor) — anything it already queued up that
+      // this authoritative fetch also picked up is now visible in `merged`,
+      // so drop it from pending instead of double-counting/re-showing it
+      setPendingEvents(prev => {
+        const mergedIds = new Set(merged.map(e => e.id));
+        return prev.filter(e => !mergedIds.has(e.id));
+      });
+
       // Reposts only make sense for the home feed — showing everyone's
       // reposts on Global/Topic would be unfilterable noise
       if (feedType === 'home' && followedRef.current.length > 0) {

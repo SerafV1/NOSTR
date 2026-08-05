@@ -1384,8 +1384,15 @@ button.poll-option-vote:disabled {
 }
 
 .image-modal-img {
-  max-width: 75%;
-  max-height: 75%;
+  /* Percentages here would resolve against .image-modal-content, whose
+     height is auto (not definite) — CSS then ignores the percentage
+     entirely, so tall images rendered at full intrinsic size and spilled
+     off the top/bottom of the screen. Viewport units sidestep that. */
+  max-width: 85vw;
+  max-height: 85vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
   border-radius: var(--border-radius);
   box-shadow: 0 0 30px rgba(102, 126, 234, 0.5);
 }
