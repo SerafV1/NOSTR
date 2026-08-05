@@ -200,7 +200,15 @@ export class RelayPool {
 
       this.relays.set(url, relay);
       this.relayConnectionState.set(url, isConnected);
-      
+
+      // Adding a relay mid-session (Settings, or app startup filling in
+      // the default set) must pick up whatever live subscriptions are
+      // already active — otherwise this relay silently misses them until
+      // something happens to fully resubscribe later
+      if (isConnected) {
+        this.applyActiveSubscriptions(url, relay);
+      }
+
       // Only add config if it doesn't already exist
       if (!this.relayConfigs.find(c => c.url === url)) {
         this.relayConfigs.push({
@@ -639,7 +647,7 @@ export class RelayPool {
     eoseCallback?: () => void
   ): string {
     const subscriptionId = Math.random().toString(36).substring(7);
-    
+
     const subscription: NostrSubscription = {
       id: subscriptionId,
       filters,
@@ -651,53 +659,85 @@ export class RelayPool {
 
     // Subscribe on each relay
     for (const [url, relay] of this.relays) {
-      const config = this.relayConfigs.find(c => c.url === url);
-      if (!config?.read) continue;
-
-      try {
-        let sub: any;
-
-        // nostr-tools relayInit (v1.x, what's actually installed) returns
-        // .sub(filters) + .on('event'|'eose', cb) — not the newer
-        // Relay-class .subscribe(filters, {onevent, oneose}) shape. Support
-        // both so this doesn't silently no-op again on a version bump.
-        if (relay.sub && typeof relay.sub === 'function') {
-          sub = relay.sub(filters);
-          sub.on('event', (event: NostrEventSigned) => {
-            callback(event);
-          });
-          if (eoseCallback) {
-            sub.on('eose', () => {
-              eoseCallback();
-            });
-          }
-        } else if (relay.subscribe && typeof relay.subscribe === 'function') {
-          sub = relay.subscribe(filters, {
-            onevent: (event: NostrEventSigned) => {
-              callback(event);
-            },
-            oneose: () => {
-              eoseCallback?.();
-            }
-          });
-        }
-
-        // Store the subscription reference for later cleanup
-        if (!window.nostrSubscriptions) {
-          window.nostrSubscriptions = {};
-        }
-        if (!window.nostrSubscriptions[subscriptionId]) {
-          window.nostrSubscriptions[subscriptionId] = [];
-        }
-        if (sub) {
-          window.nostrSubscriptions[subscriptionId].push(sub);
-        }
-      } catch (error) {
-        console.error(`Failed to subscribe on ${url}:`, error);
-      }
+      this.applySubscriptionToRelay(url, relay, subscriptionId, subscription);
     }
 
     return subscriptionId;
+  }
+
+  /**
+   * Issue one already-registered live subscription's REQ on one specific
+   * relay object. Split out of subscribe() so it can also be called
+   * whenever a relay (re)connects — see applyActiveSubscriptions below.
+   */
+  private applySubscriptionToRelay(
+    url: string,
+    relay: any,
+    subscriptionId: string,
+    subscription: NostrSubscription
+  ): void {
+    const config = this.relayConfigs.find(c => c.url === url);
+    if (!config?.read) return;
+
+    try {
+      let sub: any;
+      const { filters, callback, eoseCallback } = subscription;
+
+      // nostr-tools relayInit (v1.x, what's actually installed) returns
+      // .sub(filters) + .on('event'|'eose', cb) — not the newer
+      // Relay-class .subscribe(filters, {onevent, oneose}) shape. Support
+      // both so this doesn't silently no-op again on a version bump.
+      if (relay.sub && typeof relay.sub === 'function') {
+        sub = relay.sub(filters);
+        sub.on('event', (event: NostrEventSigned) => {
+          callback(event);
+        });
+        if (eoseCallback) {
+          sub.on('eose', () => {
+            eoseCallback();
+          });
+        }
+      } else if (relay.subscribe && typeof relay.subscribe === 'function') {
+        sub = relay.subscribe(filters, {
+          onevent: (event: NostrEventSigned) => {
+            callback(event);
+          },
+          oneose: () => {
+            eoseCallback?.();
+          }
+        });
+      }
+
+      // Store the subscription reference for later cleanup
+      if (!window.nostrSubscriptions) {
+        window.nostrSubscriptions = {};
+      }
+      if (!window.nostrSubscriptions[subscriptionId]) {
+        window.nostrSubscriptions[subscriptionId] = [];
+      }
+      if (sub) {
+        window.nostrSubscriptions[subscriptionId].push(sub);
+      }
+    } catch (error) {
+      console.error(`Failed to subscribe on ${url}:`, error);
+    }
+  }
+
+  /**
+   * Re-issue every currently active live subscription's REQ on one relay.
+   * A relay's underlying WebSocket doesn't remember old .sub() calls made
+   * on a previous connection — reconnecting (whether from a health check,
+   * fetchEvents' own reconnect-before-query logic, or zombie-timeout
+   * forced reconnects) silently drops every live subscription on that
+   * relay unless something re-applies them to the new socket. Without
+   * this, a feed could go quiet for minutes after any relay hiccup, with
+   * "new posts" only resurfacing whenever the app happened to fully
+   * resubscribe some other way (e.g. tab visibility change).
+   */
+  private applyActiveSubscriptions(url: string, relay: any): void {
+    for (const [subscriptionId, subscription] of this.subscriptions) {
+      this.applySubscriptionToRelay(url, relay, subscriptionId, subscription);
+    }
   }
 
   /**
@@ -766,6 +806,9 @@ export class RelayPool {
                   relay.connect(),
                   new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Reconnect timeout')), 4000))
                 ]);
+                // A fresh socket doesn't carry over subscriptions issued on
+                // the old one — reattach every active live subscription now
+                this.applyActiveSubscriptions(url, relay);
               } catch {
                 // Still couldn't connect — fall through and let the query
                 // below time out/fail quickly rather than retrying here
@@ -811,8 +854,9 @@ export class RelayPool {
                 try {
                   relay.close?.();
                 } catch { /* already gone */ }
-                relay.connect?.().catch((error: unknown) =>
-                  console.warn(`[Relay] Forced reconnect failed for ${url}:`, error)
+                relay.connect?.().then(
+                  () => this.applyActiveSubscriptions(url, relay),
+                  (error: unknown) => console.warn(`[Relay] Forced reconnect failed for ${url}:`, error)
                 );
               }
             } else {
@@ -998,6 +1042,9 @@ export class RelayPool {
             ]);
             console.log(`[Status] ✓ Reconnected to ${url}`);
             this.relayConnectionState.set(url, this.isActuallyConnected(relay));
+            // A fresh socket doesn't carry over subscriptions issued on
+            // the old one — reattach every active live subscription now
+            this.applyActiveSubscriptions(url, relay);
           } catch (error) {
             console.log(`[Status] Reconnection failed for ${url}: ${error}`);
             this.relayConnectionState.set(url, false);
