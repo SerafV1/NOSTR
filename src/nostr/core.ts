@@ -1074,7 +1074,7 @@ export class NostrCore {
    * ask, e.g. a note bridged in from the Fediverse living only on a bridge
    * relay. Tried after our own pool comes up empty.
    */
-  static async fetchEventById(eventId: string, hintRelays?: string[]): Promise<NostrEventSigned | null> {
+  static async fetchEventById(eventId: string, hintRelays?: string[], authorHint?: string): Promise<NostrEventSigned | null> {
     const filters: NostrFilter[] = [
       {
         ids: [eventId]
@@ -1111,8 +1111,26 @@ export class NostrCore {
       return events[0] || null;
     };
 
+    // Modern nevent references often embed the author's pubkey alongside
+    // (or instead of) explicit relay hints. When neither our pool nor an
+    // explicit hint has the note, check that author's own NIP-65 write
+    // relays — the same outbox fallback already used for live events —
+    // since plenty of notes only ever get published there.
+    const authorOutboxAttempt = async (): Promise<NostrEventSigned | null> => {
+      if (!authorHint) return null;
+      const relayLists = await this.fetchRelayLists([authorHint]);
+      const authorRelays = relayLists.get(authorHint);
+      if (!authorRelays || authorRelays.length === 0) return null;
+      const knownRelays = new Set(relayPool.getRelayConfigs().map(c => c.url));
+      const alreadyTried = new Set(hintRelays || []);
+      const extraRelays = authorRelays.filter(url => !knownRelays.has(url) && !alreadyTried.has(url));
+      if (extraRelays.length === 0) return null;
+      const events = await relayPool.fetchEventsFromExtraRelays(extraRelays, filters);
+      return events[0] || null;
+    };
+
     try {
-      const results = await Promise.allSettled([poolAttempt(), hintAttempt()]);
+      const results = await Promise.allSettled([poolAttempt(), hintAttempt(), authorOutboxAttempt()]);
       for (const result of results) {
         if (result.status === 'fulfilled' && result.value) return result.value;
       }

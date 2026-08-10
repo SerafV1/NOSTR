@@ -72,7 +72,17 @@ const EventCard: React.FC<EventCardProps> = ({
     loadMentionedProfiles();
     loadQuotedNote();
     if (event.kind === EVENT_KINDS.POLL) loadPollResponses();
-  }, [event]);
+    // Nostr events are immutable once signed, so event.id alone is the
+    // right dependency — depending on the whole `event` object instead
+    // meant a parent re-render handing down a new-but-equal object
+    // reference (e.g. a fresh .map() array) re-triggered every loader
+    // here, including a second, redundant loadQuotedNote() call. If that
+    // second call happened to resolve after (and fail where) the first
+    // one succeeded, its setQuotedNoteStatus('failed') stuck around
+    // without clearing the quotedNote the first call had already set —
+    // showing both the loaded quote and the "unavailable" message at once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id]);
 
   // Arrow keys step through the enlarged-image modal like a standard lightbox
   useEffect(() => {
@@ -215,11 +225,14 @@ const EventCard: React.FC<EventCardProps> = ({
       const decoded = linkLower.includes('nevent1') ? decodeNevent(link) : decodeNote(link);
       const decodedId = typeof decoded === 'string' ? decoded : decoded?.id;
       const hintRelays = typeof decoded === 'string' ? undefined : decoded?.relays;
+      const authorHint = typeof decoded === 'string' ? undefined : decoded?.author;
       if (decodedId) {
         // A relay hint in the reference itself (NIP-19) is the whole reason
         // it's there — e.g. a Fediverse-bridged note that only lives on
-        // the bridge's own relay, nowhere in our default set
-        const note = await NostrCore.fetchEventById(decodedId, hintRelays);
+        // the bridge's own relay, nowhere in our default set. Falls back
+        // further to the author's own NIP-65 write relays when the nevent
+        // embeds a pubkey but no (or an exhausted) relay hint.
+        const note = await NostrCore.fetchEventById(decodedId, hintRelays, authorHint);
         if (note) {
           setQuotedNote(note);
           setQuotedNoteStatus('loaded');
@@ -243,12 +256,12 @@ const EventCard: React.FC<EventCardProps> = ({
     }
   };
 
-  const decodeNevent = (neventLink: string): { id: string; relays?: string[] } | null => {
+  const decodeNevent = (neventLink: string): { id: string; relays?: string[]; author?: string } | null => {
     try {
       const decoded = nip19.decode(neventLink.replace(/^nostr:/, ''));
       if (decoded.type !== 'nevent') return null;
-      const { id, relays } = decoded.data as { id: string; relays?: string[] };
-      return { id, relays };
+      const { id, relays, author } = decoded.data as { id: string; relays?: string[]; author?: string };
+      return { id, relays, author };
     } catch (error) {
       console.error('Failed to decode nevent:', error);
       return null;
