@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Routes,
   Route,
@@ -167,9 +167,28 @@ function App() {
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [showComposeFab, setShowComposeFab] = useState(false);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
 
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Show a "back to top" button once the page content is scrolled down a
+  // bit — .app-main is the actual scrolling element (the window itself
+  // never scrolls, .app is pinned to 100vh), so the listener has to live
+  // on it rather than on window
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const onScroll = () => setShowBackToTop(el.scrollTop > 400);
+    el.addEventListener('scroll', onScroll);
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Each page starts scrolled to the top, so the button should too
+  useEffect(() => {
+    setShowBackToTop(false);
+  }, [location.pathname]);
 
   // Initialize relays on mount
   useEffect(() => {
@@ -454,7 +473,7 @@ function App() {
         </div>
       </header>
 
-      <main className="app-main">
+      <main className="app-main" ref={mainRef}>
         <Routes>
           <Route
             path="/"
@@ -492,6 +511,16 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+
+      {showBackToTop && (
+        <button
+          className="back-to-top-btn"
+          onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+          title="Back to top"
+        >
+          ↑
+        </button>
+      )}
 
       {location.pathname === '/' && (
         <button

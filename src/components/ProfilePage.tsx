@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { UserProfile, NostrEventSigned } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { UserProfile, NostrEventSigned, NostrFilter, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache, PersistentCache, ZapActivity } from '../nostr/core';
 import { NostrCrypto } from '../nostr/crypto';
 import { formatAddress, formatDate, copyToClipboard } from '../utils/helpers';
@@ -69,6 +69,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const [zapActivityLoaded, setZapActivityLoaded] = useState(false);
   const [zapProfiles, setZapProfiles] = useState<Record<string, UserProfile>>({});
   const [zapNotes, setZapNotes] = useState<Record<string, NostrEventSigned>>({});
+  // New notes from this profile found by the live subscription below —
+  // shown behind a "N new posts" button instead of jumping into the list
+  const [pendingNotes, setPendingNotes] = useState<NostrEventSigned[]>([]);
+  const notesRef = useRef<NostrEventSigned[]>([]);
+  const pendingNotesRef = useRef<NostrEventSigned[]>([]);
+  notesRef.current = notes;
+  pendingNotesRef.current = pendingNotes;
 
   useEffect(() => {
     // Stale-while-revalidate: show cached profile + notes instantly,
@@ -110,6 +117,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
       if (userNotes.length > 0 || !background) {
         setNotes(userNotes);
         PersistentCache.set(`notes_${pubkey}`, userNotes.slice(0, 30));
+        // The live subscription below can flag a note as "new" while this
+        // fetch was still in flight and it already picked the same note up
+        // — don't double-count/re-show it as pending
+        setPendingNotes(prev => {
+          const freshIds = new Set(userNotes.map(e => e.id));
+          return prev.filter(e => !freshIds.has(e.id));
+        });
       }
       if (userReposts.length > 0 || !background) {
         setReposts(userReposts);
@@ -126,6 +140,85 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const handleProfileUpdated = (updatedProfile: Partial<UserProfile>) => {
     setProfile(prev => prev ? { ...prev, ...updatedProfile } : updatedProfile as UserProfile);
     setEditing(false);
+  };
+
+  // Live feed for this profile's own notes — same reasoning as the home
+  // feed's live subscription: a REQ with `since` keeps streaming new
+  // matches as they're published, so new posts show up without polling
+  useEffect(() => {
+    if (!relaysConnected) return;
+
+    const buildFilters = (since: number): NostrFilter[] => [
+      { kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.POLL], authors: [pubkey], since }
+    ];
+
+    const handleEvent = (event: NostrEventSigned) => {
+      const maxTimestamp = Math.floor(Date.now() / 1000) + 300; // 5 min clock-skew tolerance
+      if ((event.created_at || 0) > maxTimestamp) return;
+
+      // Don't trust the relay to have actually honored the authors filter
+      // below — a relay that ignores/mishandles it would otherwise flood
+      // this profile's feed with posts from accounts having nothing to do
+      // with it (mirrors the same guard the home feed's live sub has)
+      if (event.pubkey !== pubkey) return;
+
+      const shown = [...pendingNotesRef.current, ...notesRef.current];
+      if (shown.some(e => e.id === event.id)) return;
+
+      setPendingNotes(prev => {
+        if (prev.some(e => e.id === event.id)) return prev;
+        // Re-check against notes too — loadProfileData's own refresh can
+        // land between the check above and this callback running
+        if (notesRef.current.some(e => e.id === event.id)) return prev;
+        const merged = [event, ...prev];
+        merged.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        return merged.slice(0, 50);
+      });
+    };
+
+    let subId: string | null = null;
+    let cancelled = false;
+    const resubscribe = () => {
+      if (subId) NostrCore.unsubscribeLive(subId);
+      const shown = [...pendingNotesRef.current, ...notesRef.current];
+      // Clamp to now — a single future-dated note would otherwise push the
+      // cursor into the future and the subscription would replay nothing
+      const cursor = shown.length > 0
+        ? Math.min(Math.max(...shown.map(e => e.created_at || 0)) + 1, Math.floor(Date.now() / 1000))
+        : Math.floor(Date.now() / 1000);
+      subId = NostrCore.subscribeLive(buildFilters(cursor), handleEvent);
+    };
+
+    resubscribe();
+
+    // A backgrounded tab's socket can die silently — wait for the relay
+    // reconnect to actually finish before resubscribing on tab focus
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      NostrCore.refreshRelayConnections().then(() => {
+        if (!cancelled) resubscribe();
+      });
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (subId) NostrCore.unsubscribeLive(subId);
+    };
+  }, [pubkey, relaysConnected]);
+
+  const showPendingNotes = () => {
+    const pending = pendingNotesRef.current;
+    if (pending.length === 0) return;
+    setNotes(prev => {
+      const ids = new Set(pending.map(e => e.id));
+      const merged = [...pending, ...prev.filter(e => !ids.has(e.id))];
+      PersistentCache.set(`notes_${pubkey}`, merged.slice(0, 30));
+      return merged;
+    });
+    setPendingNotes([]);
+    document.querySelector('.app-main')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   useEffect(() => {
@@ -229,6 +322,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   // A kind-1 note referencing another event is a reply
   const isReply = (e: NostrEventSigned) => e.tags.some(t => t[0] === 'e');
   const visibleNotes = notes.filter(e => (contentTab === 'replies' ? isReply(e) : !isReply(e)));
+  const visiblePendingNotes = pendingNotes.filter(e => (contentTab === 'replies' ? isReply(e) : !isReply(e)));
 
   // Posts tab interleaves this user's own notes with what they've
   // reposted, X-style, sorted newest first by whichever action is newer
@@ -397,6 +491,12 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                 Zaps
               </button>
             </div>
+
+            {(contentTab === 'posts' || contentTab === 'replies') && visiblePendingNotes.length > 0 && (
+              <button className="new-posts-btn" onClick={showPendingNotes}>
+                ↑ Show {visiblePendingNotes.length} new {visiblePendingNotes.length === 1 ? 'post' : 'posts'}
+              </button>
+            )}
 
             {(contentTab === 'posts' || contentTab === 'replies') && (
               timelineItems.length === 0 ? (
