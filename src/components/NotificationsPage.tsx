@@ -21,6 +21,15 @@ const TYPE_META: Record<NotificationType, { icon: string; verb: string }> = {
   zap: { icon: '⚡', verb: 'zapped you' }
 };
 
+// NIP-25: reaction content is '+' or empty for a plain "like" (shown as a
+// heart), '-' for a dislike, or any other string for a custom emoji
+// reaction — that emoji should actually be shown, not always a heart
+const reactionIcon = (content: string): string => {
+  if (content === '' || content === '+') return '❤️';
+  if (content === '-') return '👎';
+  return content;
+};
+
 const NotificationsPage: React.FC<NotificationsPageProps> = ({
   pubkey,
   relaysConnected,
@@ -152,6 +161,9 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
           const profile = profiles[notification.event.pubkey];
           const displayName = profile?.display_name || profile?.name || formatAddress(notification.event.pubkey);
           const meta = TYPE_META[notification.type];
+          const icon = notification.type === 'reaction'
+            ? reactionIcon(notification.event.content)
+            : meta.icon;
           const preview = renderPreview(notification);
           const isNew = (notification.event.created_at || 0) > initialLastSeenRef.current;
           const amountSats = notification.type === 'zap'
@@ -164,7 +176,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
               className={`notification-item ${isNew ? 'unread' : ''}`}
               onClick={() => handleClick(notification)}
             >
-              <span className="notification-icon">{meta.icon}</span>
+              <span className="notification-icon">{icon}</span>
               {profile?.picture ? (
                 <img
                   src={profile.picture}
