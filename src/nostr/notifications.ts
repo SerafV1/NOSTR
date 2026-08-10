@@ -53,7 +53,13 @@ export class NotificationCore {
 
     try {
       const relayPool = getRelayPool();
-      const events = await relayPool.fetchEvents(filters);
+      // waitForAll — without this, which relay happens to answer within
+      // the early-exit window varies call to call, so the "seen up to X"
+      // marker (computed from whatever this particular call returned)
+      // could miss a notification that only a slower relay has. That
+      // notification then never actually gets marked as seen, and
+      // resurfaces as unread again on a later poll that does catch it.
+      const events = await relayPool.fetchEvents(filters, true);
 
       // Drop future-dated spam (clock skew / bad actors) and your own
       // actions (you get #p'd on your own replies-to-self, reactions, etc.)
@@ -72,11 +78,16 @@ export class NotificationCore {
 }
 
 /**
- * Tracks the last-seen notification timestamp per pubkey in localStorage
+ * Tracks which notifications have been seen, per pubkey, in localStorage
  * so the unread badge survives reloads.
  */
 export class NotificationStore {
   private static readonly PREFIX = 'nostr_notifications_seen_';
+  private static readonly SEEN_IDS_PREFIX = 'nostr_notifications_seen_ids_';
+  // Bounded so localStorage doesn't grow forever — old enough entries fall
+  // off the end and back to relying on the legacy timestamp cutoff, which
+  // is harmless since anything that old is well past it anyway
+  private static readonly MAX_SEEN_IDS = 1000;
 
   static getLastSeen(pubkey: string): number {
     try {
@@ -95,8 +106,46 @@ export class NotificationStore {
     }
   }
 
+  private static getSeenIds(pubkey: string): string[] {
+    try {
+      const raw = localStorage.getItem(this.SEEN_IDS_PREFIX + pubkey);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Mark specific notifications as seen by id, not just "everything before
+   * timestamp X" — a single relay being slow/unreachable on any one fetch
+   * (background poll vs. the notifications page's own load race
+   * independently against relay timing) meant a notification could keep
+   * missing the "newest" cutoff on the visit that was supposed to clear
+   * it, then reappear as unread the moment some other fetch happened to
+   * reach the relay that has it. Once a notification has been shown here
+   * even once, it should stay read regardless of later fetch luck.
+   */
+  static markSeen(pubkey: string, ids: string[]): void {
+    if (ids.length === 0) return;
+    try {
+      const current = this.getSeenIds(pubkey);
+      const currentSet = new Set(current);
+      const merged = [...current, ...ids.filter(id => !currentSet.has(id))];
+      const trimmed = merged.slice(-this.MAX_SEEN_IDS);
+      localStorage.setItem(this.SEEN_IDS_PREFIX + pubkey, JSON.stringify(trimmed));
+    } catch {
+      // Best effort — a full quota just means the badge may re-show later
+    }
+  }
+
   static countUnread(pubkey: string, notifications: NostrNotification[]): number {
+    const seenIds = new Set(this.getSeenIds(pubkey));
     const lastSeen = this.getLastSeen(pubkey);
-    return notifications.filter(n => (n.event.created_at || 0) > lastSeen).length;
+    return notifications.filter(n => {
+      if (seenIds.has(n.id)) return false;
+      // Falls back to the timestamp cutoff for anything from before
+      // per-id tracking existed
+      return (n.event.created_at || 0) > lastSeen;
+    }).length;
   }
 }

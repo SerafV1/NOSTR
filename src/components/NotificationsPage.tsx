@@ -97,6 +97,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
     if (notifications.length === 0) return;
     const newest = Math.max(...notifications.map(n => n.event.created_at || 0));
     NotificationStore.setLastSeen(pubkey, newest);
+    NotificationStore.markSeen(pubkey, notifications.map(n => n.id));
     onMarkRead?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notifications, pubkey]);
