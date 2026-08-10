@@ -269,7 +269,9 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
       return merged;
     });
     setPendingEvents([]);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // .app-main is the actual scrolling element, not window — this page
+    // never scrolls the window itself (.app is pinned to 100vh)
+    document.querySelector('.app-main')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const fetchFeed = async () => {

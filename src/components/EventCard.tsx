@@ -52,6 +52,19 @@ const EventCard: React.FC<EventCardProps> = ({
   const [quotedNoteStatus, setQuotedNoteStatus] = useState<'none' | 'loading' | 'loaded' | 'failed'>('none');
   const [pollResponses, setPollResponses] = useState<NostrEventSigned[]>([]);
   const [votingOption, setVotingOption] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [showAllImages, setShowAllImages] = useState(false);
+  const [mediaRevealed, setMediaRevealed] = useState(false);
+
+  // NIP-36 content-warning tag, plus the common #nsfw hashtag convention
+  // some clients use instead/as well
+  const contentWarningTag = event.tags.find(t => t[0] === 'content-warning');
+  const isSensitive = !!contentWarningTag || event.tags.some(t => t[0] === 't' && t[1]?.toLowerCase() === 'nsfw');
+
+  // Long posts get truncated with a "Show more" toggle instead of
+  // stretching the card indefinitely
+  const CONTENT_TRUNCATE_LENGTH = 500;
+  const IMAGE_PREVIEW_LIMIT = 4;
 
   useEffect(() => {
     loadProfile();
@@ -521,9 +534,28 @@ const EventCard: React.FC<EventCardProps> = ({
       </div>
 
       <div className="event-content" onClick={() => onNavigateToNote?.(event.id)} style={{ cursor: 'pointer' }}>
-        {stripMediaUrls(event.content) && (
-          <p>{renderContentWithMentions(stripMediaUrls(event.content))}</p>
-        )}
+        {(() => {
+          const stripped = stripMediaUrls(event.content);
+          if (!stripped) return null;
+          const isLong = stripped.length > CONTENT_TRUNCATE_LENGTH;
+          const displayText = isLong && !expanded
+            ? `${stripped.slice(0, CONTENT_TRUNCATE_LENGTH).trimEnd()}…`
+            : stripped;
+          return (
+            <>
+              <p>{renderContentWithMentions(displayText)}</p>
+              {isLong && (
+                <button
+                  type="button"
+                  className="content-toggle-btn"
+                  onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
+                >
+                  {expanded ? 'Show less' : 'Show more'}
+                </button>
+              )}
+            </>
+          );
+        })()}
         {event.kind === EVENT_KINDS.POLL && (() => {
           const isZapPoll = event.tags.find(t => t[0] === 'polltype')?.[1] === 'zap';
           const endsAtTag = event.tags.find(t => t[0] === 'endsAt')?.[1];
@@ -601,45 +633,85 @@ const EventCard: React.FC<EventCardProps> = ({
               ))}
           </div>
         )}
-        {extractImageUrls(event.content).length > 0 && (
-          <div className="event-images">
-            {extractImageUrls(event.content).map((imageUrl, index) => (
+        {(extractImageUrls(event.content).length > 0 ||
+          extractVideoUrls(event.content).length > 0 ||
+          extractYouTubeIds(event.content).length > 0) && (
+          <div className={`sensitive-media-wrapper ${isSensitive && !mediaRevealed ? 'blurred' : ''}`}>
+            {isSensitive && !mediaRevealed && (
               <button
-                key={index}
-                className="event-image-preview"
-                onClick={(e) => { e.stopPropagation(); setEnlargedIndex(index); }}
-                style={{ border: 'none', padding: 0, background: 'none', cursor: 'pointer' }}
+                type="button"
+                className="sensitive-media-overlay"
+                onClick={(e) => { e.stopPropagation(); setMediaRevealed(true); }}
               >
-                <img
-                  src={imageUrl}
-                  alt={`Note image ${index + 1}`}
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                  }}
-                />
+                <span className="sensitive-media-icon">⚠️</span>
+                <span>
+                  Sensitive content{contentWarningTag?.[1] ? `: ${contentWarningTag[1]}` : ''}
+                </span>
+                <span className="sensitive-media-hint">Click to view</span>
               </button>
-            ))}
-          </div>
-        )}
-        {extractVideoUrls(event.content).length > 0 && (
-          <div className="event-videos" onClick={(e) => e.stopPropagation()}>
-            {extractVideoUrls(event.content).map((videoUrl) => (
-              <VideoPlayer key={videoUrl} src={videoUrl} className="event-video" />
-            ))}
-          </div>
-        )}
-        {extractYouTubeIds(event.content).length > 0 && (
-          <div className="event-videos" onClick={(e) => e.stopPropagation()}>
-            {extractYouTubeIds(event.content).map((videoId) => (
-              <div key={videoId} className="event-video-embed">
-                <iframe
-                  src={`https://www.youtube-nocookie.com/embed/${videoId}`}
-                  title="YouTube video"
-                  allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
+            )}
+
+            {extractImageUrls(event.content).length > 0 && (() => {
+              const images = extractImageUrls(event.content);
+              const hasMore = images.length > IMAGE_PREVIEW_LIMIT;
+              const visibleImages = showAllImages ? images : images.slice(0, IMAGE_PREVIEW_LIMIT);
+              return (
+                <>
+                  <div className="event-images">
+                    {visibleImages.map((imageUrl, index) => (
+                      <button
+                        key={index}
+                        className="event-image-preview"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isSensitive && !mediaRevealed) return;
+                          setEnlargedIndex(index);
+                        }}
+                        style={{ border: 'none', padding: 0, background: 'none', cursor: 'pointer' }}
+                      >
+                        <img
+                          src={imageUrl}
+                          alt={`Note image ${index + 1}`}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  {hasMore && (!isSensitive || mediaRevealed) && (
+                    <button
+                      type="button"
+                      className="content-toggle-btn"
+                      onClick={(e) => { e.stopPropagation(); setShowAllImages(v => !v); }}
+                    >
+                      {showAllImages ? 'Show fewer images' : `Show ${images.length - IMAGE_PREVIEW_LIMIT} more images`}
+                    </button>
+                  )}
+                </>
+              );
+            })()}
+            {extractVideoUrls(event.content).length > 0 && (
+              <div className="event-videos" onClick={(e) => e.stopPropagation()}>
+                {extractVideoUrls(event.content).map((videoUrl) => (
+                  <VideoPlayer key={videoUrl} src={videoUrl} className="event-video" />
+                ))}
               </div>
-            ))}
+            )}
+            {extractYouTubeIds(event.content).length > 0 && (
+              <div className="event-videos" onClick={(e) => e.stopPropagation()}>
+                {extractYouTubeIds(event.content).map((videoId) => (
+                  <div key={videoId} className="event-video-embed">
+                    <iframe
+                      src={`https://www.youtube-nocookie.com/embed/${videoId}`}
+                      title="YouTube video"
+                      allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {extractImageUrls(event.content).length === 0 &&
