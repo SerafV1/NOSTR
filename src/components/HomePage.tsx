@@ -71,12 +71,38 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     return pubkey ? `feed_home_${pubkey}` : 'feed_home';
   };
 
+  // Authors allowed in the home feed: everyone you follow, plus yourself.
+  // Falls back to the last known follow list so a cached feed can be
+  // filtered before this session's contact-list fetch has resolved.
+  const homeAuthors = (): Set<string> | null => {
+    const follows = followedRef.current.length > 0
+      ? followedRef.current
+      : NostrCore.getCachedFollowedAccounts();
+    if (follows.length === 0) return null;
+    const allowed = new Set(follows);
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (ownPubkey) allowed.add(ownPubkey); // own posts stay in the home feed
+    return allowed;
+  };
+
   // Read a cached feed, dropping future-dated spam that older versions
   // may have persisted
   const readCachedFeed = (): NostrEventSigned[] => {
     const cached = PersistentCache.get<NostrEventSigned[]>(feedCacheKey()) || [];
     const maxTimestamp = Math.floor(Date.now() / 1000) + 300;
-    return cached.filter(e => (e.created_at || 0) <= maxTimestamp);
+    const fresh = cached.filter(e => (e.created_at || 0) <= maxTimestamp);
+    if (feedType !== 'home') return fresh;
+    // Heal a home cache polluted by the global fallback — an older build
+    // persisted those strangers under this key, and they'd otherwise be
+    // rendered as your home feed on every load until a fetch replaced them
+    const allowed = homeAuthors();
+    // No follow list to check against yet (first load after upgrading, or
+    // storage cleared) — show nothing rather than a cache that might be
+    // someone else's posts. It costs one loading spinner, once: the fetch
+    // right after this persists the follow list, so every later load can
+    // validate the cache and render it instantly.
+    if (!allowed) return [];
+    return fresh.filter(e => allowed.has(e.pubkey));
   };
 
   useEffect(() => {
@@ -199,10 +225,8 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
       // A real home feed only contains followed authors (plus your own
       // posts) — mirrors the filter fetchFeed applies to its merged result
       if (feedType === 'home' && hasFollows) {
-        const followedSet = new Set(followedRef.current);
-        const ownPubkey = CredentialManager.getPublicKey();
-        if (ownPubkey) followedSet.add(ownPubkey);
-        if (!followedSet.has(event.pubkey)) return;
+        const allowed = homeAuthors();
+        if (allowed && !allowed.has(event.pubkey)) return;
       }
 
       // Prefetch the author's profile so the card renders instantly on click
@@ -325,11 +349,9 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
 
       // A real home feed must only contain followed authors — drops global
       // posts cached earlier by the no-follows fallback
-      if (feedType === 'home' && followedRef.current.length > 0) {
-        const followedSet = new Set(followedRef.current);
-        const ownPubkey = CredentialManager.getPublicKey();
-        if (ownPubkey) followedSet.add(ownPubkey); // own posts stay in the home feed
-        merged = merged.filter(e => followedSet.has(e.pubkey));
+      if (feedType === 'home') {
+        const allowed = homeAuthors();
+        if (allowed) merged = merged.filter(e => allowed.has(e.pubkey));
       }
 
       // One batch query for all author profiles so cards render instantly
@@ -337,7 +359,12 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
       await NostrCore.fetchProfiles(merged.map(e => e.pubkey));
 
       setEvents(merged);
-      PersistentCache.set(feedCacheKey(), merged);
+      // The global fallback shown to an account with no follows is not a
+      // home feed — persisting it under the home key would replay those
+      // strangers as "your" feed on every later load
+      if (!(feedType === 'home' && followedRef.current.length === 0)) {
+        PersistentCache.set(feedCacheKey(), merged);
+      }
 
       // The live subscription can start streaming "new" posts while this
       // fetch is still in flight (it doesn't wait for `events` to be ready
@@ -352,7 +379,17 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
       // Reposts only make sense for the home feed — showing everyone's
       // reposts on Global/Topic would be unfilterable noise
       if (feedType === 'home' && followedRef.current.length > 0) {
-        const repostResults = await NostrCore.fetchReposts(followedRef.current, 50);
+        let repostResults = await NostrCore.fetchReposts(followedRef.current, 50);
+        // Keep reposts inside the window the feed itself covers. Relays hand
+        // back reposts far older than the 100 notes above, and interleaving
+        // those stretches the timeline back weeks — the feed then reads as
+        // mostly other people's reposts rather than as your own feed.
+        const oldestNote = merged.length > 0
+          ? Math.min(...merged.map(e => e.created_at || 0))
+          : 0;
+        if (oldestNote > 0) {
+          repostResults = repostResults.filter(r => (r.repost.created_at || 0) >= oldestNote);
+        }
         await NostrCore.fetchProfiles(repostResults.map(r => r.repost.pubkey));
         setReposts(repostResults);
       } else {

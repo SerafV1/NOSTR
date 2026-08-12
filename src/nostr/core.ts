@@ -342,6 +342,21 @@ export class NostrCore {
     return result;
   }
 
+  private static followsCacheKey(pubkey: string): string {
+    return `follows_${pubkey}`;
+  }
+
+  /**
+   * Last known follow list, without hitting a relay. Callers that need to
+   * decide *right now* whether an author belongs in the home feed (cache
+   * rendering, before any fetch has resolved) use this.
+   */
+  static getCachedFollowedAccounts(): string[] {
+    const pubkey = CredentialManager.getPublicKey();
+    if (!pubkey) return [];
+    return PersistentCache.get<string[]>(this.followsCacheKey(pubkey)) || [];
+  }
+
   /**
    * Fetch followed accounts from current user's contacts (kind 3)
    */
@@ -351,7 +366,19 @@ export class NostrCore {
       console.error('Public key not found');
       return [];
     }
-    return this.fetchFollowingList(pubkey);
+
+    const follows = await this.fetchFollowingList(pubkey);
+    if (follows.length > 0) {
+      PersistentCache.set(this.followsCacheKey(pubkey), follows);
+      return follows;
+    }
+
+    // An empty result is ambiguous: a brand-new account that follows
+    // nobody looks exactly like relays that failed to hand over an
+    // existing contact list. Callers turn "follows nobody" into an
+    // unfiltered global feed, so guessing wrong fills the home feed with
+    // strangers — prefer the last list we actually saw.
+    return this.getCachedFollowedAccounts();
   }
 
   /**
@@ -430,9 +457,13 @@ export class NostrCore {
         true
       );
       if (events.length === 0) return null;
-      return events.reduce((latest, current) =>
-        (current.created_at || 0) > (latest.created_at || 0) ? current : latest
+      const latest = events.reduce((newest, current) =>
+        (current.created_at || 0) > (newest.created_at || 0) ? current : newest
       );
+      // Remember it: the next follow/unfollow needs a trustworthy base even
+      // if the relays are unreachable at that moment
+      PersistentCache.set(this.contactListCacheKey(pubkey), latest);
+      return latest;
     } catch (error) {
       console.error('Failed to fetch contact list event:', error);
       return null;
@@ -461,6 +492,9 @@ export class NostrCore {
     if (!Array.from(results.values()).some(Boolean)) {
       throw new Error('No relay accepted the updated contact list');
     }
+    // What we just published is now the authoritative list — remember it, so
+    // the next edit builds on it even if no relay answers at that moment
+    PersistentCache.set(this.contactListCacheKey(signed.pubkey), signed);
     return true;
   }
 
@@ -477,11 +511,48 @@ export class NostrCore {
   /**
    * Follow a pubkey — adds a `p` tag to the existing contact list (kind 3)
    */
+  /**
+   * The contact list to edit, or null if we can't establish one safely.
+   *
+   * Kind 3 is replaceable: publishing one built from the wrong base doesn't
+   * merge, it *destroys* whatever the relays held. A follow click while
+   * relays are timing out used to fall back to an empty base and wipe the
+   * entire follow list globally, one click. So: take the newest of what the
+   * relays just returned and what we last saw ourselves, and treat "nothing
+   * anywhere" as a hard stop rather than as "you follow nobody".
+   */
+  private static async resolveContactListBase(
+    pubkey: string
+  ): Promise<{ event: NostrEventSigned | null; safe: boolean }> {
+    const fetched = await this.fetchContactListEvent(pubkey);
+    const remembered = PersistentCache.get<NostrEventSigned>(this.contactListCacheKey(pubkey));
+
+    const newest = [fetched, remembered]
+      .filter((e): e is NostrEventSigned => !!e)
+      .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0] || null;
+
+    if (newest) return { event: newest, safe: true };
+
+    // No list from anywhere. That's legitimate for a brand-new account, but
+    // indistinguishable from every relay having failed us — so only trust it
+    // when relays are actually reachable and simply had nothing to say.
+    return { event: null, safe: getRelayPool().getConnectedRelayCount() > 0 };
+  }
+
+  private static contactListCacheKey(pubkey: string): string {
+    return `contact_list_${pubkey}`;
+  }
+
+  private static readonly CONTACT_LIST_UNAVAILABLE =
+    'Could not load your follow list from any relay. Not publishing, because that would erase the list you already have — check your relay connections and try again.';
+
   static async followUser(targetPubkey: string): Promise<boolean> {
     const ownPubkey = CredentialManager.getPublicKey();
     if (!ownPubkey) throw new Error('Public key not found');
 
-    const existing = await this.fetchContactListEvent(ownPubkey);
+    const { event: existing, safe } = await this.resolveContactListBase(ownPubkey);
+    if (!existing && !safe) throw new Error(this.CONTACT_LIST_UNAVAILABLE);
+
     const tags = existing ? [...existing.tags] : [];
     if (tags.some(t => t[0] === 'p' && t[1] === targetPubkey)) {
       return true; // already following
@@ -498,8 +569,11 @@ export class NostrCore {
     const ownPubkey = CredentialManager.getPublicKey();
     if (!ownPubkey) throw new Error('Public key not found');
 
-    const existing = await this.fetchContactListEvent(ownPubkey);
-    if (!existing) return true; // nothing to unfollow
+    const { event: existing, safe } = await this.resolveContactListBase(ownPubkey);
+    if (!existing) {
+      if (!safe) throw new Error(this.CONTACT_LIST_UNAVAILABLE);
+      return true; // genuinely nothing to unfollow
+    }
 
     const tags = existing.tags.filter(t => !(t[0] === 'p' && t[1] === targetPubkey));
     return this.publishContactList(tags, existing.content || '');
@@ -573,7 +647,14 @@ export class NostrCore {
 
     try {
       const relayPool = getRelayPool();
-      const repostEvents = this.dropFutureEvents(await relayPool.fetchEvents(filters));
+      // `limit` is per-relay: the pool merges every relay's answer, so eight
+      // relays return up to eight times what was asked for. Re-apply the cap
+      // to the merged result — otherwise reposts flood the home feed and
+      // drown out the posts from accounts you actually follow. Cutting here,
+      // before resolving originals, also saves fetching the ones we'd drop.
+      const repostEvents = this.dropFutureEvents(await relayPool.fetchEvents(filters))
+        .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
+        .slice(0, limit);
 
       const embedded = new Map<string, NostrEventSigned>();
       const missingIds: string[] = [];

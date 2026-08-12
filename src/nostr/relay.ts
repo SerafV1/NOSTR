@@ -406,6 +406,21 @@ export class RelayPool {
   }
 
   /**
+   * How many read relays are actually reachable right now. Lets a caller
+   * tell "the relays answered, and you really have no such event" apart
+   * from "nothing answered" — the difference between those two is whether
+   * publishing a replaceable event would create it or destroy it.
+   */
+  getConnectedRelayCount(): number {
+    let count = 0;
+    for (const [url, relay] of this.relays) {
+      const config = this.relayConfigs.find(c => c.url === url);
+      if (config?.read && this.isActuallyConnected(relay)) count++;
+    }
+    return count;
+  }
+
+  /**
    * Clean up stale relay configs that don't have active relays
    */
   cleanupStaleConfigs(): void {
