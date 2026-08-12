@@ -3,7 +3,7 @@ import { UserProfile, NostrEventSigned, NostrFilter, EVENT_KINDS } from '../type
 import { NostrCore, EventCache, PersistentCache, ZapActivity } from '../nostr/core';
 import { NostrCrypto } from '../nostr/crypto';
 import { formatAddress, formatDate, copyToClipboard } from '../utils/helpers';
-import { extractImageUrls, extractVideoUrls, extractYouTubeIds } from '../utils/media';
+import { extractImageUrls, extractVideoUrls, extractEmbeds } from '../utils/media';
 import EventCard from './EventCard';
 import QuotedNoteCard from './QuotedNoteCard';
 import EditProfileForm from './EditProfileForm';
@@ -12,16 +12,18 @@ import { ZapIcon, MessageIcon, CopyIcon, CheckIcon } from './Icons';
 
 interface MediaThumbnail {
   noteId: string;
-  type: 'image' | 'video' | 'youtube';
+  type: 'image' | 'video' | 'embed';
   url: string;
 }
 
 const firstMediaThumbnail = (note: NostrEventSigned): MediaThumbnail | null => {
   const images = extractImageUrls(note.content);
   if (images.length > 0) return { noteId: note.id, type: 'image', url: images[0] };
-  const youtubeIds = extractYouTubeIds(note.content);
-  if (youtubeIds.length > 0) {
-    return { noteId: note.id, type: 'youtube', url: `https://img.youtube.com/vi/${youtubeIds[0]}/hqdefault.jpg` };
+  // Only players that expose a poster from the URL alone can fill a grid
+  // cell — an audio widget has nothing to show here
+  const withThumbnail = extractEmbeds(note.content).find(embed => embed.thumbnail);
+  if (withThumbnail) {
+    return { noteId: note.id, type: 'embed', url: withThumbnail.thumbnail! };
   }
   const videos = extractVideoUrls(note.content);
   if (videos.length > 0) return { noteId: note.id, type: 'video', url: videos[0] };

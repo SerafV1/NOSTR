@@ -4,8 +4,9 @@ import { NostrEventSigned, UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { BlossomClient } from '../nostr/blossom';
 import { loadBlossomServers } from '../utils/blossomServers';
-import { extractImageUrls, extractVideoUrls, extractYouTubeIds } from '../utils/media';
+import { extractImageUrls, extractVideoUrls, extractEmbeds } from '../utils/media';
 import { extractMentionPubkeys, formatAddress } from '../utils/helpers';
+import MediaEmbed from './MediaEmbed';
 import VideoPlayer from './VideoPlayer';
 import EmojiPicker from './EmojiPicker';
 import { PollIcon, PersonIcon, ZapIcon, ImageIcon } from './Icons';
@@ -466,8 +467,8 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
         // Live preview of media links while typing
         const previewImages = extractImageUrls(content);
         const previewVideos = extractVideoUrls(content);
-        const previewYouTube = extractYouTubeIds(content);
-        if (previewImages.length === 0 && previewVideos.length === 0 && previewYouTube.length === 0) {
+        const previewEmbeds = extractEmbeds(content);
+        if (previewImages.length === 0 && previewVideos.length === 0 && previewEmbeds.length === 0) {
           return null;
         }
         return (
@@ -484,15 +485,8 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
             {previewVideos.map(url => (
               <VideoPlayer key={url} src={url} className="compose-preview-video" />
             ))}
-            {previewYouTube.map(videoId => (
-              <div key={videoId} className="event-video-embed">
-                <iframe
-                  src={`https://www.youtube-nocookie.com/embed/${videoId}`}
-                  title="YouTube preview"
-                  allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
-              </div>
+            {previewEmbeds.map(embed => (
+              <MediaEmbed key={`${embed.kind}:${embed.id}`} embed={embed} />
             ))}
           </div>
         );

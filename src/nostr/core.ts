@@ -6,6 +6,7 @@ import {
   EVENT_KINDS,
   EventWithMetadata
 } from '../types';
+import { nip19 } from 'nostr-tools';
 import { NostrCrypto, CredentialManager, ExtensionManager } from './crypto';
 import { getRelayPool } from './relay';
 import { isEffectivelyLive } from '../utils/liveStream';
@@ -605,6 +606,88 @@ export class NostrCore {
     } catch (error) {
       console.error('Failed to fetch reposts:', error);
       return [];
+    }
+  }
+
+  /**
+   * Resolve a repost (kind 6) down to the actual note it points to — NIP-18
+   * says the repost's content MAY embed the original event as JSON, and
+   * otherwise its 'e' tag has to be fetched. A repost can itself target
+   * another repost (someone reposting a repost), so this unwraps
+   * recursively until it lands on something that isn't a repost, capped
+   * to guard against a pathological/malicious chain.
+   */
+  static async resolveRepostOriginal(repost: NostrEventSigned, depth: number = 0): Promise<NostrEventSigned | null> {
+    if (depth > 5) return null;
+
+    let original: NostrEventSigned | null = null;
+    try {
+      const parsed = JSON.parse(repost.content) as NostrEventSigned;
+      if (parsed?.id && parsed?.pubkey && parsed?.content !== undefined) {
+        EventCache.addEvent(parsed);
+        original = parsed;
+      }
+    } catch {
+      // Not embedded JSON — fall through to fetching it by id
+    }
+
+    if (!original) {
+      const targetId = repost.tags.find(t => t[0] === 'e')?.[1];
+      if (!targetId) return null;
+      original = await this.fetchEventById(targetId);
+    }
+
+    if (original && original.kind === EVENT_KINDS.REPOST) {
+      return this.resolveRepostOriginal(original, depth + 1);
+    }
+    return original;
+  }
+
+  /**
+   * Find the first nostr:note1/nevent1/naddr1 reference in a note's
+   * content and resolve it to the event it actually points to — unwrapped
+   * through a repost if that's what the reference targets. Shared by the
+   * top-level quote card and, recursively, by nested quote-of-a-quote
+   * previews so both use the exact same resolution logic.
+   */
+  static async resolveQuoteReference(content: string): Promise<{ note: NostrEventSigned; repostedBy?: string } | null> {
+    const matches = content.match(/nostr:(?:note1|nevent1|naddr1)[a-z0-9]+/gi);
+    if (!matches || matches.length === 0) return null;
+
+    const link = matches[0];
+    const linkLower = link.toLowerCase();
+    const bech32 = link.replace(/^nostr:/i, '');
+
+    try {
+      let note: NostrEventSigned | null = null;
+
+      if (linkLower.includes('naddr1')) {
+        const decoded = nip19.decode(bech32);
+        if (decoded.type !== 'naddr') return null;
+        const { kind, pubkey, identifier } = decoded.data as { kind: number; pubkey: string; identifier: string };
+        note = await this.fetchEventByAddress(kind, pubkey, identifier);
+      } else if (linkLower.includes('nevent1')) {
+        const decoded = nip19.decode(bech32);
+        if (decoded.type !== 'nevent') return null;
+        const { id, relays, author } = decoded.data as { id: string; relays?: string[]; author?: string };
+        note = await this.fetchEventById(id, relays, author);
+      } else {
+        const decoded = nip19.decode(bech32);
+        if (decoded.type !== 'note' || typeof decoded.data !== 'string') return null;
+        note = await this.fetchEventById(decoded.data);
+      }
+
+      if (!note) return null;
+
+      if (note.kind === EVENT_KINDS.REPOST) {
+        const original = await this.resolveRepostOriginal(note);
+        return original ? { note: original, repostedBy: note.pubkey } : null;
+      }
+
+      return { note };
+    } catch (error) {
+      console.error('Failed to resolve quote reference:', error);
+      return null;
     }
   }
 

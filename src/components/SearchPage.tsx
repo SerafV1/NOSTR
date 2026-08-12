@@ -3,7 +3,7 @@ import { NostrEventSigned, UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
 import { formatAddress } from '../utils/helpers';
-import { extractImageUrls, extractVideoUrls, extractYouTubeIds } from '../utils/media';
+import { extractImageUrls, extractVideoUrls, extractEmbeds } from '../utils/media';
 import { loadCustomFeeds, addCustomFeed } from '../utils/customFeeds';
 import EventCard from './EventCard';
 
@@ -61,7 +61,7 @@ type ZappedNote = NostrEventSigned & { zapSats: number };
 const hasMedia = (content: string) =>
   extractImageUrls(content).length > 0 ||
   extractVideoUrls(content).length > 0 ||
-  extractYouTubeIds(content).length > 0;
+  extractEmbeds(content).length > 0;
 
 const SearchPage: React.FC<SearchPageProps> = ({ relaysConnected, onNavigateToProfile, onNavigateToNote, initialTopic, topicNavKey }) => {
   const [query, setQuery] = useState('');

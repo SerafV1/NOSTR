@@ -7,12 +7,13 @@ import { formatDate, formatAddress } from '../utils/helpers';
 import {
   extractImageUrls,
   extractVideoUrls,
-  extractYouTubeIds,
+  extractEmbeds,
   extractPreviewLinkUrl,
   stripMediaUrls,
   splitContentTokens
 } from '../utils/media';
 import ComposeModal from './ComposeModal';
+import MediaEmbed from './MediaEmbed';
 import VideoPlayer from './VideoPlayer';
 import QuotedNoteCard from './QuotedNoteCard';
 import LinkPreviewCard from './LinkPreviewCard';
@@ -50,6 +51,10 @@ const EventCard: React.FC<EventCardProps> = ({
   const [enlargedIndex, setEnlargedIndex] = useState<number | null>(null);
   const [quotedNote, setQuotedNote] = useState<NostrEventSigned | null>(null);
   const [quotedNoteStatus, setQuotedNoteStatus] = useState<'none' | 'loading' | 'loaded' | 'failed'>('none');
+  // Set when the quoted reference resolves to a repost rather than a
+  // plain note — the repost gets unwrapped down to the actual content,
+  // but who reposted it is still worth showing
+  const [quotedNoteRepostedBy, setQuotedNoteRepostedBy] = useState<string | null>(null);
   const [pollResponses, setPollResponses] = useState<NostrEventSigned[]>([]);
   const [votingOption, setVotingOption] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -196,87 +201,25 @@ const EventCard: React.FC<EventCardProps> = ({
   };
 
   const loadQuotedNote = async () => {
-    // Look for a nostr:note1..., nostr:nevent1... or nostr:naddr1... reference
-    const matches = event.content.match(/nostr:(?:note1|nevent1|naddr1)[a-z0-9]+/gi);
-    if (!matches || matches.length === 0) {
+    if (!/nostr:(?:note1|nevent1|naddr1)[a-z0-9]+/i.test(event.content)) {
       setQuotedNoteStatus('none');
       return;
     }
 
     setQuotedNoteStatus('loading');
+    setQuotedNoteRepostedBy(null);
     try {
-      const link = matches[0];
-      const linkLower = link.toLowerCase();
-
-      if (linkLower.includes('naddr1')) {
-        const address = decodeNaddr(link);
-        if (address) {
-          const note = await NostrCore.fetchEventByAddress(address.kind, address.pubkey, address.identifier);
-          if (note) {
-            setQuotedNote(note);
-            setQuotedNoteStatus('loaded');
-            return;
-          }
-        }
+      const resolved = await NostrCore.resolveQuoteReference(event.content);
+      if (resolved) {
+        setQuotedNote(resolved.note);
+        setQuotedNoteRepostedBy(resolved.repostedBy || null);
+        setQuotedNoteStatus('loaded');
+      } else {
         setQuotedNoteStatus('failed');
-        return;
       }
-
-      const decoded = linkLower.includes('nevent1') ? decodeNevent(link) : decodeNote(link);
-      const decodedId = typeof decoded === 'string' ? decoded : decoded?.id;
-      const hintRelays = typeof decoded === 'string' ? undefined : decoded?.relays;
-      const authorHint = typeof decoded === 'string' ? undefined : decoded?.author;
-      if (decodedId) {
-        // A relay hint in the reference itself (NIP-19) is the whole reason
-        // it's there — e.g. a Fediverse-bridged note that only lives on
-        // the bridge's own relay, nowhere in our default set. Falls back
-        // further to the author's own NIP-65 write relays when the nevent
-        // embeds a pubkey but no (or an exhausted) relay hint.
-        const note = await NostrCore.fetchEventById(decodedId, hintRelays, authorHint);
-        if (note) {
-          setQuotedNote(note);
-          setQuotedNoteStatus('loaded');
-          return;
-        }
-      }
-      setQuotedNoteStatus('failed');
     } catch (error) {
       console.error('Failed to load quoted note:', error);
       setQuotedNoteStatus('failed');
-    }
-  };
-
-  const decodeNote = (noteLink: string): string | null => {
-    try {
-      const decoded = nip19.decode(noteLink.replace(/^nostr:/, ''));
-      return decoded.type === 'note' && typeof decoded.data === 'string' ? decoded.data : null;
-    } catch (error) {
-      console.error('Failed to decode note:', error);
-      return null;
-    }
-  };
-
-  const decodeNevent = (neventLink: string): { id: string; relays?: string[]; author?: string } | null => {
-    try {
-      const decoded = nip19.decode(neventLink.replace(/^nostr:/, ''));
-      if (decoded.type !== 'nevent') return null;
-      const { id, relays, author } = decoded.data as { id: string; relays?: string[]; author?: string };
-      return { id, relays, author };
-    } catch (error) {
-      console.error('Failed to decode nevent:', error);
-      return null;
-    }
-  };
-
-  const decodeNaddr = (naddrLink: string): { kind: number; pubkey: string; identifier: string } | null => {
-    try {
-      const decoded = nip19.decode(naddrLink.replace(/^nostr:/, ''));
-      if (decoded.type !== 'naddr') return null;
-      const { kind, pubkey, identifier } = decoded.data as { kind: number; pubkey: string; identifier: string };
-      return { kind, pubkey, identifier };
-    } catch (error) {
-      console.error('Failed to decode naddr:', error);
-      return null;
     }
   };
 
@@ -648,7 +591,7 @@ const EventCard: React.FC<EventCardProps> = ({
         )}
         {(extractImageUrls(event.content).length > 0 ||
           extractVideoUrls(event.content).length > 0 ||
-          extractYouTubeIds(event.content).length > 0) && (
+          extractEmbeds(event.content).length > 0) && (
           <div className={`sensitive-media-wrapper ${isSensitive && !mediaRevealed ? 'blurred' : ''}`}>
             {isSensitive && !mediaRevealed && (
               <button
@@ -711,17 +654,10 @@ const EventCard: React.FC<EventCardProps> = ({
                 ))}
               </div>
             )}
-            {extractYouTubeIds(event.content).length > 0 && (
+            {extractEmbeds(event.content).length > 0 && (
               <div className="event-videos" onClick={(e) => e.stopPropagation()}>
-                {extractYouTubeIds(event.content).map((videoId) => (
-                  <div key={videoId} className="event-video-embed">
-                    <iframe
-                      src={`https://www.youtube-nocookie.com/embed/${videoId}`}
-                      title="YouTube video"
-                      allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    />
-                  </div>
+                {extractEmbeds(event.content).map((embed) => (
+                  <MediaEmbed key={`${embed.kind}:${embed.id}`} embed={embed} />
                 ))}
               </div>
             )}
@@ -729,7 +665,7 @@ const EventCard: React.FC<EventCardProps> = ({
         )}
         {extractImageUrls(event.content).length === 0 &&
           extractVideoUrls(event.content).length === 0 &&
-          extractYouTubeIds(event.content).length === 0 &&
+          extractEmbeds(event.content).length === 0 &&
           extractPreviewLinkUrl(event.content) && (
             <div onClick={(e) => e.stopPropagation()}>
               <LinkPreviewCard url={extractPreviewLinkUrl(event.content)!} />
@@ -748,6 +684,7 @@ const EventCard: React.FC<EventCardProps> = ({
       {quotedNote && (
         <QuotedNoteCard
           event={quotedNote}
+          repostedBy={quotedNoteRepostedBy}
           onNavigateToProfile={onNavigateToProfile}
           onNavigateToNote={onNavigateToNote}
         />
