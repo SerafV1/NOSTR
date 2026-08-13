@@ -183,7 +183,10 @@ const SearchPage: React.FC<SearchPageProps> = ({ relaysConnected, onNavigateToPr
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    performSearch(query, activeTab);
+    // A pasted npub/nprofile/hex key can only mean one thing — go straight
+    // to People rather than searching whichever tab happened to be open
+    const tab = NostrCore.pubkeyFromIdentifier(query) ? 'people' : activeTab;
+    performSearch(query, tab);
   };
 
   // A #hashtag or the topic search input elsewhere in the app requested

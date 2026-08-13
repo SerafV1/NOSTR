@@ -1638,8 +1638,42 @@ export class NostrCore {
    * No relay-side full-text search for kind 0 is assumed — fetch a broad
    * batch of recent profiles and filter client-side.
    */
+  /**
+   * Read a pasted account identifier as a pubkey — npub, nprofile, a raw
+   * hex key, any of them optionally carrying a `nostr:` prefix. Returns
+   * null for anything that isn't one, so callers can fall back to a normal
+   * text search.
+   */
+  static pubkeyFromIdentifier(input: string): string | null {
+    const candidate = input.trim().replace(/^nostr:/i, '');
+    if (!candidate) return null;
+
+    if (/^[0-9a-f]{64}$/i.test(candidate)) return candidate.toLowerCase();
+
+    if (/^(npub|nprofile)1[a-z0-9]+$/i.test(candidate)) {
+      try {
+        const decoded = nip19.decode(candidate.toLowerCase());
+        if (decoded.type === 'npub' && typeof decoded.data === 'string') return decoded.data;
+        if (decoded.type === 'nprofile') return (decoded.data as { pubkey: string }).pubkey;
+      } catch {
+        // Malformed bech32 — treat it as ordinary search text
+      }
+    }
+    return null;
+  }
+
   static async searchProfiles(query: string, limit: number = 30): Promise<UserProfile[]> {
     const queryLower = query.toLowerCase();
+
+    // A pasted npub/nprofile/hex key names exactly one account — look it up
+    // directly instead of hoping it turns up in the sample of profiles below
+    const identifier = this.pubkeyFromIdentifier(query);
+    if (identifier) {
+      const profile = await this.fetchUserProfile(identifier);
+      // Even with no kind 0 anywhere, the account itself is a valid result —
+      // returning nothing would read as "no such user", which is wrong
+      return [profile ?? { pubkey: identifier }];
+    }
 
     try {
       const relayPool = getRelayPool();
