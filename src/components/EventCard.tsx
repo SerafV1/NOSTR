@@ -14,6 +14,7 @@ import {
 } from '../utils/media';
 import ComposeModal from './ComposeModal';
 import MediaEmbed from './MediaEmbed';
+import ProfileHoverCard from './ProfileHoverCard';
 import VideoPlayer from './VideoPlayer';
 import QuotedNoteCard from './QuotedNoteCard';
 import LinkPreviewCard from './LinkPreviewCard';
@@ -458,27 +459,41 @@ const EventCard: React.FC<EventCardProps> = ({
     <div className="event-card">
       <div className="event-header">
         <div className="event-author-info">
-          {displayPicture ? (
-            <img 
-              src={displayPicture} 
-              alt={displayName}
-              className="author-avatar"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-              }}
-            />
-          ) : (
-            <div className="author-avatar-placeholder">
-              {displayName.charAt(0).toUpperCase()}
-            </div>
-          )}
+          <ProfileHoverCard
+            pubkey={event.pubkey}
+            profile={profile}
+            onNavigateToProfile={onNavigateToProfile}
+            onBlocked={() => onRefresh?.()}
+          >
+            {displayPicture ? (
+              <img
+                src={displayPicture}
+                alt={displayName}
+                className="author-avatar"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <div className="author-avatar-placeholder">
+                {displayName.charAt(0).toUpperCase()}
+              </div>
+            )}
+          </ProfileHoverCard>
           <div className="author-details">
-            <button 
-              className="author-name"
-              onClick={() => onNavigateToProfile(event.pubkey)}
+            <ProfileHoverCard
+              pubkey={event.pubkey}
+              profile={profile}
+              onNavigateToProfile={onNavigateToProfile}
+              onBlocked={() => onRefresh?.()}
             >
-              {displayName}
-            </button>
+              <button
+                className="author-name"
+                onClick={() => onNavigateToProfile(event.pubkey)}
+              >
+                {displayName}
+              </button>
+            </ProfileHoverCard>
             <div className="author-handle">
               {profile?.nip05 || formatAddress(event.pubkey)}
             </div>

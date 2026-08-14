@@ -127,6 +127,17 @@ a:hover {
   border-color: var(--primary-color);
 }
 
+.btn-danger {
+  background: transparent;
+  color: #e5484d;
+  border: 1px solid rgba(229, 72, 77, 0.5);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(229, 72, 77, 0.12);
+  border-color: #e5484d;
+}
+
 .btn-outline {
   background: transparent;
   color: var(--primary-color);
@@ -4538,4 +4549,141 @@ button.poll-option-vote:disabled {
   color: var(--text-primary);
   line-height: 1.5;
   white-space: pre-wrap;
+}
+/* ---------------------------------------------------------------------
+   Profile hover card — actions on an author without leaving the feed
+   --------------------------------------------------------------------- */
+
+.hover-card-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.profile-hover-card {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 200;
+  width: 280px;
+  padding: var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--card-bg, var(--light-bg));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  cursor: default;
+  text-align: left;
+}
+
+/* Flipped when the card would otherwise run off the bottom of the viewport */
+.profile-hover-card.above {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+
+.hover-card-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.hover-card-avatar,
+.hover-card-avatar-placeholder {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.hover-card-avatar-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+  color: white;
+  font-weight: 600;
+}
+
+.hover-card-names {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.hover-card-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hover-card-handle {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hover-card-about {
+  margin: var(--spacing-sm) 0 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  /* A long bio must not make the card taller than the post it sits on */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hover-card-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+}
+
+.hover-card-btn {
+  flex: 1;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--light-bg);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hover-card-btn.primary {
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+  border-color: transparent;
+  color: white;
+}
+
+.hover-card-btn.danger {
+  color: #e5484d;
+  border-color: rgba(229, 72, 77, 0.5);
+  background: transparent;
+}
+
+.hover-card-btn.danger:hover:not(:disabled) {
+  background: rgba(229, 72, 77, 0.12);
+}
+
+.hover-card-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hover-card-error {
+  margin: var(--spacing-sm) 0 0;
+  font-size: 0.78rem;
+  color: #e5484d;
 }

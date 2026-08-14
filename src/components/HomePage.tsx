@@ -90,7 +90,9 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   const readCachedFeed = (): NostrEventSigned[] => {
     const cached = PersistentCache.get<NostrEventSigned[]>(feedCacheKey()) || [];
     const maxTimestamp = Math.floor(Date.now() / 1000) + 300;
-    const fresh = cached.filter(e => (e.created_at || 0) <= maxTimestamp);
+    // Blocking someone has to clear them out of what was already cached,
+    // not just out of the next fetch
+    const fresh = NostrCore.dropBlocked(cached.filter(e => (e.created_at || 0) <= maxTimestamp));
     if (feedType !== 'home') return fresh;
     // Heal a home cache polluted by the global fallback — an older build
     // persisted those strangers under this key, and they'd otherwise be
@@ -219,6 +221,8 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
       const maxTimestamp = Math.floor(Date.now() / 1000) + 300; // 5 min clock-skew tolerance
       if ((event.created_at || 0) > maxTimestamp) return;
 
+      if (NostrCore.isBlocked(event.pubkey)) return;
+
       const shown = [...pendingRef.current, ...eventsRef.current];
       if (shown.some(e => e.id === event.id)) return;
 
@@ -310,6 +314,10 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
       setEvents([]); // Clear old events while loading new feed
     }
     try {
+      // Refresh the block list before the feed, so a block made in another
+      // client (or on another device) is already in effect when posts land
+      await NostrCore.fetchBlockedPubkeys();
+
       let fetchedEvents: NostrEventSigned[];
 
       if (feedType === 'global') {

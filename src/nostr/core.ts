@@ -457,6 +457,15 @@ export class NostrCore {
    * whatever we last published.
    */
   private static async fetchContactListEvent(pubkey: string): Promise<NostrEventSigned | null> {
+    return this.fetchReplaceableListEvent(EVENT_KINDS.CONTACTS, pubkey);
+  }
+
+  /**
+   * Latest raw event for one of the user's replaceable lists (contacts,
+   * mute list). Relays keep only the newest, so an edit has to start from
+   * this event's tags rather than from scratch.
+   */
+  private static async fetchReplaceableListEvent(kind: number, pubkey: string): Promise<NostrEventSigned | null> {
     try {
       const relayPool = getRelayPool();
       // waitForAll — this drives whether the home feed is author-filtered
@@ -465,30 +474,38 @@ export class NostrCore {
       // large contact list got a chance to) silently turns the home feed
       // into the unfiltered global feed, which looks like random posts.
       const events = await relayPool.fetchEvents(
-        [{ kinds: [EVENT_KINDS.CONTACTS], authors: [pubkey], limit: 5 }],
+        [{ kinds: [kind], authors: [pubkey], limit: 5 }],
         true
       );
       if (events.length === 0) return null;
       const latest = events.reduce((newest, current) =>
         (current.created_at || 0) > (newest.created_at || 0) ? current : newest
       );
-      // Remember it: the next follow/unfollow needs a trustworthy base even
-      // if the relays are unreachable at that moment
-      PersistentCache.set(this.contactListCacheKey(pubkey), latest);
+      // Remember it: the next edit needs a trustworthy base even if the
+      // relays are unreachable at that moment
+      PersistentCache.set(this.listCacheKey(kind, pubkey), latest);
       return latest;
     } catch (error) {
-      console.error('Failed to fetch contact list event:', error);
+      console.error(`Failed to fetch kind ${kind} list event:`, error);
       return null;
     }
   }
 
   private static async publishContactList(tags: string[][], content: string): Promise<boolean> {
+    return this.publishReplaceableList(EVENT_KINDS.CONTACTS, tags, content);
+  }
+
+  private static async publishReplaceableList(
+    kind: number,
+    tags: string[][],
+    content: string
+  ): Promise<boolean> {
     const isExtension = CredentialManager.isExtensionMode();
     if (!isExtension && !CredentialManager.getPrivateKey()) {
       throw new Error('Private key not found');
     }
 
-    const event: NostrEvent = { kind: EVENT_KINDS.CONTACTS, content, tags };
+    const event: NostrEvent = { kind, content, tags };
 
     let signed: NostrEventSigned;
     if (isExtension) {
@@ -502,17 +519,101 @@ export class NostrCore {
     const relayPool = getRelayPool();
     const results = await relayPool.publishEvent(signed);
     if (!Array.from(results.values()).some(Boolean)) {
-      throw new Error('No relay accepted the updated contact list');
+      throw new Error('No relay accepted the updated list');
     }
     // What we just published is now the authoritative list — remember it, so
     // the next edit builds on it even if no relay answers at that moment
-    PersistentCache.set(this.contactListCacheKey(signed.pubkey), signed);
+    PersistentCache.set(this.listCacheKey(signed.kind, signed.pubkey), signed);
     return true;
   }
 
   /**
    * Whether the logged-in user already follows this pubkey
    */
+  // ---------------------------------------------------------------------
+  // Blocking (NIP-51 mute list, kind 10000)
+  //
+  // Public 'p' tags only. The spec also allows an encrypted `content`
+  // payload for private mutes; a public list is what other clients read
+  // back reliably, and a block that only this client honours is worse than
+  // no block at all.
+  // ---------------------------------------------------------------------
+
+  private static mutedCache: Set<string> | null = null;
+
+  /**
+   * Blocked pubkeys, straight from local storage. Feed rendering needs the
+   * answer synchronously on every event, so it can't await a relay.
+   */
+  static getBlockedPubkeys(): Set<string> {
+    if (this.mutedCache) return this.mutedCache;
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey) return new Set();
+    const stored = PersistentCache.get<NostrEventSigned>(
+      this.listCacheKey(EVENT_KINDS.MUTE_LIST, ownPubkey)
+    );
+    this.mutedCache = new Set(
+      (stored?.tags || []).filter(t => t[0] === 'p' && t[1]).map(t => t[1])
+    );
+    return this.mutedCache;
+  }
+
+  static isBlocked(pubkey: string): boolean {
+    return this.getBlockedPubkeys().has(pubkey);
+  }
+
+  /** Drop anything authored by a blocked account. */
+  static dropBlocked(events: NostrEventSigned[]): NostrEventSigned[] {
+    const blocked = this.getBlockedPubkeys();
+    if (blocked.size === 0) return events;
+    return events.filter(e => !blocked.has(e.pubkey));
+  }
+
+  /**
+   * Refresh the block list from relays. Called on feed load so a block made
+   * in another client (or on another device) takes effect here too.
+   */
+  static async fetchBlockedPubkeys(): Promise<Set<string>> {
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey) return new Set();
+    await this.fetchReplaceableListEvent(EVENT_KINDS.MUTE_LIST, ownPubkey);
+    this.mutedCache = null; // re-read from what the fetch just persisted
+    return this.getBlockedPubkeys();
+  }
+
+  static async blockUser(targetPubkey: string): Promise<boolean> {
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey) throw new Error('Public key not found');
+    if (targetPubkey === ownPubkey) throw new Error('You cannot block yourself');
+
+    const { event: existing, safe } = await this.resolveListBase(EVENT_KINDS.MUTE_LIST, ownPubkey);
+    if (!existing && !safe) throw new Error(this.LIST_UNAVAILABLE);
+
+    const tags = existing ? [...existing.tags] : [];
+    if (tags.some(t => t[0] === 'p' && t[1] === targetPubkey)) return true; // already blocked
+    tags.push(['p', targetPubkey]);
+
+    const published = await this.publishReplaceableList(EVENT_KINDS.MUTE_LIST, tags, existing?.content || '');
+    this.mutedCache = null;
+    return published;
+  }
+
+  static async unblockUser(targetPubkey: string): Promise<boolean> {
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey) throw new Error('Public key not found');
+
+    const { event: existing, safe } = await this.resolveListBase(EVENT_KINDS.MUTE_LIST, ownPubkey);
+    if (!existing) {
+      if (!safe) throw new Error(this.LIST_UNAVAILABLE);
+      return true; // nothing blocked
+    }
+
+    const tags = existing.tags.filter(t => !(t[0] === 'p' && t[1] === targetPubkey));
+    const published = await this.publishReplaceableList(EVENT_KINDS.MUTE_LIST, tags, existing.content || '');
+    this.mutedCache = null;
+    return published;
+  }
+
   static async isFollowing(targetPubkey: string): Promise<boolean> {
     const ownPubkey = CredentialManager.getPublicKey();
     if (!ownPubkey) return false;
@@ -536,8 +637,15 @@ export class NostrCore {
   private static async resolveContactListBase(
     pubkey: string
   ): Promise<{ event: NostrEventSigned | null; safe: boolean }> {
-    const fetched = await this.fetchContactListEvent(pubkey);
-    const remembered = PersistentCache.get<NostrEventSigned>(this.contactListCacheKey(pubkey));
+    return this.resolveListBase(EVENT_KINDS.CONTACTS, pubkey);
+  }
+
+  private static async resolveListBase(
+    kind: number,
+    pubkey: string
+  ): Promise<{ event: NostrEventSigned | null; safe: boolean }> {
+    const fetched = await this.fetchReplaceableListEvent(kind, pubkey);
+    const remembered = PersistentCache.get<NostrEventSigned>(this.listCacheKey(kind, pubkey));
 
     const newest = [fetched, remembered]
       .filter((e): e is NostrEventSigned => !!e)
@@ -551,12 +659,19 @@ export class NostrCore {
     return { event: null, safe: getRelayPool().getConnectedRelayCount() > 0 };
   }
 
-  private static contactListCacheKey(pubkey: string): string {
-    return `contact_list_${pubkey}`;
+  /**
+   * Kind 3 keeps its original key so the anti-wipe memory written by
+   * earlier versions still counts; anything newer is keyed by kind.
+   */
+  private static listCacheKey(kind: number, pubkey: string): string {
+    return kind === EVENT_KINDS.CONTACTS ? `contact_list_${pubkey}` : `list_${kind}_${pubkey}`;
   }
 
   private static readonly CONTACT_LIST_UNAVAILABLE =
     'Could not load your follow list from any relay. Not publishing, because that would erase the list you already have — check your relay connections and try again.';
+
+  private static readonly LIST_UNAVAILABLE =
+    'Could not load your block list from any relay. Not publishing, because that would erase the list you already have — check your relay connections and try again.';
 
   static async followUser(targetPubkey: string): Promise<boolean> {
     const ownPubkey = CredentialManager.getPublicKey();
@@ -664,7 +779,7 @@ export class NostrCore {
       // to the merged result — otherwise reposts flood the home feed and
       // drown out the posts from accounts you actually follow. Cutting here,
       // before resolving originals, also saves fetching the ones we'd drop.
-      const repostEvents = this.dropFutureEvents(await relayPool.fetchEvents(filters))
+      const repostEvents = this.dropBlocked(this.dropFutureEvents(await relayPool.fetchEvents(filters)))
         .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
         .slice(0, limit);
 
@@ -692,7 +807,10 @@ export class NostrCore {
       for (const repost of repostEvents) {
         const original = embedded.get(repost.id)
           ?? fetchedMissing.get(repost.tags.find(t => t[0] === 'e')?.[1] || '');
-        if (original) results.push({ repost, original });
+        // A repost has two authors, and blocking has to cover both — the
+        // point of blocking someone is not seeing their posts, including
+        // when somebody you do follow hands them to you
+        if (original && !this.isBlocked(original.pubkey)) results.push({ repost, original });
       }
 
       return results.sort((a, b) => (b.repost.created_at || 0) - (a.repost.created_at || 0));
@@ -803,7 +921,7 @@ export class NostrCore {
 
     try {
       const relayPool = getRelayPool();
-      const events = this.dropFutureEvents(await relayPool.fetchEvents(filters));
+      const events = this.dropBlocked(this.dropFutureEvents(await relayPool.fetchEvents(filters)));
       return events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
       console.error('Failed to fetch feed:', error);
@@ -825,7 +943,7 @@ export class NostrCore {
 
     try {
       const relayPool = getRelayPool();
-      const events = this.dropFutureEvents(await relayPool.fetchEvents(filters));
+      const events = this.dropBlocked(this.dropFutureEvents(await relayPool.fetchEvents(filters)));
       return events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
       console.error('Failed to fetch global feed:', error);
@@ -852,7 +970,7 @@ export class NostrCore {
 
     try {
       const relayPool = getRelayPool();
-      const events = await relayPool.fetchEvents(filters);
+      const events = this.dropBlocked(await relayPool.fetchEvents(filters));
       return events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
       console.error('Failed to fetch events by tag:', error);
@@ -966,7 +1084,7 @@ export class NostrCore {
 
     try {
       const relayPool = getRelayPool();
-      const events = await relayPool.fetchEvents(filters);
+      const events = this.dropBlocked(await relayPool.fetchEvents(filters));
       return events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
       console.error('Failed to fetch replies:', error);

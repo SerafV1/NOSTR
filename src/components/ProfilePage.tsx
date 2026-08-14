@@ -63,6 +63,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const [contentTab, setContentTab] = useState<'posts' | 'replies' | 'media' | 'zaps' | 'following' | 'followers'>('posts');
   const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
   const [followLoading, setFollowLoading] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(() => NostrCore.isBlocked(pubkey));
+  const [blockLoading, setBlockLoading] = useState(false);
   const [npubCopied, setNpubCopied] = useState(false);
   // The following list doubles as the count in the header, so the Following
   // tab needs no second lookup. Followers are only fetched when that tab is
@@ -293,6 +295,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     setFollowersCapped(false);
     setPeopleProfiles(new Map());
     setJoinedDate(null);
+    setIsBlocked(NostrCore.isBlocked(pubkey));
   }, [pubkey]);
 
   // Followers are only worth the relay scan once that tab is opened.
@@ -347,6 +350,27 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
       alert(error instanceof Error ? error.message : 'Failed to update follow list');
     } finally {
       setFollowLoading(false);
+    }
+  };
+
+  const handleBlockToggle = async () => {
+    if (blockLoading) return;
+    const name = profile?.display_name || profile?.name || formatAddress(pubkey);
+    if (!isBlocked && !window.confirm(`Block ${name}? Their posts disappear from your feeds.`)) return;
+    setBlockLoading(true);
+    try {
+      if (isBlocked) {
+        await NostrCore.unblockUser(pubkey);
+        setIsBlocked(false);
+      } else {
+        await NostrCore.blockUser(pubkey);
+        setIsBlocked(true);
+      }
+    } catch (error) {
+      console.error('Failed to update block list:', error);
+      alert(error instanceof Error ? error.message : 'Failed to update block list');
+    } finally {
+      setBlockLoading(false);
     }
   };
 
@@ -440,6 +464,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                       {followLoading ? '...' : isFollowing ? 'Unfollow' : 'Follow'}
                     </button>
                   )}
+                  <button
+                    className={`btn btn-small ${isBlocked ? 'btn-secondary' : 'btn-danger'}`}
+                    onClick={handleBlockToggle}
+                    disabled={blockLoading}
+                  >
+                    {blockLoading ? '...' : isBlocked ? 'Unblock' : 'Block'}
+                  </button>
                   {profile.lud16 && (
                     <ZapButton lud16={profile.lud16} triggerClassName="btn btn-secondary btn-small btn-with-icon">
                       <ZapIcon /> Zap
