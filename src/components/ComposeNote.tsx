@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { nip19 } from 'nostr-tools';
 import { NostrEventSigned, UserProfile } from '../types';
-import { NostrCore, EventCache } from '../nostr/core';
+import { NostrCore, EventCache, PersistentCache } from '../nostr/core';
+import { CredentialManager } from '../nostr/crypto';
 import { BlossomClient } from '../nostr/blossom';
 import { loadBlossomServers } from '../utils/blossomServers';
 import {
@@ -32,6 +33,8 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
   const [content, setContent] = useState('');
   // Debounced so the link card doesn't refetch on every keystroke
   const [previewLinkUrl, setPreviewLinkUrl] = useState<string | null>(null);
+  // Set when this composer opened onto text left over from last time
+  const [draftRestored, setDraftRestored] = useState(false);
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [publishing, setPublishing] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -248,6 +251,90 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
 
   // Live preview of the composed text with mentions and hashtags styled
   // the same way they'll render once published, for both post and reply
+  /**
+   * Drafts are per account and per context: a reply half-written under one
+   * post must not turn up in the box under another, or in a new post.
+   */
+  const draftKey = (): string => {
+    const pubkey = CredentialManager.getPublicKey() || 'anon';
+    const context = replyTo ? `reply_${replyTo}` : quoteNoteId ? `quote_${quoteNoteId}` : 'new';
+    return `draft_${pubkey}_${context}`;
+  };
+
+  const clearDraft = () => {
+    PersistentCache.remove(draftKey());
+    setDraftRestored(false);
+  };
+
+  const discardDraft = () => {
+    clearDraft();
+    updateContent('');
+    mentionMapRef.current.clear();
+    removePoll();
+  };
+
+  // Each abandoned reply leaves its own key behind, so without this they
+  // accumulate forever in a storage the feed and profile caches also share
+  useEffect(() => {
+    const cutoff = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
+    for (const key of Object.keys(localStorage)) {
+      if (!key.startsWith('nostr_cache_draft_')) continue;
+      try {
+        const saved = JSON.parse(localStorage.getItem(key) || 'null');
+        if (!saved?.content?.trim() || (saved.savedAt || 0) < cutoff) {
+          localStorage.removeItem(key);
+        }
+      } catch {
+        localStorage.removeItem(key); // unparseable — nothing to keep
+      }
+    }
+  }, []);
+
+  // Restore whatever was left behind last time this box was open
+  useEffect(() => {
+    const saved = PersistentCache.get<{
+      content?: string;
+      mentions?: [string, string][];
+      poll?: { options: string[]; type: 'user' | 'zap'; days: number; hours: number; minutes: number };
+    }>(draftKey());
+    if (!saved?.content?.trim()) return;
+
+    updateContent(saved.content);
+    // Without the handle -> pubkey map, a restored "@name" would publish as
+    // plain text instead of a real mention
+    mentionMapRef.current = new Map(saved.mentions || []);
+    if (saved.poll) {
+      setShowPoll(true);
+      setPollOptions(saved.poll.options);
+      setPollType(saved.poll.type);
+      setPollDays(saved.poll.days);
+      setPollHours(saved.poll.hours);
+      setPollMinutes(saved.poll.minutes);
+    }
+    setDraftRestored(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replyTo, quoteNoteId]);
+
+  // Save on a pause in typing rather than on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!content.trim()) {
+        PersistentCache.remove(draftKey());
+        return;
+      }
+      PersistentCache.set(draftKey(), {
+        content,
+        mentions: Array.from(mentionMapRef.current.entries()),
+        poll: showPoll
+          ? { options: pollOptions, type: pollType, days: pollDays, hours: pollHours, minutes: pollMinutes }
+          : undefined,
+        savedAt: Math.floor(Date.now() / 1000)
+      });
+    }, 500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content, showPoll, pollOptions, pollType, pollDays, pollHours, pollMinutes]);
+
   // The link card fetches through the serverless proxy, so it waits for a
   // pause in typing instead of firing a request per keystroke. Mirrors
   // EventCard: only for a link that isn't already rendering as media.
@@ -349,6 +436,9 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
       }
 
       if (event) {
+        // Published — the draft has served its purpose. Cleared before the
+        // state reset so the save effect can't write the old text back.
+        clearDraft();
         setContent('');
         setHashtags([]);
         setShowEmojiPicker(false);
@@ -368,6 +458,14 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
 
   return (
     <form className="compose-note" onSubmit={handlePublish}>
+      {draftRestored && (
+        <div className="compose-draft-notice">
+          <span>Unfinished {replyTo ? 'reply' : 'post'} restored</span>
+          <button type="button" className="compose-draft-discard" onClick={discardDraft}>
+            Discard
+          </button>
+        </div>
+      )}
       <div className="compose-textarea-wrapper" ref={mentionWrapperRef}>
         <textarea
           ref={textareaRef}

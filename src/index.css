@@ -4687,3 +4687,32 @@ button.poll-option-vote:disabled {
   font-size: 0.78rem;
   color: #e5484d;
 }
+
+/* Notice shown when the composer opens onto a draft left from last time */
+.compose-draft-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--light-bg);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.compose-draft-discard {
+  padding: 0;
+  border: none;
+  background: none;
+  color: #e5484d;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.compose-draft-discard:hover {
+  text-decoration: underline;
+}
