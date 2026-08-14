@@ -4,9 +4,17 @@ import { NostrEventSigned, UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { BlossomClient } from '../nostr/blossom';
 import { loadBlossomServers } from '../utils/blossomServers';
-import { extractImageUrls, extractVideoUrls, extractEmbeds } from '../utils/media';
+import {
+  extractImageUrls,
+  extractVideoUrls,
+  extractEmbeds,
+  extractPreviewLinkUrl,
+  stripMediaUrls,
+  splitContentTokens
+} from '../utils/media';
 import { extractMentionPubkeys, formatAddress } from '../utils/helpers';
 import MediaEmbed from './MediaEmbed';
+import LinkPreviewCard from './LinkPreviewCard';
 import VideoPlayer from './VideoPlayer';
 import EmojiPicker from './EmojiPicker';
 import { PollIcon, PersonIcon, ZapIcon, ImageIcon } from './Icons';
@@ -22,6 +30,8 @@ interface ComposeNoteProps {
 
 const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNoteId }) => {
   const [content, setContent] = useState('');
+  // Debounced so the link card doesn't refetch on every keystroke
+  const [previewLinkUrl, setPreviewLinkUrl] = useState<string | null>(null);
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [publishing, setPublishing] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -238,30 +248,58 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
 
   // Live preview of the composed text with mentions and hashtags styled
   // the same way they'll render once published, for both post and reply
+  // The link card fetches through the serverless proxy, so it waits for a
+  // pause in typing instead of firing a request per keystroke. Mirrors
+  // EventCard: only for a link that isn't already rendering as media.
+  useEffect(() => {
+    const url = extractPreviewLinkUrl(content);
+    const hasMedia = extractImageUrls(content).length > 0
+      || extractVideoUrls(content).length > 0
+      || extractEmbeds(content).length > 0;
+    if (!url || hasMedia) {
+      setPreviewLinkUrl(null);
+      return;
+    }
+    const timer = setTimeout(() => setPreviewLinkUrl(url), 800);
+    return () => clearTimeout(timer);
+  }, [content]);
+
+  /**
+   * The post's text as it will render once published: links, hashtags and
+   * mentions styled the same way EventCard styles them, and media URLs
+   * stripped out because they show up as their own previews below.
+   */
   const renderLivePreview = (): React.ReactNode[] => {
     const handles = Array.from(mentionMapRef.current.keys()).sort((a, b) => b.length - a.length);
-    const mentionAlt = handles.length ? handles.map(h => `@${escapeRegExp(h)}`).join('|') + '|' : '';
-    const pattern = new RegExp(`(${mentionAlt}#[\\w]+)`, 'g');
+    const mentionPattern = handles.length
+      ? new RegExp(`(${handles.map(h => `@${escapeRegExp(h)}`).join('|')})`, 'g')
+      : null;
 
     const parts: React.ReactNode[] = [];
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
     let key = 0;
 
-    while ((match = pattern.exec(content)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push(content.slice(lastIndex, match.index));
+    for (const token of splitContentTokens(stripMediaUrls(content))) {
+      if (token.type === 'link') {
+        parts.push(<a key={key++} className="content-link">{token.value}</a>);
+        continue;
       }
-      const token = match[0];
-      parts.push(
-        <span key={key++} className={token.startsWith('#') ? 'hashtag-link' : 'mention-link'}>
-          {token}
-        </span>
-      );
-      lastIndex = match.index + token.length;
-    }
-    if (lastIndex < content.length) {
-      parts.push(content.slice(lastIndex));
+      if (token.type === 'hashtag') {
+        parts.push(<span key={key++} className="hashtag-link">#{token.value}</span>);
+        continue;
+      }
+      if (!mentionPattern) {
+        parts.push(token.value);
+        continue;
+      }
+      // Plain text can still contain an @handle picked from the mention list
+      for (const piece of token.value.split(mentionPattern)) {
+        if (!piece) continue;
+        parts.push(
+          piece.startsWith('@') && handles.some(h => piece === `@${h}`)
+            ? <span key={key++} className="mention-link">{piece}</span>
+            : piece
+        );
+      }
     }
     return parts;
   };
@@ -449,12 +487,12 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
       )}
 
       {!showPoll && (() => {
-        // Live preview of the composed text, with mentions/hashtags styled
-        // the same way they'll look once published
+        // Live preview of the composed text. Shown for any post with text —
+        // it used to appear only when the content happened to contain a
+        // mention or hashtag, so writing an ordinary post looked like the
+        // preview was broken.
         const previewParts = renderLivePreview();
-        if (!content.trim() || !previewParts.some(part => typeof part !== 'string')) {
-          return null;
-        }
+        if (previewParts.length === 0) return null;
         return (
           <div className="compose-live-preview">
             <div className="compose-live-preview-label">Preview</div>
@@ -491,6 +529,12 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
           </div>
         );
       })()}
+
+      {!showPoll && previewLinkUrl && (
+        <div className="compose-preview">
+          <LinkPreviewCard url={previewLinkUrl} />
+        </div>
+      )}
 
       {uploads.length > 0 && (
         <div className="compose-upload-status">
