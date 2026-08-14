@@ -3,6 +3,7 @@ import { UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
 import { formatAddress } from '../utils/helpers';
+import { NO_CONTACT_LIST_PROMPT } from '../utils/followPrompt';
 
 interface ProfileHoverCardProps {
   pubkey: string;
@@ -102,7 +103,16 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
         await NostrCore.unfollowUser(pubkey);
         setIsFollowing(false);
       } else {
-        await NostrCore.followUser(pubkey);
+        try {
+          await NostrCore.followUser(pubkey);
+        } catch (err) {
+          if (err instanceof Error && err.message === NostrCore.NO_EXISTING_CONTACT_LIST) {
+            if (!window.confirm(NO_CONTACT_LIST_PROMPT)) return;
+            await NostrCore.followUser(pubkey, { createIfMissing: true });
+          } else {
+            throw err;
+          }
+        }
         setIsFollowing(true);
       }
     } catch (err) {

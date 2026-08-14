@@ -3,6 +3,7 @@ import { UserProfile, NostrEventSigned, NostrFilter, EVENT_KINDS } from '../type
 import { NostrCore, EventCache, PersistentCache, ZapActivity } from '../nostr/core';
 import { NostrCrypto } from '../nostr/crypto';
 import { formatAddress, formatDate, copyToClipboard } from '../utils/helpers';
+import { NO_CONTACT_LIST_PROMPT } from '../utils/followPrompt';
 import { extractImageUrls, extractVideoUrls, extractEmbeds } from '../utils/media';
 import EventCard from './EventCard';
 import QuotedNoteCard from './QuotedNoteCard';
@@ -342,7 +343,16 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
         await NostrCore.unfollowUser(pubkey);
         setIsFollowing(false);
       } else {
-        await NostrCore.followUser(pubkey);
+        try {
+          await NostrCore.followUser(pubkey);
+        } catch (error) {
+          if (error instanceof Error && error.message === NostrCore.NO_EXISTING_CONTACT_LIST) {
+            if (!window.confirm(NO_CONTACT_LIST_PROMPT)) return;
+            await NostrCore.followUser(pubkey, { createIfMissing: true });
+          } else {
+            throw error;
+          }
+        }
         setIsFollowing(true);
       }
     } catch (error) {

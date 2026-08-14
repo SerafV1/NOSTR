@@ -653,6 +653,14 @@ export class NostrCore {
 
     if (newest) return { event: newest, safe: true };
 
+    // Nothing anywhere. For the contact list we have a second witness: the
+    // follow list persisted separately. If that says this account follows
+    // people, then a kind 3 exists somewhere and the relays simply failed
+    // us — publishing now would replace it with whatever we build here.
+    if (kind === EVENT_KINDS.CONTACTS && this.getCachedFollowedAccounts().length > 0) {
+      return { event: null, safe: false };
+    }
+
     // No list from anywhere. That's legitimate for a brand-new account, but
     // indistinguishable from every relay having failed us — so only trust it
     // when relays are actually reachable and simply had nothing to say.
@@ -673,12 +681,26 @@ export class NostrCore {
   private static readonly LIST_UNAVAILABLE =
     'Could not load your block list from any relay. Not publishing, because that would erase the list you already have — check your relay connections and try again.';
 
-  static async followUser(targetPubkey: string): Promise<boolean> {
+  /**
+   * Thrown when no contact list could be found anywhere. Publishing one now
+   * would create it — or silently replace a real list the relays failed to
+   * hand over. Only the user can tell those apart, so callers catch this,
+   * ask, and retry with createIfMissing.
+   */
+  static readonly NO_EXISTING_CONTACT_LIST = 'NO_EXISTING_CONTACT_LIST';
+
+  static async followUser(
+    targetPubkey: string,
+    options: { createIfMissing?: boolean } = {}
+  ): Promise<boolean> {
     const ownPubkey = CredentialManager.getPublicKey();
     if (!ownPubkey) throw new Error('Public key not found');
 
     const { event: existing, safe } = await this.resolveContactListBase(ownPubkey);
-    if (!existing && !safe) throw new Error(this.CONTACT_LIST_UNAVAILABLE);
+    if (!existing) {
+      if (!safe) throw new Error(this.CONTACT_LIST_UNAVAILABLE);
+      if (!options.createIfMissing) throw new Error(this.NO_EXISTING_CONTACT_LIST);
+    }
 
     const tags = existing ? [...existing.tags] : [];
     if (tags.some(t => t[0] === 'p' && t[1] === targetPubkey)) {
