@@ -2626,6 +2626,23 @@ button.poll-option-vote:disabled {
   gap: var(--spacing-xs);
 }
 
+/* Following/Followers double as shortcuts to their tabs — strip the button
+   chrome so they still read as plain stats next to the Notes count */
+.stat-clickable {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stat-clickable:hover .stat-value {
+  text-decoration: underline;
+}
+
 .profile-joined {
   margin-top: var(--spacing-sm);
   font-size: 0.8rem;

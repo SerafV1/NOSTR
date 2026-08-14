@@ -60,12 +60,18 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const [reposts, setReposts] = useState<{ repost: NostrEventSigned; original: NostrEventSigned }[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
-  const [contentTab, setContentTab] = useState<'posts' | 'replies' | 'media' | 'zaps'>('posts');
+  const [contentTab, setContentTab] = useState<'posts' | 'replies' | 'media' | 'zaps' | 'following' | 'followers'>('posts');
   const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
   const [followLoading, setFollowLoading] = useState(false);
   const [npubCopied, setNpubCopied] = useState(false);
-  const [followingCount, setFollowingCount] = useState<number | null>(null);
+  // The following list doubles as the count in the header, so the Following
+  // tab needs no second lookup. Followers are only fetched when that tab is
+  // opened — it's a scan across every contact list the relays have indexed
+  const [followingList, setFollowingList] = useState<string[] | null>(null);
   const [followersCount, setFollowersCount] = useState<number | null>(null);
+  const [followersList, setFollowersList] = useState<string[] | null>(null);
+  const [followersCapped, setFollowersCapped] = useState(false);
+  const [peopleProfiles, setPeopleProfiles] = useState<Map<string, UserProfile>>(new Map());
   const [joinedDate, setJoinedDate] = useState<string | null>(null);
   const [zapActivity, setZapActivity] = useState<ZapActivity[]>([]);
   const [zapActivityLoaded, setZapActivityLoaded] = useState(false);
@@ -239,7 +245,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     let cancelled = false;
 
     NostrCore.fetchFollowingList(pubkey).then(list => {
-      if (!cancelled) setFollowingCount(list.length);
+      if (!cancelled) setFollowingList(list);
     });
     NostrCore.fetchFollowersCount(pubkey).then(({ count }) => {
       if (!cancelled) setFollowersCount(count);
@@ -281,10 +287,49 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     setZapActivityLoaded(false);
     setZapProfiles({});
     setZapNotes({});
-    setFollowingCount(null);
+    setFollowingList(null);
     setFollowersCount(null);
+    setFollowersList(null);
+    setFollowersCapped(false);
+    setPeopleProfiles(new Map());
     setJoinedDate(null);
   }, [pubkey]);
+
+  // Followers are only worth the relay scan once that tab is opened.
+  // Profiles for both lists are fetched here too, so the cards show names
+  // and avatars instead of a column of truncated keys.
+  useEffect(() => {
+    if (contentTab !== 'following' && contentTab !== 'followers') return;
+    if (!relaysConnected) return;
+    let cancelled = false;
+
+    const loadNames = async (pubkeys: string[]) => {
+      if (pubkeys.length === 0) return;
+      const profiles = await NostrCore.fetchProfiles(pubkeys);
+      if (!cancelled) {
+        setPeopleProfiles(prev => new Map([...prev, ...profiles]));
+      }
+    };
+
+    if (contentTab === 'following') {
+      if (followingList) loadNames(followingList);
+    } else if (followersList === null) {
+      NostrCore.fetchFollowers(pubkey).then(({ pubkeys, capped }) => {
+        if (cancelled) return;
+        setFollowersList(pubkeys);
+        setFollowersCapped(capped);
+        // Both this and the header count are samples of whatever relays
+        // answered in time, so two separate queries disagree. Once we have
+        // names on screen, that list is the number to show.
+        setFollowersCount(pubkeys.length);
+        loadNames(pubkeys);
+      });
+    } else {
+      loadNames(followersList);
+    }
+
+    return () => { cancelled = true; };
+  }, [contentTab, relaysConnected, pubkey, followingList, followersList]);
 
   const handleFollowToggle = async () => {
     if (followLoading || isFollowing === null) return;
@@ -442,17 +487,25 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                   <span className="stat-value">{notes.length}</span>
                   <span className="stat-label">Notes</span>
                 </div>
-                {followingCount !== null && (
-                  <div className="stat">
-                    <span className="stat-value">{followingCount}</span>
+                {followingList !== null && (
+                  <button
+                    type="button"
+                    className="stat stat-clickable"
+                    onClick={() => setContentTab('following')}
+                  >
+                    <span className="stat-value">{followingList.length}</span>
                     <span className="stat-label">Following</span>
-                  </div>
+                  </button>
                 )}
                 {followersCount !== null && (
-                  <div className="stat">
+                  <button
+                    type="button"
+                    className="stat stat-clickable"
+                    onClick={() => setContentTab('followers')}
+                  >
                     <span className="stat-value">{followersCount}</span>
                     <span className="stat-label">Followers</span>
-                  </div>
+                  </button>
                 )}
               </div>
               {joinedDate && <p className="profile-joined">📅 Joined {joinedDate}</p>}
@@ -491,6 +544,18 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                 onClick={() => setContentTab('zaps')}
               >
                 Zaps
+              </button>
+              <button
+                className={`feed-tab ${contentTab === 'following' ? 'active' : ''}`}
+                onClick={() => setContentTab('following')}
+              >
+                Following
+              </button>
+              <button
+                className={`feed-tab ${contentTab === 'followers' ? 'active' : ''}`}
+                onClick={() => setContentTab('followers')}
+              >
+                Followers
               </button>
             </div>
 
@@ -615,6 +680,67 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                 </div>
               )
             )}
+
+            {(contentTab === 'following' || contentTab === 'followers') && (() => {
+              const list = contentTab === 'following' ? followingList : followersList;
+
+              if (list === null) {
+                return (
+                  <div className="empty-state">
+                    <p>Loading {contentTab}...</p>
+                  </div>
+                );
+              }
+              if (list.length === 0) {
+                return (
+                  <div className="empty-state">
+                    <p>
+                      {contentTab === 'following'
+                        ? 'Not following anyone yet'
+                        : 'No followers found'}
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <>
+                  <div className="people-results">
+                    {list.map(personPubkey => {
+                      const person = peopleProfiles.get(personPubkey);
+                      const name = person?.display_name || person?.name || formatAddress(personPubkey);
+                      const handle = person?.nip05
+                        || formatAddress(NostrCrypto.npubEncode(personPubkey) || personPubkey);
+                      return (
+                        <button
+                          key={personPubkey}
+                          type="button"
+                          className="person-card"
+                          onClick={() => onNavigateToProfile(personPubkey)}
+                        >
+                          {person?.picture ? (
+                            <img src={person.picture} alt="" className="person-avatar" />
+                          ) : (
+                            <div className="person-avatar-placeholder">{name.charAt(0).toUpperCase()}</div>
+                          )}
+                          <div className="person-info">
+                            <div className="person-name">{name}</div>
+                            <div className="person-handle">{handle}</div>
+                            {person?.about && <div className="person-bio">{person.about}</div>}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {contentTab === 'followers' && followersCapped && (
+                    <p className="profile-joined">
+                      Showing the first {list.length} followers the connected relays have indexed — Nostr has no
+                      authoritative follower list, so this is a sample, not a total.
+                    </p>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
       </div>

@@ -406,16 +406,28 @@ export class NostrCore {
    * there's no authoritative global follower count.
    */
   static async fetchFollowersCount(pubkey: string, limit: number = 1000): Promise<{ count: number; capped: boolean }> {
+    const { pubkeys, capped } = await this.fetchFollowers(pubkey, limit);
+    return { count: pubkeys.length, capped };
+  }
+
+  /**
+   * The accounts whose contact list includes this pubkey. Same approximation
+   * as the count above — bounded by `limit` and by what the connected relays
+   * have indexed — but returns who they are, for the profile's Followers tab.
+   */
+  static async fetchFollowers(pubkey: string, limit: number = 1000): Promise<{ pubkeys: string[]; capped: boolean }> {
     try {
       const relayPool = getRelayPool();
       const events = await relayPool.fetchEvents([
         { kinds: [EVENT_KINDS.CONTACTS], '#p': [pubkey], limit }
       ]);
+      // One account can have several contact-list events across relays —
+      // it's still one follower
       const authors = new Set(events.map(e => e.pubkey));
-      return { count: authors.size, capped: events.length >= limit };
+      return { pubkeys: Array.from(authors), capped: events.length >= limit };
     } catch (error) {
-      console.error('Failed to fetch followers count:', error);
-      return { count: 0, capped: false };
+      console.error('Failed to fetch followers:', error);
+      return { pubkeys: [], capped: false };
     }
   }
 
