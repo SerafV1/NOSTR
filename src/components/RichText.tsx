@@ -13,12 +13,18 @@ interface RichTextProps {
   className?: string;
 }
 
-// nostr: references worth turning into something clickable
-const REF_REGEX = /nostr:(?:note1|nevent1|naddr1|nprofile1|npub1)[a-z0-9]+/gi;
+// References worth turning into something clickable. The `nostr:` prefix is
+// optional because plenty of clients publish a bare "npub1…" or write the
+// mention as "@nprofile1…", and requiring the prefix left those as raw
+// text. The length floor keeps a word like "note1" from matching.
+const REF_REGEX = /@?(?:nostr:)?(?:note1|nevent1|naddr1|nprofile1|npub1)[a-z0-9]{20,}/gi;
+
+/** Strip the decorations the text may carry before bech32 decoding */
+const bareRef = (ref: string): string => ref.replace(/^@/, '').replace(/^nostr:/i, '');
 
 const decodeProfileRef = (ref: string): string | null => {
   try {
-    const decoded = nip19.decode(ref.replace(/^nostr:/i, ''));
+    const decoded = nip19.decode(bareRef(ref));
     if (decoded.type === 'npub' && typeof decoded.data === 'string') return decoded.data;
     if (decoded.type === 'nprofile') return (decoded.data as { pubkey: string }).pubkey;
   } catch {
@@ -29,7 +35,7 @@ const decodeProfileRef = (ref: string): string | null => {
 
 const decodeNoteRef = (ref: string): string | null => {
   try {
-    const decoded = nip19.decode(ref.replace(/^nostr:/i, ''));
+    const decoded = nip19.decode(bareRef(ref));
     if (decoded.type === 'note' && typeof decoded.data === 'string') return decoded.data;
     if (decoded.type === 'nevent') return (decoded.data as { id: string }).id;
   } catch {
@@ -127,9 +133,9 @@ const RichText: React.FC<RichTextProps> = ({
     if (match.index > lastIndex) pushPlain(content.slice(lastIndex, match.index));
 
     const ref = match[0];
-    const lower = ref.toLowerCase();
-    const pubkey = lower.includes('npub1') || lower.includes('nprofile1') ? decodeProfileRef(ref) : null;
-    const noteId = lower.includes('note1') || lower.includes('nevent1') ? decodeNoteRef(ref) : null;
+    const lower = bareRef(ref).toLowerCase();
+    const pubkey = lower.startsWith('npub1') || lower.startsWith('nprofile1') ? decodeProfileRef(ref) : null;
+    const noteId = lower.startsWith('note1') || lower.startsWith('nevent1') ? decodeNoteRef(ref) : null;
 
     if (pubkey) {
       const profile = profiles[pubkey];

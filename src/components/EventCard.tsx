@@ -226,7 +226,7 @@ const EventCard: React.FC<EventCardProps> = ({
 
   const decodeNpub = (npubLink: string): string | null => {
     try {
-      const decoded = nip19.decode(npubLink.replace(/^nostr:/, ''));
+      const decoded = nip19.decode(npubLink.replace(/^@/, '').replace(/^nostr:/i, ''));
       return decoded.type === 'npub' && typeof decoded.data === 'string' ? decoded.data : null;
     } catch (error) {
       console.error('Failed to decode npub:', error);
@@ -242,14 +242,15 @@ const EventCard: React.FC<EventCardProps> = ({
     const hexMatches = content.match(pubkeyRegex) || [];
     hexMatches.forEach(m => mentions.add(m.toLowerCase()));
 
-    // Match nostr:nprofile and nostr:npub links and extract the pubkey
-    const nprofileMatches = content.match(/nostr:nprofile1[a-z0-9]+/gi) || [];
+    // The nostr: prefix is optional: many clients publish a bare "npub1…"
+    // or write the mention as "@nprofile1…", and those were left as raw text
+    const nprofileMatches = content.match(/@?(?:nostr:)?nprofile1[a-z0-9]{20,}/gi) || [];
     nprofileMatches.forEach(link => {
       const pubkey = decodeNprofile(link);
       if (pubkey) mentions.add(pubkey.toLowerCase());
     });
 
-    const npubMatches = content.match(/nostr:npub1[a-z0-9]+/gi) || [];
+    const npubMatches = content.match(/@?(?:nostr:)?npub1[a-z0-9]{20,}/gi) || [];
     npubMatches.forEach(link => {
       const pubkey = decodeNpub(link);
       if (pubkey) mentions.add(pubkey.toLowerCase());
@@ -260,7 +261,7 @@ const EventCard: React.FC<EventCardProps> = ({
 
   const decodeNprofile = (nprofileLink: string): string | null => {
     try {
-      const decoded = nip19.decode(nprofileLink.replace(/^nostr:/, ''));
+      const decoded = nip19.decode(nprofileLink.replace(/^@/, '').replace(/^nostr:/i, ''));
       return decoded.type === 'nprofile' ? (decoded.data as { pubkey: string }).pubkey : null;
     } catch (error) {
       console.error('Failed to decode nprofile:', error);
@@ -274,7 +275,7 @@ const EventCard: React.FC<EventCardProps> = ({
     let keyIndex = 0;
 
     // Combine nprofile, npub and raw hex pubkey mention patterns
-    const combinedRegex = /(?:(nostr:nprofile1[a-z0-9]+)|(nostr:npub1[a-z0-9]+)|([a-fA-F0-9]{64}))/gi;
+    const combinedRegex = /(?:(@?(?:nostr:)?nprofile1[a-z0-9]{20,})|(@?(?:nostr:)?npub1[a-z0-9]{20,})|([a-fA-F0-9]{64}))/gi;
     let match;
 
     while ((match = combinedRegex.exec(content)) !== null) {
