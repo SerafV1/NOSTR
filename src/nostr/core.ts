@@ -770,6 +770,7 @@ export class NostrCore {
     try {
       const relayPool = getRelayPool();
       const events = this.dropFutureEvents(await relayPool.fetchEvents(filters));
+      EventCache.addEvents(events);
       return events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
       console.error('Failed to fetch user notes:', error);
@@ -944,6 +945,7 @@ export class NostrCore {
     try {
       const relayPool = getRelayPool();
       const events = this.dropBlocked(this.dropFutureEvents(await relayPool.fetchEvents(filters)));
+      EventCache.addEvents(events);
       return events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
       console.error('Failed to fetch feed:', error);
@@ -966,6 +968,7 @@ export class NostrCore {
     try {
       const relayPool = getRelayPool();
       const events = this.dropBlocked(this.dropFutureEvents(await relayPool.fetchEvents(filters)));
+      EventCache.addEvents(events);
       return events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
       console.error('Failed to fetch global feed:', error);
@@ -993,6 +996,7 @@ export class NostrCore {
     try {
       const relayPool = getRelayPool();
       const events = this.dropBlocked(await relayPool.fetchEvents(filters));
+      EventCache.addEvents(events);
       return events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
       console.error('Failed to fetch events by tag:', error);
@@ -1107,6 +1111,7 @@ export class NostrCore {
     try {
       const relayPool = getRelayPool();
       const events = this.dropBlocked(await relayPool.fetchEvents(filters));
+      EventCache.addEvents(events);
       return events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
       console.error('Failed to fetch replies:', error);
@@ -2052,10 +2057,29 @@ export class EventCache {
     }, 500);
   }
 
+  // Bounded so a long session browsing feed after feed can't grow this
+  // without limit; Map keeps insertion order, so the oldest go first
+  private static readonly MAX_EVENTS = 2000;
+
   static addEvent(event: NostrEventSigned, relayUrl?: string): void {
     if (!this.cache.has(event.id)) {
       this.cache.set(event.id, { ...event, relayUrl });
+      if (this.cache.size > this.MAX_EVENTS) {
+        for (const id of this.cache.keys()) {
+          this.cache.delete(id);
+          if (this.cache.size <= this.MAX_EVENTS) break;
+        }
+      }
     }
+  }
+
+  /**
+   * Remember a whole feed's worth of notes. Opening one of them afterwards
+   * renders from here instead of going back to the relays for something we
+   * already have.
+   */
+  static addEvents(events: NostrEventSigned[]): void {
+    for (const event of events) this.addEvent(event);
   }
 
   static getEvent(id: string): EventWithMetadata | null {

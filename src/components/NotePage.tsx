@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NostrEventSigned } from '../types';
-import { NostrCore } from '../nostr/core';
+import { NostrCore, EventCache } from '../nostr/core';
 import EventCard from './EventCard';
 
 interface NotePageProps {
@@ -22,20 +22,32 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // You almost always got here by clicking a note that is already in
+    // memory. Show it immediately instead of blanking the page and waiting
+    // on the network — the thread around it fills in behind it.
+    const cached = EventCache.getEvent(noteId);
+    setNote(cached || null);
+    setParentNotes([]);
+    setReplies([]);
+    setLoading(!cached);
+
     // Landing here straight from a page refresh, the relay pool hasn't
     // finished (re)connecting yet — fetching before then would just find
     // nothing and show "Note not found" for a note that really does exist
     if (!relaysConnected) return;
-    loadNote();
+    loadNote(!!cached);
   }, [noteId, relaysConnected]);
 
-  const loadNote = async () => {
-    setLoading(true);
+  const loadNote = async (haveCached: boolean) => {
+    if (!haveCached) setLoading(true);
     try {
       // Fetch the note
-      const fetchedNote = await (NostrCore as any).fetchEventById(noteId);
+      const fetchedNote = await (NostrCore as any).fetchEventById(noteId) || (haveCached ? EventCache.getEvent(noteId) : null);
       if (fetchedNote) {
         setNote(fetchedNote);
+        // The note itself is on screen now — the thread around it loads
+        // behind it rather than holding the whole page hostage
+        setLoading(false);
 
         // NIP-10: prefer the 'e' tag marked 'reply' (the direct parent);
         // fall back to the last 'e' tag for notes using the older,
@@ -44,6 +56,16 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
           const eTags = ev.tags.filter((t) => t[0] === 'e');
           return eTags.find((t) => t[3] === 'reply') || eTags[eTags.length - 1];
         };
+
+        // Replies don't depend on the ancestor walk below, so they're
+        // started here and land whenever they land — chaining them after it
+        // meant waiting out up to twenty sequential parent lookups first
+        NostrCore.fetchReplies(noteId, 100)
+          .then(setReplies)
+          .catch(error => {
+            console.error('Failed to fetch replies:', error);
+            setReplies([]);
+          });
 
         // If this note is itself a reply, walk all the way up the chain to
         // the root and show every ancestor for context — a reply-to-a-reply
@@ -71,15 +93,6 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
           console.error('Failed to fetch parent note chain:', error);
         }
         setParentNotes(ancestors);
-
-        // Fetch replies to this note
-        try {
-          const fetchedReplies = await NostrCore.fetchReplies(noteId, 100);
-          setReplies(fetchedReplies);
-        } catch (error) {
-          console.error('Failed to fetch replies:', error);
-          setReplies([]);
-        }
       } else {
         setNote(null);
         setParentNotes([]);
@@ -105,7 +118,7 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
           ← Back
         </button>
 
-        {(loading || !relaysConnected) && (
+        {(loading || (!relaysConnected && !note)) && (
           <div className="loading">
             {!relaysConnected ? 'Connecting to relays...' : 'Loading note...'}
           </div>
@@ -139,7 +152,7 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
               onNavigateToProfile={onNavigateToProfile}
               onNavigateToNote={onNavigateToNote}
               onNavigateToTopic={onNavigateToTopic}
-              onRefresh={loadNote}
+              onRefresh={() => loadNote(true)}
             />
 
             {replies.length > 0 && (
