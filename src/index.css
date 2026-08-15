@@ -3665,6 +3665,22 @@ button.poll-option-vote:disabled {
   border: 1px solid rgba(251, 191, 36, 0.3);
 }
 
+/* Requirements a relay states in its NIP-11 document: not failures, just
+   conditions you have to meet before it will take your posts */
+.capability-indicator.restricted {
+  background: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+a.capability-indicator.paid {
+  text-decoration: none;
+}
+
+a.capability-indicator.paid:hover {
+  background: rgba(251, 191, 36, 0.28);
+}
+
 .relay-name {
   display: inline-flex;
   align-items: center;

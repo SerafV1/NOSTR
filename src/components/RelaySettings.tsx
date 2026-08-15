@@ -7,6 +7,11 @@ interface RelayWithCapabilities extends RelayConfig {
   readable?: boolean;
   writable?: boolean;
   paid?: boolean;
+  paymentRequired?: boolean;
+  authRequired?: boolean;
+  restrictedWrites?: boolean;
+  paymentsUrl?: string;
+  feeSummary?: string;
   name?: string;
   description?: string;
 }
@@ -41,6 +46,11 @@ const RelaySettings: React.FC = () => {
         readable: capabilities.get(r.url)?.readable ?? true,
         writable: capabilities.get(r.url)?.writable ?? true,
         paid: capabilities.get(r.url)?.paid ?? false,
+        paymentRequired: capabilities.get(r.url)?.paymentRequired ?? false,
+        authRequired: capabilities.get(r.url)?.authRequired ?? false,
+        restrictedWrites: capabilities.get(r.url)?.restrictedWrites ?? false,
+        paymentsUrl: capabilities.get(r.url)?.paymentsUrl ?? '',
+        feeSummary: capabilities.get(r.url)?.feeSummary ?? '',
         name: capabilities.get(r.url)?.name ?? '',
         description: capabilities.get(r.url)?.description ?? ''
       }));
@@ -220,9 +230,31 @@ const RelaySettings: React.FC = () => {
                   <span className={`capability-indicator ${relay.writable !== false ? 'enabled' : 'disabled'}`}>
                     {relay.writable !== false ? '✓' : '✗'} Writable
                   </span>
-                  {relay.paid && (
-                    <span className="capability-indicator paid">
-                      💳 Paid Only
+                  {relay.paymentRequired && (
+                    relay.paymentsUrl ? (
+                      <a
+                        className="capability-indicator paid"
+                        href={relay.paymentsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Opens this relay's payment page"
+                      >
+                        💳 Payment required{relay.feeSummary ? ` — ${relay.feeSummary}` : ''} ↗
+                      </a>
+                    ) : (
+                      <span className="capability-indicator paid">
+                        💳 Payment required{relay.feeSummary ? ` — ${relay.feeSummary}` : ''}
+                      </span>
+                    )
+                  )}
+                  {relay.restrictedWrites && (
+                    <span className="capability-indicator restricted" title="This relay only accepts posts from accounts it has approved">
+                      ✍️ Restricted writes
+                    </span>
+                  )}
+                  {relay.authRequired && (
+                    <span className="capability-indicator restricted" title="NIP-42: this relay requires you to authenticate with your key before it accepts posts">
+                      🔒 Auth required
                     </span>
                   )}
                   {relay.name && (

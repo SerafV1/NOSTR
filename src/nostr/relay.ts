@@ -463,18 +463,20 @@ export class RelayPool {
   /**
    * Get relay capabilities (readable, writable, paid info)
    */
-  async getRelayCapabilities(url: string): Promise<{
-    readable: boolean;
-    writable: boolean;
-    paid?: boolean;
-    name?: string;
-    description?: string;
-  }> {
+  async getRelayCapabilities(url: string): Promise<RelayCapabilities> {
     // Start with permissive defaults
-    const result = {
+    const result: RelayCapabilities = {
       readable: true,
       writable: true,
       paid: false,
+      // Why a relay won't take your posts is the part worth showing: a bare
+      // "not writable" leaves you guessing whether it's broken, private, or
+      // simply wants paying
+      paymentRequired: false,
+      authRequired: false,
+      restrictedWrites: false,
+      paymentsUrl: '',
+      feeSummary: '',
       name: '',
       description: ''
     };
@@ -532,6 +534,12 @@ export class RelayPool {
           // If restricted_writes is true, can't write
           if (limitation.restricted_writes === true) {
             result.writable = false;
+            result.restrictedWrites = true;
+          }
+          // NIP-42: the relay will take posts, but only after you
+          // authenticate with your key
+          if (limitation.auth_required === true) {
+            result.authRequired = true;
           }
         }
 
@@ -559,6 +567,18 @@ export class RelayPool {
           hasAnyFee;
         
         result.paid = paymentRequired;
+        result.paymentRequired = paymentRequired;
+        result.paymentsUrl = (info as any).payments_url || '';
+
+        // Quote the actual price when the relay states one — NIP-11 fees are
+        // arrays of { amount, unit, period? }, in msats unless said otherwise
+        const feeEntry = fees && (fees.admission?.[0] || fees.publication?.[0] || fees.subscription?.[0]);
+        if (feeEntry && typeof feeEntry.amount === 'number') {
+          const unit = feeEntry.unit || 'msats';
+          const sats = unit === 'msats' ? Math.round(feeEntry.amount / 1000) : feeEntry.amount;
+          const label = unit === 'msats' || unit === 'sats' ? 'sats' : unit;
+          result.feeSummary = `${sats.toLocaleString()} ${label}`;
+        }
         console.log(`[Relay] Payment check: payment_required=${(info as any).payment_required}, limitation.payment_required=${(info as any).limitation?.payment_required}, has fees=${hasAnyFee} → paid=${result.paid}`);
         
         result.name = (info as any).name || '';
@@ -584,6 +604,11 @@ export class RelayPool {
         readable: true,
         writable: true,
         paid: false,
+        paymentRequired: false,
+        authRequired: false,
+        restrictedWrites: false,
+        paymentsUrl: '',
+        feeSummary: '',
         name: ''
       });
     }
@@ -1100,6 +1125,20 @@ export class RelayPool {
 // offchain.pub, nostr21.com, relay.mostr.pub and nostr.oxtr.dev were all
 // probed directly (WebSocket connect + REQ round-trip) and added for
 // broader, more redundant coverage.
+/** What a relay says about itself in its NIP-11 document */
+export interface RelayCapabilities {
+  readable: boolean;
+  writable: boolean;
+  paid: boolean;
+  paymentRequired: boolean;
+  authRequired: boolean;
+  restrictedWrites: boolean;
+  paymentsUrl: string;
+  feeSummary: string;
+  name: string;
+  description?: string;
+}
+
 export const DEFAULT_RELAYS = [
   'wss://relay.damus.io',
   'wss://nos.lol',
