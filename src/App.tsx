@@ -177,13 +177,17 @@ function App() {
   // bit — .app-main is the actual scrolling element (the window itself
   // never scrolls, .app is pinned to 100vh), so the listener has to live
   // on it rather than on window
+  // Keyed on isLoggedIn: the login screen returns early, before <main>
+  // exists, so a mount-only effect would bind to nothing and — never
+  // running again — leave the button dead for the whole session after
+  // signing in.
   useEffect(() => {
     const el = mainRef.current;
     if (!el) return;
     const onScroll = () => setShowBackToTop(el.scrollTop > 400);
     el.addEventListener('scroll', onScroll);
     return () => el.removeEventListener('scroll', onScroll);
-  }, []);
+  }, [isLoggedIn]);
 
   // Each page starts scrolled to the top, so the button should too
   useEffect(() => {

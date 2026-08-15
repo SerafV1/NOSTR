@@ -16,6 +16,11 @@ interface HomePageProps {
 
 type FeedType = 'home' | 'global' | 'topic';
 
+// How often the live subscription re-checks its relays and re-issues its
+// REQ. Short enough that a silently dead stream recovers while you're still
+// looking at the page, long enough not to churn connections.
+const LIVE_RESUBSCRIBE_MS = 3 * 60 * 1000;
+
 const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
   const [events, setEvents] = useState<NostrEventSigned[]>([]);
   const [loading, setLoading] = useState(true);
@@ -280,8 +285,22 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
 
+    // Leave the tab open and in front all afternoon and nothing above ever
+    // fires: visibilitychange needs you to leave and come back. Meanwhile a
+    // socket can die quietly, or a relay can drop the REQ while the socket
+    // stays open, and the feed goes silent with nothing to notice it. So
+    // re-check on a timer too. Resubscribing carries a `since` cursor, so
+    // anything published while the stream was dead is replayed rather than
+    // lost, and nothing already shown comes back twice.
+    const healthCheck = setInterval(() => {
+      NostrCore.refreshRelayConnections().then(() => {
+        if (!cancelled) resubscribe();
+      });
+    }, LIVE_RESUBSCRIBE_MS);
+
     return () => {
       cancelled = true;
+      clearInterval(healthCheck);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       if (subId) NostrCore.unsubscribeLive(subId);
     };

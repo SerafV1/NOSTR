@@ -31,6 +31,11 @@ const firstMediaThumbnail = (note: NostrEventSigned): MediaThumbnail | null => {
   return null;
 };
 
+// Same reasoning as the home feed: visibilitychange only fires if you leave
+// the tab and come back, so a stream that dies while you're watching would
+// stay dead. Re-check on a timer as well.
+const LIVE_RESUBSCRIBE_MS = 3 * 60 * 1000;
+
 const formatSats = (sats: number): string => {
   if (sats >= 1_000_000) return `${(sats / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
   if (sats >= 1_000) return `${(sats / 1_000).toFixed(1).replace(/\.0$/, '')}k`;
@@ -212,8 +217,15 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
 
+    const healthCheck = setInterval(() => {
+      NostrCore.refreshRelayConnections().then(() => {
+        if (!cancelled) resubscribe();
+      });
+    }, LIVE_RESUBSCRIBE_MS);
+
     return () => {
       cancelled = true;
+      clearInterval(healthCheck);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       if (subId) NostrCore.unsubscribeLive(subId);
     };
