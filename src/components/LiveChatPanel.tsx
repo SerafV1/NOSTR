@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { nip19 } from 'nostr-tools';
 import { NostrEventSigned, UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
+import RichText from './RichText';
 import { formatAddress } from '../utils/helpers';
 import EmojiPicker from './EmojiPicker';
 
@@ -12,33 +12,10 @@ interface LiveChatPanelProps {
   disabled?: boolean;
   onNavigateToProfile: (pubkey: string) => void;
   onNavigateToNote: (noteId: string) => void;
+  onNavigateToTopic?: (topic: string) => void;
 }
 
-// nostr:note1.../nevent1... refer to a specific event, nostr:nprofile1.../npub1...
-// to a user — decode whichever one a chat message links to
-const decodeNoteRef = (link: string): string | null => {
-  try {
-    const decoded = nip19.decode(link.replace(/^nostr:/, ''));
-    if (decoded.type === 'note' && typeof decoded.data === 'string') return decoded.data;
-    if (decoded.type === 'nevent') return (decoded.data as { id: string }).id;
-    return null;
-  } catch {
-    return null;
-  }
-};
-
-const decodeProfileRef = (link: string): string | null => {
-  try {
-    const decoded = nip19.decode(link.replace(/^nostr:/, ''));
-    if (decoded.type === 'npub' && typeof decoded.data === 'string') return decoded.data;
-    if (decoded.type === 'nprofile') return (decoded.data as { pubkey: string }).pubkey;
-    return null;
-  } catch {
-    return null;
-  }
-};
-
-const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote }) => {
+const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
   const [messages, setMessages] = useState<NostrEventSigned[]>([]);
   const [profiles, setProfiles] = useState<Map<string, UserProfile>>(new Map());
   const [input, setInput] = useState('');
@@ -92,67 +69,6 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     }
   }, [messages.length]);
 
-  // Chat messages were showing raw "nostr:nevent1…" text — turn those refs
-  // into clickable links instead, same as notes/notifications already do
-  const renderChatContent = (content: string, keyPrefix: string): (string | React.ReactNode)[] => {
-    const regex = /nostr:(?:note1|nevent1|naddr1|nprofile1|npub1)[a-z0-9]+/gi;
-    const parts: (string | React.ReactNode)[] = [];
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    let idx = 0;
-
-    while ((match = regex.exec(content)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push(content.slice(lastIndex, match.index));
-      }
-
-      const link = match[0];
-      const lower = link.toLowerCase();
-
-      if (lower.includes('note1') || lower.includes('nevent1')) {
-        const noteId = decodeNoteRef(link);
-        if (noteId) {
-          parts.push(
-            <button
-              key={`${keyPrefix}-note-${idx}`}
-              className="live-chat-mention-link"
-              onClick={(e) => { e.stopPropagation(); onNavigateToNote(noteId); }}
-            >
-              📝 View note
-            </button>
-          );
-        } else {
-          parts.push(link);
-        }
-      } else if (lower.includes('nprofile1') || lower.includes('npub1')) {
-        const pubkey = decodeProfileRef(link);
-        if (pubkey) {
-          parts.push(
-            <button
-              key={`${keyPrefix}-profile-${idx}`}
-              className="live-chat-mention-link"
-              onClick={(e) => { e.stopPropagation(); onNavigateToProfile(pubkey); }}
-            >
-              @{formatAddress(pubkey)}
-            </button>
-          );
-        } else {
-          parts.push(link);
-        }
-      } else {
-        parts.push(link);
-      }
-
-      lastIndex = match.index + match[0].length;
-      idx++;
-    }
-
-    if (lastIndex < content.length) {
-      parts.push(content.slice(lastIndex));
-    }
-
-    return parts.length > 0 ? parts : [content];
-  };
 
   const insertEmoji = (emoji: string) => {
     const inputEl = inputRef.current;
@@ -216,7 +132,14 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                 <button className="live-chat-author" onClick={() => onNavigateToProfile(message.pubkey)}>
                   {name}
                 </button>
-                <span className="live-chat-text">{renderChatContent(message.content, message.id)}</span>
+                <span className="live-chat-text">
+                  <RichText
+                    content={message.content}
+                    onNavigateToProfile={onNavigateToProfile}
+                    onNavigateToNote={onNavigateToNote}
+                    onNavigateToTopic={onNavigateToTopic}
+                  />
+                </span>
               </div>
             </div>
           );

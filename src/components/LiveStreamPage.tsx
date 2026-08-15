@@ -6,6 +6,7 @@ import { formatAddress } from '../utils/helpers';
 import LiveVideoPlayer from './LiveVideoPlayer';
 import LiveChatPanel from './LiveChatPanel';
 import ZapButton from './ZapButton';
+import RichText from './RichText';
 import { ZapIcon } from './Icons';
 
 interface LiveStreamPageProps {
@@ -15,9 +16,10 @@ interface LiveStreamPageProps {
   relaysConnected: boolean;
   onNavigateToProfile: (pubkey: string) => void;
   onNavigateToNote: (noteId: string) => void;
+  onNavigateToTopic?: (topic: string) => void;
 }
 
-const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifier, relaysConnected, onNavigateToProfile, onNavigateToNote }) => {
+const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifier, relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
   const [stream, setStream] = useState<LiveStreamInfo | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -143,12 +145,28 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
               <div className="live-stream-viewers-count">👁 {stream.currentParticipants} watching</div>
             )}
 
-            {stream.summary && <p className="live-stream-summary">{stream.summary}</p>}
+            {stream.summary && (
+              <p className="live-stream-summary">
+                <RichText
+                  content={stream.summary}
+                  onNavigateToProfile={onNavigateToProfile}
+                  onNavigateToNote={onNavigateToNote}
+                  onNavigateToTopic={onNavigateToTopic}
+                />
+              </p>
+            )}
 
             {stream.hashtags.length > 0 && (
               <div className="event-hashtags">
                 {stream.hashtags.map(tag => (
-                  <span key={tag} className="event-hashtag">#{tag}</span>
+                  <button
+                    key={tag}
+                    type="button"
+                    className="event-hashtag"
+                    onClick={() => onNavigateToTopic?.(tag)}
+                  >
+                    #{tag}
+                  </button>
                 ))}
               </div>
             )}
@@ -160,6 +178,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
           disabled={stream.status !== 'live'}
           onNavigateToProfile={onNavigateToProfile}
           onNavigateToNote={onNavigateToNote}
+          onNavigateToTopic={onNavigateToTopic}
         />
       </div>
     </div>
