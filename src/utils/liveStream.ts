@@ -5,7 +5,15 @@ export type LiveStreamStatus = 'planned' | 'live' | 'ended';
 
 export interface LiveStreamInfo {
   id: string;
+  /** Author of the event — often a platform account, not the streamer */
   pubkey: string;
+  /**
+   * Who is actually presenting: NIP-53 marks them with a 'p' tag whose
+   * role is "Host". On platform-published streams (zap.stream and the
+   * like) that differs from the event author, and it's the host who has a
+   * Lightning address and should get the zap.
+   */
+  hostPubkey: string;
   dTag: string;
   title: string;
   summary: string;
@@ -40,9 +48,12 @@ export function parseLiveEvent(event: NostrEventSigned): LiveStreamInfo {
     ? 'planned'
     : (rawStatus === 'live' && isEffectivelyLive(event)) ? 'live' : 'ended';
 
+  const hostTag = event.tags.find(t => t[0] === 'p' && (t[3] || '').toLowerCase() === 'host');
+
   return {
     id: event.id,
     pubkey: event.pubkey,
+    hostPubkey: hostTag?.[1] || event.pubkey,
     dTag: tag('d') || '',
     title: tag('title') || 'Untitled stream',
     summary: tag('summary') || '',

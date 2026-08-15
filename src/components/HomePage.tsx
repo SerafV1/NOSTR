@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { NostrEventSigned, NostrFilter, EVENT_KINDS, UserProfile } from '../types';
 import { NostrCore, PersistentCache, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
+import { formatAddress } from '../utils/helpers';
 import { loadCustomFeeds, saveCustomFeeds } from '../utils/customFeeds';
 import { parseLiveEvent, encodeLiveNaddr, LiveStreamInfo } from '../utils/liveStream';
 import EventCard from './EventCard';
@@ -707,8 +708,12 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
             ) : (
               <div className="live-banner">
                 {liveStreams.map(({ info, followedPubkey }) => {
-                  const profile = liveProfiles.get(followedPubkey);
-                  const name = profile?.display_name || profile?.name || 'Someone you follow';
+                  // liveProfiles is filled by a relay round trip, but the
+                  // panel itself renders instantly from cache — so fall back
+                  // to the locally known profile first. Otherwise the name
+                  // visibly changes from a placeholder a second later.
+                  const profile = liveProfiles.get(followedPubkey) || EventCache.getProfile(followedPubkey);
+                  const name = profile?.display_name || profile?.name || formatAddress(followedPubkey);
                   const isGuest = followedPubkey !== info.pubkey;
                   const naddr = encodeLiveNaddr(EVENT_KINDS.LIVE_EVENT, info.pubkey, info.dTag);
                   return (

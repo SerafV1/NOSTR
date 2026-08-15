@@ -635,6 +635,36 @@ export class RelayPool {
   }
 
   /**
+   * What a relay actually did with this account's last post, in the relay's
+   * own words. NIP-11 states a relay's general policy; only a real publish
+   * says whether *you* may write — someone who has paid a paid relay gets
+   * an OK, and their next visit to settings should reflect that rather than
+   * the blanket "payment required" the relay advertises to everyone.
+   */
+  private writeOutcomesKey(pubkey: string): string {
+    return `nostr_relay_write_${pubkey}`;
+  }
+
+  private recordWriteOutcome(pubkey: string, url: string, accepted: boolean, reason: string): void {
+    try {
+      const all = this.getWriteOutcomes(pubkey);
+      all[url] = { accepted, reason, at: Math.floor(Date.now() / 1000) };
+      localStorage.setItem(this.writeOutcomesKey(pubkey), JSON.stringify(all));
+    } catch {
+      // best-effort: this only ever improves what settings can tell you
+    }
+  }
+
+  getWriteOutcomes(pubkey: string): Record<string, { accepted: boolean; reason: string; at: number }> {
+    if (!pubkey) return {};
+    try {
+      return JSON.parse(localStorage.getItem(this.writeOutcomesKey(pubkey)) || '{}');
+    } catch {
+      return {};
+    }
+  }
+
+  /**
    * Publish an event to all write relays
    */
   async publishEvent(event: NostrEventSigned): Promise<Map<string, boolean>> {
@@ -683,10 +713,17 @@ export class RelayPool {
             ]);
 
             results.set(url, true);
+            this.recordWriteOutcome(event.pubkey, url, true, '');
             console.log(`Event published to ${url}`);
           } catch (error) {
             console.error(`Failed to publish to ${url}:`, error);
             results.set(url, false);
+            const reason = error instanceof Error ? error.message : String(error);
+            // A silent relay proves nothing about whether this account may
+            // write — only a relay that actually answered does
+            if (!reason.includes('publish confirmation timeout')) {
+              this.recordWriteOutcome(event.pubkey, url, false, reason);
+            }
           }
         })()
       );

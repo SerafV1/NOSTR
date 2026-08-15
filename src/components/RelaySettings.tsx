@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getRelayPool } from '../nostr/relay';
+import { CredentialManager } from '../nostr/crypto';
 import { RelayConfig } from '../types';
 
 interface RelayWithCapabilities extends RelayConfig {
@@ -13,9 +14,35 @@ interface RelayWithCapabilities extends RelayConfig {
   paymentsUrl?: string;
   feeSummary?: string;
   writeBlockedReason?: string;
+  /** What this relay actually did with your last post, if you've posted */
+  writeAccepted?: boolean;
+  writeReason?: string;
   name?: string;
   description?: string;
 }
+
+/**
+ * Whether posts from this account can reach a relay. What the relay did
+ * with a real post outranks what its NIP-11 document claims; only with no
+ * evidence either way do we fall back to the document.
+ */
+const canWrite = (relay: RelayWithCapabilities): boolean => {
+  if (relay.writeAccepted === true) return true;
+  if (relay.writeAccepted === false) return false;
+  return relay.writable !== false;
+};
+
+const writeExplanation = (relay: RelayWithCapabilities): string | undefined => {
+  if (relay.writeAccepted === true) return 'Your last post was accepted here';
+  if (relay.writeAccepted === false) {
+    return relay.writeReason
+      ? `This relay rejected your last post: ${relay.writeReason}`
+      : 'This relay rejected your last post';
+  }
+  return relay.writeBlockedReason
+    ? `This relay says it does not accept posts from accounts like yours: ${relay.writeBlockedReason}`
+    : undefined;
+};
 
 const RelaySettings: React.FC = () => {
   const [relays, setRelays] = useState<RelayWithCapabilities[]>([]);
@@ -41,6 +68,11 @@ const RelaySettings: React.FC = () => {
     // Only fetch capabilities on first load or when requested
     if (fetchCapabilities || !initialized) {
       const capabilities = relayPool.getAllCapabilities();
+      // NIP-11 describes the relay's policy for everyone; this describes
+      // what it did for you. Where they disagree, the real publish wins:
+      // a paid relay you've paid for accepts your posts, whatever its
+      // information document keeps telling the world.
+      const outcomes = relayPool.getWriteOutcomes(CredentialManager.getPublicKey() || '');
       console.log('[Settings] All capabilities:', capabilities);
       relaysWithStatus = relaysWithStatus.map(r => ({
         ...r,
@@ -53,6 +85,8 @@ const RelaySettings: React.FC = () => {
         paymentsUrl: capabilities.get(r.url)?.paymentsUrl ?? '',
         feeSummary: capabilities.get(r.url)?.feeSummary ?? '',
         writeBlockedReason: capabilities.get(r.url)?.writeBlockedReason ?? '',
+        writeAccepted: outcomes[r.url]?.accepted,
+        writeReason: outcomes[r.url]?.reason ?? '',
         name: capabilities.get(r.url)?.name ?? '',
         description: capabilities.get(r.url)?.description ?? ''
       }));
@@ -230,10 +264,10 @@ const RelaySettings: React.FC = () => {
                     {relay.readable !== false ? '✓' : '✗'} Readable
                   </span>
                   <span
-                    className={`capability-indicator ${relay.writable !== false ? 'enabled' : 'disabled'}`}
-                    title={relay.writeBlockedReason || undefined}
+                    className={`capability-indicator ${canWrite(relay) ? 'enabled' : 'disabled'}`}
+                    title={writeExplanation(relay)}
                   >
-                    {relay.writable !== false ? '✓' : '✗'} Writable
+                    {canWrite(relay) ? '✓' : '✗'} Writable
                   </span>
                   {relay.paymentRequired && (
                     relay.paymentsUrl ? (
@@ -282,10 +316,17 @@ const RelaySettings: React.FC = () => {
                   </label>
                 </div>
                 <div className="capability">
-                  <label>
+                  {/* The relay itself says it won't take posts from an
+                      account like this one, so offering the switch would
+                      only promise something the next publish can't keep */}
+                  <label
+                    className={canWrite(relay) ? undefined : 'capability-unavailable'}
+                    title={writeExplanation(relay)}
+                  >
                     <input
                       type="checkbox"
-                      checked={relay.write}
+                      checked={relay.write && canWrite(relay)}
+                      disabled={!canWrite(relay)}
                       onChange={() => handleToggleWrite(relay.url)}
                     />
                     <span>Writable (Publish)</span>

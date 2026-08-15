@@ -4741,3 +4741,10 @@ a.capability-indicator.paid:hover {
   gap: var(--spacing-md);
   flex-wrap: wrap;
 }
+
+/* A capability the relay itself rules out — the control stays visible so
+   the reason is readable, but it can't be toggled */
+.capability label.capability-unavailable {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

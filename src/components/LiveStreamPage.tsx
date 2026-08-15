@@ -40,7 +40,9 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
       // rather than pretending to still be live.
       const known = EventCache.getAddressable(kind, pubkey, identifier);
       if (known) {
-        setStream(parseLiveEvent(known));
+        const parsedKnown = parseLiveEvent(known);
+        setStream(parsedKnown);
+        setProfile(EventCache.getProfile(parsedKnown.hostPubkey));
         setLoading(false);
       } else {
         setLoading(true);
@@ -54,8 +56,13 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
           if (!known) setNotFound(true);
           return;
         }
-        setStream(parseLiveEvent(event));
-        const fetchedProfile = await NostrCore.fetchUserProfile(pubkey);
+        const parsed = parseLiveEvent(event);
+        setStream(parsed);
+        // The zap and the host line follow whoever is presenting, which on
+        // a platform-published stream is not the account that signed the
+        // event — that one has no Lightning address, so the zap button
+        // silently never appeared
+        const fetchedProfile = await NostrCore.fetchUserProfile(parsed.hostPubkey);
         if (!cancelled) setProfile(fetchedProfile);
       } catch (error) {
         console.error('Failed to load live stream:', error);
@@ -84,7 +91,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
     );
   }
 
-  const hostName = profile?.display_name || profile?.name || formatAddress(stream.pubkey);
+  const hostName = profile?.display_name || profile?.name || formatAddress(stream.hostPubkey);
 
   const address = liveEventAddress(kind, stream.pubkey, stream.dTag);
 
@@ -109,7 +116,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
             </div>
 
             <div className="live-stream-host-row">
-              <button className="live-stream-host-link" onClick={() => onNavigateToProfile(stream.pubkey)}>
+              <button className="live-stream-host-link" onClick={() => onNavigateToProfile(stream.hostPubkey)}>
                 {profile?.picture ? (
                   <img src={profile.picture} alt="" className="live-stream-host-avatar" />
                 ) : (
