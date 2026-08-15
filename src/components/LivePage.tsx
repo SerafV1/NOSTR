@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserProfile, EVENT_KINDS } from '../types';
-import { NostrCore } from '../nostr/core';
+import { UserProfile, EVENT_KINDS, NostrEventSigned } from '../types';
+import { NostrCore, PersistentCache } from '../nostr/core';
 import { parseLiveEvent, encodeLiveNaddr, LiveStreamInfo } from '../utils/liveStream';
 import { formatAddress } from '../utils/helpers';
+
+// Public list, identical for everyone, so it isn't keyed per account
+const LIVE_CACHE_KEY = 'live_now';
 
 interface LivePageProps {
   relaysConnected: boolean;
@@ -20,12 +23,24 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
     let cancelled = false;
 
     (async () => {
-      setLoading(true);
+      // Show the last known list straight away instead of an empty page.
+      // These are raw events re-parsed on render, so anything that has
+      // since gone stale comes back as 'ended' and is dropped here rather
+      // than being presented as still live.
+      const cached = PersistentCache.get<NostrEventSigned[]>(LIVE_CACHE_KEY) || [];
+      const stillLive = cached.map(parseLiveEvent).filter(s => s.streamingUrl && s.status === 'live');
+      if (stillLive.length > 0) {
+        setStreams(stillLive);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
       try {
         const events = await NostrCore.fetchLiveEvents('live');
         const infos = events.map(parseLiveEvent).filter(s => s.streamingUrl);
         if (cancelled) return;
         setStreams(infos);
+        PersistentCache.set(LIVE_CACHE_KEY, events);
 
         const profileMap = await NostrCore.fetchProfiles(infos.map(s => s.pubkey));
         if (!cancelled) setProfiles(profileMap);

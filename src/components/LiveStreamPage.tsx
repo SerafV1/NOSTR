@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { UserProfile } from '../types';
-import { NostrCore } from '../nostr/core';
+import { NostrCore, EventCache } from '../nostr/core';
 import { parseLiveEvent, LiveStreamInfo, liveEventAddress } from '../utils/liveStream';
 import { formatAddress } from '../utils/helpers';
 import LiveVideoPlayer from './LiveVideoPlayer';
@@ -31,13 +31,25 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
     let cancelled = false;
 
     (async () => {
-      setLoading(true);
+      // Coming from the Live list or the home sidebar, this event is
+      // already in hand — draw the page from it now and let the refresh
+      // below correct it. parseLiveEvent re-derives status from the
+      // event's age, so a stream that has since ended shows as ended
+      // rather than pretending to still be live.
+      const known = EventCache.getAddressable(kind, pubkey, identifier);
+      if (known) {
+        setStream(parseLiveEvent(known));
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
       setNotFound(false);
       try {
         const event = await NostrCore.fetchEventByAddress(kind, pubkey, identifier);
         if (cancelled) return;
         if (!event) {
-          setNotFound(true);
+          // Only an outright miss with nothing on screen is "not found"
+          if (!known) setNotFound(true);
           return;
         }
         setStream(parseLiveEvent(event));

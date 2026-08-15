@@ -1498,9 +1498,11 @@ export class NostrCore {
       }
 
       if (matches.length === 0) return null;
-      return matches.reduce((latest, current) =>
-        (current.created_at || 0) > (latest.created_at || 0) ? current : latest
+      const latest = matches.reduce((newest, current) =>
+        (current.created_at || 0) > (newest.created_at || 0) ? current : newest
       );
+      EventCache.addAddressable(latest);
+      return latest;
     } catch (error) {
       console.error('Failed to fetch event by address:', error);
       return null;
@@ -1549,6 +1551,9 @@ export class NostrCore {
       });
 
       let results = Array.from(latestByAddress.values());
+      // Opening one of these afterwards should not have to ask the relays
+      // again for something already on screen
+      results.forEach(event => EventCache.addAddressable(event));
       if (status === 'live') {
         // A stale "live" tag (broadcaster never published "ended") doesn't
         // count as actually live — see isEffectivelyLive
@@ -2080,6 +2085,25 @@ export class EventCache {
    */
   static addEvents(events: NostrEventSigned[]): void {
     for (const event of events) this.addEvent(event);
+  }
+
+  // Addressable events (NIP-33/NIP-53) are identified by
+  // "<kind>:<pubkey>:<d-tag>" rather than by id, so they need their own
+  // index — looking one up by event id is not something a caller can do.
+  private static addressable: Map<string, NostrEventSigned> = new Map();
+
+  static addAddressable(event: NostrEventSigned): void {
+    const dTag = event.tags.find(t => t[0] === 'd')?.[1] || '';
+    const key = `${event.kind}:${event.pubkey}:${dTag}`;
+    const existing = this.addressable.get(key);
+    // Only the newest revision matters — that's what "replaceable" means
+    if (!existing || (event.created_at || 0) >= (existing.created_at || 0)) {
+      this.addressable.set(key, event);
+    }
+  }
+
+  static getAddressable(kind: number, pubkey: string, identifier: string): NostrEventSigned | null {
+    return this.addressable.get(`${kind}:${pubkey}:${identifier}`) || null;
   }
 
   static getEvent(id: string): EventWithMetadata | null {
