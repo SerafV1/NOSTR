@@ -12,6 +12,7 @@ interface RelayWithCapabilities extends RelayConfig {
   restrictedWrites?: boolean;
   paymentsUrl?: string;
   feeSummary?: string;
+  writeBlockedReason?: string;
   name?: string;
   description?: string;
 }
@@ -51,6 +52,7 @@ const RelaySettings: React.FC = () => {
         restrictedWrites: capabilities.get(r.url)?.restrictedWrites ?? false,
         paymentsUrl: capabilities.get(r.url)?.paymentsUrl ?? '',
         feeSummary: capabilities.get(r.url)?.feeSummary ?? '',
+        writeBlockedReason: capabilities.get(r.url)?.writeBlockedReason ?? '',
         name: capabilities.get(r.url)?.name ?? '',
         description: capabilities.get(r.url)?.description ?? ''
       }));
@@ -227,7 +229,10 @@ const RelaySettings: React.FC = () => {
                   <span className={`capability-indicator ${relay.readable !== false ? 'enabled' : 'disabled'}`}>
                     {relay.readable !== false ? '✓' : '✗'} Readable
                   </span>
-                  <span className={`capability-indicator ${relay.writable !== false ? 'enabled' : 'disabled'}`}>
+                  <span
+                    className={`capability-indicator ${relay.writable !== false ? 'enabled' : 'disabled'}`}
+                    title={relay.writeBlockedReason || undefined}
+                  >
                     {relay.writable !== false ? '✓' : '✗'} Writable
                   </span>
                   {relay.paymentRequired && (

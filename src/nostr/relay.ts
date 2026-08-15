@@ -477,6 +477,7 @@ export class RelayPool {
       restrictedWrites: false,
       paymentsUrl: '',
       feeSummary: '',
+      writeBlockedReason: '',
       name: '',
       description: ''
     };
@@ -581,6 +582,22 @@ export class RelayPool {
         }
         console.log(`[Relay] Payment check: payment_required=${(info as any).payment_required}, limitation.payment_required=${(info as any).limitation?.payment_required}, has fees=${hasAnyFee} → paid=${result.paid}`);
         
+        // Anything the relay demands before it accepts a post means posts
+        // from here will bounce: this client can't pay an invoice, can't be
+        // on an allow-list, and doesn't implement NIP-42 auth. Reporting
+        // such a relay as writable is a promise the next publish won't keep
+        // — which is why a paid relay used to sit there marked "✓ Writable"
+        // right next to "payment required".
+        const blockers = [
+          result.paymentRequired && 'payment required',
+          result.restrictedWrites && 'restricted writes',
+          result.authRequired && 'auth required (NIP-42, not supported here)'
+        ].filter(Boolean) as string[];
+        if (blockers.length > 0) {
+          result.writable = false;
+          result.writeBlockedReason = blockers.join(', ');
+        }
+
         result.name = (info as any).name || '';
         result.description = (info as any).description || '';
         console.log(`[Relay] ✓ Parsed capabilities for ${url}:`, result);
@@ -609,6 +626,7 @@ export class RelayPool {
         restrictedWrites: false,
         paymentsUrl: '',
         feeSummary: '',
+        writeBlockedReason: '',
         name: ''
       });
     }
@@ -1135,6 +1153,8 @@ export interface RelayCapabilities {
   restrictedWrites: boolean;
   paymentsUrl: string;
   feeSummary: string;
+  /** Why writes will fail, when they will — shown next to the badge */
+  writeBlockedReason?: string;
   name: string;
   description?: string;
 }

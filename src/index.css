@@ -4732,3 +4732,12 @@ a.capability-indicator.paid:hover {
 .compose-draft-discard:hover {
   text-decoration: underline;
 }
+
+/* Host line on a stream page — name on the left, zap on the right */
+.live-stream-host-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+}

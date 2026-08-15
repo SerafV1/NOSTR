@@ -5,6 +5,8 @@ import { parseLiveEvent, LiveStreamInfo, liveEventAddress } from '../utils/liveS
 import { formatAddress } from '../utils/helpers';
 import LiveVideoPlayer from './LiveVideoPlayer';
 import LiveChatPanel from './LiveChatPanel';
+import ZapButton from './ZapButton';
+import { ZapIcon } from './Icons';
 
 interface LiveStreamPageProps {
   kind: number;
@@ -106,14 +108,29 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
               )}
             </div>
 
-            <button className="live-stream-host-link" onClick={() => onNavigateToProfile(stream.pubkey)}>
-              {profile?.picture ? (
-                <img src={profile.picture} alt="" className="live-stream-host-avatar" />
-              ) : (
-                <div className="live-stream-host-avatar-placeholder">{hostName.charAt(0).toUpperCase()}</div>
+            <div className="live-stream-host-row">
+              <button className="live-stream-host-link" onClick={() => onNavigateToProfile(stream.pubkey)}>
+                {profile?.picture ? (
+                  <img src={profile.picture} alt="" className="live-stream-host-avatar" />
+                ) : (
+                  <div className="live-stream-host-avatar-placeholder">{hostName.charAt(0).toUpperCase()}</div>
+                )}
+                <span>{hostName}</span>
+              </button>
+
+              {/* Zapping the host is the usual way to tip a stream. Only
+                  shown when they actually publish a Lightning address —
+                  without one there is nothing to pay. */}
+              {profile?.lud16 && (
+                <ZapButton
+                  lud16={profile.lud16}
+                  triggerClassName="btn btn-secondary btn-small btn-with-icon"
+                  triggerTitle={`Zap ${hostName}`}
+                >
+                  <ZapIcon /> Zap
+                </ZapButton>
               )}
-              <span>{hostName}</span>
-            </button>
+            </div>
 
             {stream.currentParticipants !== undefined && (
               <div className="live-stream-viewers-count">👁 {stream.currentParticipants} watching</div>

@@ -21,6 +21,25 @@ type FeedType = 'home' | 'global' | 'topic';
 // looking at the page, long enough not to churn connections.
 const LIVE_RESUBSCRIBE_MS = 3 * 60 * 1000;
 
+const liveStreamsCacheKeyFor = (pubkey: string | null): string =>
+  pubkey ? `live_streams_${pubkey}` : 'live_streams';
+
+/**
+ * Last known live streams, re-parsed rather than stored as parsed values:
+ * parseLiveEvent derives status from the event's age, so a stream that has
+ * ended since comes back as 'ended' and is dropped instead of being shown
+ * as still running.
+ */
+const readCachedLiveStreams = (): { info: LiveStreamInfo; followedPubkey: string }[] => {
+  const cached = PersistentCache.get<{ event: NostrEventSigned; matchedPubkey: string }[]>(
+    liveStreamsCacheKeyFor(CredentialManager.getPublicKey())
+  );
+  if (!cached) return [];
+  return cached
+    .map(({ event, matchedPubkey }) => ({ info: parseLiveEvent(event), followedPubkey: matchedPubkey }))
+    .filter(x => x.info.streamingUrl && x.info.status === 'live');
+};
+
 const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
   const [events, setEvents] = useState<NostrEventSigned[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,7 +58,13 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   // tab, interleaved with your own notes X-style (fetched once per feed
   // load, not part of the live-subscription/pending mechanism above)
   const [reposts, setReposts] = useState<{ repost: NostrEventSigned; original: NostrEventSigned }[]>([]);
-  const [liveStreams, setLiveStreams] = useState<{ info: LiveStreamInfo; followedPubkey: string }[]>([]);
+  // Seeded from cache so returning to Home shows the sidebar immediately.
+  // It used to be filled inside an effect gated on hasFollows, which isn't
+  // known until the whole feed has loaded — so the panel sat empty for
+  // seconds with the answer already in storage.
+  const [liveStreams, setLiveStreams] = useState<{ info: LiveStreamInfo; followedPubkey: string }[]>(
+    () => readCachedLiveStreams()
+  );
   const [liveProfiles, setLiveProfiles] = useState<Map<string, UserProfile>>(new Map());
   const navigate = useNavigate();
 
@@ -137,27 +162,25 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   // and back doesn't leave the sidebar empty for the many seconds the NIP-65
   // outbox lookup below takes to redo from scratch — show the last known
   // result instantly, then refresh in the background
-  const liveStreamsCacheKey = (): string => {
-    const pubkey = CredentialManager.getPublicKey();
-    return pubkey ? `live_streams_${pubkey}` : 'live_streams';
-  };
+  const liveStreamsCacheKey = (): string => liveStreamsCacheKeyFor(CredentialManager.getPublicKey());
 
   // Check whether anyone you follow is currently live (NIP-53) so the Home
   // feed can surface it — refreshed periodically since a stream can start
   // any time, not just when this page first loads
   useEffect(() => {
-    if (!relaysConnected || feedType !== 'home' || !hasFollows) {
+    // Only clear when we actually know there's nothing to show. hasFollows
+    // is null until the feed load resolves, and blanking on that would undo
+    // the cached list this page just rendered.
+    if (feedType !== 'home' || hasFollows === false) {
       setLiveStreams([]);
       return;
     }
+    if (!relaysConnected || !hasFollows) return;
 
     let cancelled = false;
 
-    const cached = PersistentCache.get<{ event: NostrEventSigned; matchedPubkey: string }[]>(liveStreamsCacheKey());
-    if (cached && cached.length > 0) {
-      const infos = cached
-        .map(({ event, matchedPubkey }) => ({ info: parseLiveEvent(event), followedPubkey: matchedPubkey }))
-        .filter(x => x.info.streamingUrl);
+    {
+      const infos = readCachedLiveStreams();
       setLiveStreams(infos);
       if (infos.length > 0) {
         NostrCore.fetchProfiles(infos.map(x => x.followedPubkey)).then(profiles => {
