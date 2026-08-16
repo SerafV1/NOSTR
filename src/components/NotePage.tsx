@@ -87,6 +87,11 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
             const parent: NostrEventSigned | null = await (NostrCore as any).fetchEventById(parentId, hintRelay);
             if (!parent) break;
             ancestors.unshift(parent);
+            // Render each ancestor the moment it resolves. Waiting for the
+            // whole chain meant a reply-to-a-reply sat with no context above
+            // it until every lookup finished, and the thread only "fell into
+            // place" seconds later.
+            setParentNotes([...ancestors]);
             current = parent;
           }
         } catch (error) {

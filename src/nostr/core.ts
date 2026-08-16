@@ -1396,6 +1396,13 @@ export class NostrCore {
    * relay. Tried after our own pool comes up empty.
    */
   static async fetchEventById(eventId: string, hintRelays?: string[], authorHint?: string): Promise<NostrEventSigned | null> {
+    // An event is immutable once signed, so a copy we already hold is as
+    // good as a fetched one — and this lookup is expensive: waitForAll,
+    // twice, a second apart. Walking a reply chain used to pay that per
+    // ancestor, in sequence, for notes usually sitting in the feed cache.
+    const known = EventCache.getEvent(eventId);
+    if (known) return known;
+
     const filters: NostrFilter[] = [
       {
         ids: [eventId]
@@ -1453,7 +1460,11 @@ export class NostrCore {
     try {
       const results = await Promise.allSettled([poolAttempt(), hintAttempt(), authorOutboxAttempt()]);
       for (const result of results) {
-        if (result.status === 'fulfilled' && result.value) return result.value;
+        if (result.status === 'fulfilled' && result.value) {
+          // Remember it: walking a thread asks for the same notes again
+          EventCache.addEvent(result.value);
+          return result.value;
+        }
       }
       return null;
     } catch (error) {
