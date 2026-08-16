@@ -28,9 +28,6 @@ const directParentId = (ev: NostrEventSigned): string | null => {
   return eTags[eTags.length - 1][1] || null;
 };
 
-// Past this, nesting costs more readability than it adds context
-const MAX_REPLY_DEPTH = 4;
-
 const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, onBack }) => {
   const [note, setNote] = useState<NostrEventSigned | null>(null);
   // Root-first: index 0 is the top of the thread, last item is the note's
@@ -132,6 +129,21 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
     }
   };
 
+  // The relay filter is '#e', and NIP-10 has a nested reply carry the
+  // thread's root as well — so what comes back is the whole subtree. Only
+  // what answers *this* note belongs in the list: a reply to a reply reads
+  // as an answer to the post when shown alongside the direct ones. Open the
+  // reply itself and the chain above it, plus its own replies, are there.
+  const knownReplyIds = new Set(replies.map(r => r.id));
+  const directReplies = replies
+    .filter(reply => {
+      const parent = directParentId(reply);
+      // Unknown parent means the branch it belongs to wasn't fetched;
+      // it still references this note, so showing it beats dropping it
+      return !parent || parent === noteId || !knownReplyIds.has(parent);
+    })
+    .sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+
   return (
     <div className="note-page">
       <div className="note-container">
@@ -179,48 +191,18 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
               onRefresh={() => loadNote(true)}
             />
 
-            {replies.length > 0 && (
+            {directReplies.length > 0 && (
               <>
                 <div className="thread-divider">Replies</div>
-                {(() => {
-                  // The relay filter matches anything referencing this note,
-                  // so a reply-to-a-reply comes back alongside the direct
-                  // ones. Rendered flat they all looked like answers to the
-                  // post itself — so nest each under whatever it actually
-                  // answers, oldest first, the way the conversation ran.
-                  const known = new Set(replies.map(r => r.id));
-                  const byParent = new Map<string, NostrEventSigned[]>();
-                  for (const reply of replies) {
-                    const parent = directParentId(reply);
-                    // A reply whose parent isn't in this set (it lives
-                    // deeper in some branch we didn't fetch) still belongs
-                    // to this thread — hang it off the note itself
-                    const key = parent && known.has(parent) ? parent : noteId;
-                    byParent.set(key, [...(byParent.get(key) || []), reply]);
-                  }
-                  for (const list of byParent.values()) {
-                    list.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
-                  }
-
-                  const renderLevel = (parentId: string, depth: number): React.ReactNode[] =>
-                    (byParent.get(parentId) || []).flatMap(reply => [
-                      <div
-                        key={reply.id}
-                        className={depth > 0 ? 'nested-reply' : undefined}
-                        style={depth > 0 ? { marginLeft: `${Math.min(depth, MAX_REPLY_DEPTH) * 16}px` } : undefined}
-                      >
-                        <EventCard
-                          event={reply}
-                          onNavigateToProfile={onNavigateToProfile}
-                          onNavigateToNote={onNavigateToNote}
-                          onNavigateToTopic={onNavigateToTopic}
-                        />
-                      </div>,
-                      ...(depth < MAX_REPLY_DEPTH ? renderLevel(reply.id, depth + 1) : [])
-                    ]);
-
-                  return renderLevel(noteId, 0);
-                })()}
+                {directReplies.map(reply => (
+                  <EventCard
+                    key={reply.id}
+                    event={reply}
+                    onNavigateToProfile={onNavigateToProfile}
+                    onNavigateToNote={onNavigateToNote}
+                    onNavigateToTopic={onNavigateToTopic}
+                  />
+                ))}
               </>
             )}
           </div>
