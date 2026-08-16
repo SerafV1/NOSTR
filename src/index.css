@@ -11,6 +11,9 @@
   --accent-color: #f093fb;
   --dark-bg: #0f0f1e;
   --light-bg: #1a1a2e;
+  /* One step up from the card background — enough to pick a post out under
+     the pointer without it reading as selected */
+  --card-hover-bg: #20203a;
   --border-color: #2a2a4e;
   --text-primary: #e0e0e0;
   --text-secondary: #a0a0b0;
@@ -1125,7 +1128,19 @@ textarea {
 .event-card:hover {
   border-color: var(--primary-color);
   box-shadow: 0 8px 16px rgba(102, 126, 234, 0.1);
+  background: var(--card-hover-bg);
 }
+
+/* Only the card the pointer is actually over lights up. A card containing
+   another one — a quote, or a nested card — would otherwise light up too,
+   since :hover applies to every ancestor. */
+.event-card:has(.event-card:hover),
+.event-card:has(.quoted-note-card:hover) {
+  border-color: var(--border-color);
+  box-shadow: none;
+  background: var(--light-bg);
+}
+
 
 .event-header {
   display: flex;
@@ -1558,7 +1573,8 @@ button.poll-option-vote:disabled {
 }
 
 .quoted-note-card:hover {
-  background: var(--light-bg);
+  background: var(--card-hover-bg);
+  border-color: var(--primary-color);
 }
 
 .quoted-note-header {
@@ -3158,6 +3174,27 @@ button.poll-option-vote:disabled {
   }
 }
 
+/* Tablet: the row of nav labels plus avatar and Logout is wider than the
+   viewport, which pushed the whole page sideways. Let it wrap and tighten
+   the spacing rather than clipping anything. */
+@media (max-width: 1024px) {
+  .header-content {
+    flex-wrap: wrap;
+    gap: var(--spacing-sm) var(--spacing-md);
+  }
+
+  .header-nav {
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    flex: 1 1 100%;
+    order: 3;
+  }
+
+  .nav-btn {
+    padding: var(--spacing-sm);
+  }
+}
+
 @media (max-width: 768px) {
   :root {
     --spacing-lg: 1rem;
@@ -3174,9 +3211,19 @@ button.poll-option-vote:disabled {
     font-size: 1.25rem;
   }
 
+  /* Six labelled destinations don't fit a phone's width in one row, and
+     letting them overflow made every page scroll sideways. Wrap instead:
+     nothing is hidden and nothing has to be scrolled to reach. */
   .header-nav {
     width: 100%;
     justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs) var(--spacing-sm);
+  }
+
+  .nav-btn {
+    padding: var(--spacing-sm);
+    font-size: 0.9rem;
   }
 
   .header-right {
