@@ -169,6 +169,8 @@ function App() {
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [showComposeFab, setShowComposeFab] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  // Small screens collapse the destinations behind one button
+  const [navOpen, setNavOpen] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
 
   const navigate = useNavigate();
@@ -193,6 +195,7 @@ function App() {
   // Each page starts scrolled to the top, so the button should too
   useEffect(() => {
     setShowBackToTop(false);
+    setNavOpen(false); // picking a destination closes the menu behind you
   }, [location.pathname]);
 
   // Initialize relays on mount
@@ -426,7 +429,21 @@ function App() {
       <header className="app-header">
         <div className="header-content">
           <h1 className="app-title">⚡ NOSTR</h1>
-          <nav className="header-nav">
+          <button
+            type="button"
+            className="nav-toggle"
+            aria-expanded={navOpen}
+            aria-label="Menu"
+            onClick={() => setNavOpen(open => !open)}
+          >
+            {navOpen ? '✕' : '☰'}
+            {/* Unread counts live inside the menu, so surface that there's
+                something in there while it's closed */}
+            {!navOpen && unreadNotifications + unreadMessages > 0 && (
+              <span className="nav-toggle-dot" />
+            )}
+          </button>
+          <nav className={`header-nav ${navOpen ? 'open' : ''}`}>
             <Link to="/" className={`nav-btn ${location.pathname === '/' ? 'active' : ''}`}>
               Home
             </Link>

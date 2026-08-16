@@ -435,6 +435,7 @@ textarea {
 }
 
 .header-content {
+  position: relative; /* anchors the collapsed nav panel below the header */
   max-width: 1400px;
   margin: 0 auto;
   display: flex;
@@ -476,6 +477,30 @@ textarea {
 .nav-btn.active {
   color: var(--primary-color);
   background: rgba(102, 126, 234, 0.2);
+}
+
+/* The menu button only exists on screens too narrow for a row of labels */
+.nav-toggle {
+  display: none;
+  position: relative;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.45rem 0.7rem;
+  cursor: pointer;
+}
+
+.nav-toggle-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--error-color);
 }
 
 .nav-btn-icon {
@@ -800,7 +825,10 @@ textarea {
 
 .home-container {
   display: grid;
-  grid-template-columns: 250px 1fr 300px;
+  /* minmax(0, …) rather than 1fr: an auto-sized track refuses to shrink
+     below its content's minimum, so one long stream title in the sidebar
+     stretched the whole column past the screen edge on a phone */
+  grid-template-columns: 250px minmax(0, 1fr) minmax(0, 300px);
   gap: var(--spacing-xl);
 }
 
@@ -3166,7 +3194,7 @@ button.poll-option-vote:disabled {
 /* Responsive Design */
 @media (max-width: 1200px) {
   .home-container {
-    grid-template-columns: 1fr 300px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
   }
 
   .home-sidebar {
@@ -3179,19 +3207,40 @@ button.poll-option-vote:disabled {
    the spacing rather than clipping anything. */
 @media (max-width: 1024px) {
   .header-content {
-    flex-wrap: wrap;
-    gap: var(--spacing-sm) var(--spacing-md);
+    flex-wrap: nowrap;
+    gap: var(--spacing-sm);
   }
 
-  .header-nav {
-    flex-wrap: wrap;
-    gap: var(--spacing-sm);
-    flex: 1 1 100%;
+  .nav-toggle {
+    display: inline-flex;
+    align-items: center;
     order: 3;
   }
 
-  .nav-btn {
+  /* Off-canvas rather than in the flow, so opening the menu doesn't push
+     the page down and shift what you were looking at */
+  .header-nav {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: var(--spacing-md);
+    left: var(--spacing-md);
+    flex-direction: column;
+    gap: var(--spacing-xs);
     padding: var(--spacing-sm);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background: var(--light-bg);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    z-index: 1100;
+  }
+
+  .header-nav.open {
+    display: flex;
+  }
+
+  .nav-btn {
+    padding: var(--spacing-sm) var(--spacing-md);
   }
 }
 
@@ -3211,19 +3260,8 @@ button.poll-option-vote:disabled {
     font-size: 1.25rem;
   }
 
-  /* Six labelled destinations don't fit a phone's width in one row, and
-     letting them overflow made every page scroll sideways. Wrap instead:
-     nothing is hidden and nothing has to be scrolled to reach. */
-  .header-nav {
-    width: 100%;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    gap: var(--spacing-xs) var(--spacing-sm);
-  }
-
   .nav-btn {
-    padding: var(--spacing-sm);
-    font-size: 0.9rem;
+    font-size: 0.95rem;
   }
 
   .header-right {
@@ -3232,11 +3270,15 @@ button.poll-option-vote:disabled {
   }
 
   .home-container {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
+  /* Live Now used to be hidden outright here, so a phone never saw who was
+     streaming. Put it above the feed instead — it's a short panel, and
+     below the feed nobody would ever scroll to it. */
   .home-sidebar-right {
-    display: none;
+    display: block;
+    order: -1;
   }
 
   .profile-header-top {
@@ -4165,6 +4207,7 @@ a.capability-indicator.paid:hover {
   align-items: center;
   gap: var(--spacing-sm);
   width: 100%;
+  min-width: 0;
   padding: var(--spacing-sm) var(--spacing-md);
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid var(--error-color);
@@ -4203,6 +4246,9 @@ a.capability-indicator.paid:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* Without this the ellipsis never kicks in: a flex item's default
+     min-width is its content, so the text pushed the row wider instead */
+  min-width: 0;
 }
 
 .live-page {
