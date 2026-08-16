@@ -12,6 +12,25 @@ interface NotePageProps {
   onBack: () => void;
 }
 
+/**
+ * The note this one is a direct answer to. NIP-10 marks it 'reply', with
+ * the top of the thread marked 'root'; older notes use the positional
+ * convention where the last 'e' tag is the parent.
+ */
+const directParentId = (ev: NostrEventSigned): string | null => {
+  const eTags = ev.tags.filter(t => t[0] === 'e');
+  if (eTags.length === 0) return null;
+  const marked = eTags.find(t => t[3] === 'reply');
+  if (marked) return marked[1] || null;
+  const root = eTags.find(t => t[3] === 'root');
+  // Only a root marker means this answers the top of the thread directly
+  if (root && eTags.length === 1) return root[1] || null;
+  return eTags[eTags.length - 1][1] || null;
+};
+
+// Past this, nesting costs more readability than it adds context
+const MAX_REPLY_DEPTH = 4;
+
 const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, onBack }) => {
   const [note, setNote] = useState<NostrEventSigned | null>(null);
   // Root-first: index 0 is the top of the thread, last item is the note's
@@ -163,15 +182,45 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
             {replies.length > 0 && (
               <>
                 <div className="thread-divider">Replies</div>
-                {replies.map((reply) => (
-                  <EventCard
-                    key={reply.id}
-                    event={reply}
-                    onNavigateToProfile={onNavigateToProfile}
-                    onNavigateToNote={onNavigateToNote}
-                    onNavigateToTopic={onNavigateToTopic}
-                  />
-                ))}
+                {(() => {
+                  // The relay filter matches anything referencing this note,
+                  // so a reply-to-a-reply comes back alongside the direct
+                  // ones. Rendered flat they all looked like answers to the
+                  // post itself — so nest each under whatever it actually
+                  // answers, oldest first, the way the conversation ran.
+                  const known = new Set(replies.map(r => r.id));
+                  const byParent = new Map<string, NostrEventSigned[]>();
+                  for (const reply of replies) {
+                    const parent = directParentId(reply);
+                    // A reply whose parent isn't in this set (it lives
+                    // deeper in some branch we didn't fetch) still belongs
+                    // to this thread — hang it off the note itself
+                    const key = parent && known.has(parent) ? parent : noteId;
+                    byParent.set(key, [...(byParent.get(key) || []), reply]);
+                  }
+                  for (const list of byParent.values()) {
+                    list.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+                  }
+
+                  const renderLevel = (parentId: string, depth: number): React.ReactNode[] =>
+                    (byParent.get(parentId) || []).flatMap(reply => [
+                      <div
+                        key={reply.id}
+                        className={depth > 0 ? 'nested-reply' : undefined}
+                        style={depth > 0 ? { marginLeft: `${Math.min(depth, MAX_REPLY_DEPTH) * 16}px` } : undefined}
+                      >
+                        <EventCard
+                          event={reply}
+                          onNavigateToProfile={onNavigateToProfile}
+                          onNavigateToNote={onNavigateToNote}
+                          onNavigateToTopic={onNavigateToTopic}
+                        />
+                      </div>,
+                      ...(depth < MAX_REPLY_DEPTH ? renderLevel(reply.id, depth + 1) : [])
+                    ]);
+
+                  return renderLevel(noteId, 0);
+                })()}
               </>
             )}
           </div>

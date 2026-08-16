@@ -4748,3 +4748,11 @@ a.capability-indicator.paid:hover {
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+/* A reply to a reply — indented and hung off a connector, so it reads as
+   an answer to the post above it rather than to the note at the top */
+.nested-reply {
+  position: relative;
+  border-left: 2px solid var(--border-color);
+  padding-left: var(--spacing-sm);
+}
