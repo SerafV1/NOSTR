@@ -1,11 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { NostrCrypto, ExtensionManager } from '../nostr/crypto';
+import { requestPublicKey, isAndroid } from '../nostr/amber';
 
 interface LoginPageProps {
   onLogin: (privkey: string) => void;
 }
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
+  const [amberError, setAmberError] = useState<string | null>(null);
+
+  // On Android there is no NIP-07 extension to talk to, so the signer app is
+  // the only way in that doesn't mean typing a private key into a phone
+  const handleAmberLogin = async () => {
+    setAmberError(null);
+    try {
+      // Navigates to the signer and does not return; App picks the answer up
+      // from the callback URL when the browser comes back
+      await requestPublicKey();
+    } catch (error) {
+      setAmberError(error instanceof Error ? error.message : 'Could not reach a signer app');
+    }
+  };
+
   const [privkey, setPrivkey] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [mode, setMode] = useState<'login' | 'generate' | 'extension'>('login');
@@ -82,6 +98,24 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             <>
               <div className="extension-login-section">
                 <div className="extension-card">
+                  {isAndroid() && (
+                    <div className="amber-login">
+                      <h3>📱 Login with Amber</h3>
+                      <p className="extension-desc">
+                        Approve in your signer app — your key never leaves it
+                      </p>
+                      <button
+                        type="button"
+                        className="btn btn-extension"
+                        onClick={handleAmberLogin}
+                      >
+                        🔗 Login with Amber
+                      </button>
+                      {amberError && <div className="login-error">{amberError}</div>}
+                      <div className="form-divider">or</div>
+                    </div>
+                  )}
+
                   <div className="extension-header">
                     <h3>🔐 Login with Extension</h3>
                     <p className="extension-desc">Use your NOSTR browser extension</p>

@@ -9,6 +9,7 @@ import {
 import { nip19 } from 'nostr-tools';
 import { NostrCrypto, CredentialManager, ExtensionManager } from './crypto';
 import { getRelayPool } from './relay';
+import { requestSignature } from './amber';
 import { isEffectivelyLive } from '../utils/liveStream';
 
 /**
@@ -24,10 +25,8 @@ export class NostrCore {
     hashtags?: string[],
     mentionPubkeys?: string[]
   ): Promise<NostrEventSigned | null> {
-    const isExtension = CredentialManager.isExtensionMode();
-
-    if (!isExtension && !CredentialManager.getPrivateKey()) {
-      console.error('Private key not found');
+    if (!CredentialManager.canSign()) {
+      console.error('No signing method available');
       return null;
     }
 
@@ -52,15 +51,7 @@ export class NostrCore {
     };
 
     try {
-      let signed: NostrEventSigned;
-
-      if (isExtension) {
-        signed = await this.signEventWithExtension(event);
-      } else {
-        const privkey = CredentialManager.getPrivateKey();
-        if (!privkey) throw new Error('Private key not found');
-        signed = NostrCrypto.signEvent(event, privkey);
-      }
+      const signed = await this.signAnyMode(event);
 
       if (!signed) throw new Error('Failed to sign event');
 
@@ -89,10 +80,8 @@ export class NostrCore {
     pollType: 'user' | 'zap',
     endsAt?: number
   ): Promise<NostrEventSigned | null> {
-    const isExtension = CredentialManager.isExtensionMode();
-
-    if (!isExtension && !CredentialManager.getPrivateKey()) {
-      console.error('Private key not found');
+    if (!CredentialManager.canSign()) {
+      console.error('No signing method available');
       return null;
     }
 
@@ -110,15 +99,7 @@ export class NostrCore {
     };
 
     try {
-      let signed: NostrEventSigned;
-
-      if (isExtension) {
-        signed = await this.signEventWithExtension(event);
-      } else {
-        const privkey = CredentialManager.getPrivateKey();
-        if (!privkey) throw new Error('Private key not found');
-        signed = NostrCrypto.signEvent(event, privkey);
-      }
+      const signed = await this.signAnyMode(event);
 
       if (!signed) throw new Error('Failed to sign event');
 
@@ -139,10 +120,8 @@ export class NostrCore {
    * response per voter.
    */
   static async publishPollResponse(pollId: string, optionId: string): Promise<NostrEventSigned | null> {
-    const isExtension = CredentialManager.isExtensionMode();
-
-    if (!isExtension && !CredentialManager.getPrivateKey()) {
-      console.error('Private key not found');
+    if (!CredentialManager.canSign()) {
+      console.error('No signing method available');
       return null;
     }
 
@@ -156,15 +135,7 @@ export class NostrCore {
     };
 
     try {
-      let signed: NostrEventSigned;
-
-      if (isExtension) {
-        signed = await this.signEventWithExtension(event);
-      } else {
-        const privkey = CredentialManager.getPrivateKey();
-        if (!privkey) throw new Error('Private key not found');
-        signed = NostrCrypto.signEvent(event, privkey);
-      }
+      const signed = await this.signAnyMode(event);
 
       if (!signed) throw new Error('Failed to sign event');
 
@@ -202,10 +173,9 @@ export class NostrCore {
    * Publish user metadata (kind 0)
    */
   static async publishProfile(profile: Partial<UserProfile>): Promise<NostrEventSigned | null> {
-    const isExtension = CredentialManager.isExtensionMode();
     
-    if (!isExtension && !CredentialManager.getPrivateKey()) {
-      console.error('Private key not found');
+    if (!CredentialManager.canSign()) {
+      console.error('No signing method available');
       return null;
     }
 
@@ -216,15 +186,7 @@ export class NostrCore {
     };
 
     try {
-      let signed: NostrEventSigned;
-
-      if (isExtension) {
-        signed = await this.signEventWithExtension(event);
-      } else {
-        const privkey = CredentialManager.getPrivateKey();
-        if (!privkey) throw new Error('Private key not found');
-        signed = NostrCrypto.signEvent(event, privkey);
-      }
+      const signed = await this.signAnyMode(event);
 
       if (!signed) throw new Error('Failed to sign event');
 
@@ -500,21 +462,13 @@ export class NostrCore {
     tags: string[][],
     content: string
   ): Promise<boolean> {
-    const isExtension = CredentialManager.isExtensionMode();
-    if (!isExtension && !CredentialManager.getPrivateKey()) {
-      throw new Error('Private key not found');
+    if (!CredentialManager.canSign()) {
+      throw new Error('No signing method available — log in again');
     }
 
     const event: NostrEvent = { kind, content, tags };
 
-    let signed: NostrEventSigned;
-    if (isExtension) {
-      signed = await this.signEventWithExtension(event);
-    } else {
-      const privkey = CredentialManager.getPrivateKey();
-      if (!privkey) throw new Error('Private key not found');
-      signed = NostrCrypto.signEvent(event, privkey);
-    }
+    const signed = await this.signAnyMode(event);
 
     const relayPool = getRelayPool();
     const results = await relayPool.publishEvent(signed);
@@ -1058,10 +1012,8 @@ export class NostrCore {
     relayHint: string | undefined,
     content: string
   ): Promise<NostrEventSigned | null> {
-    const isExtension = CredentialManager.isExtensionMode();
-
-    if (!isExtension && !CredentialManager.getPrivateKey()) {
-      console.error('Private key not found');
+    if (!CredentialManager.canSign()) {
+      console.error('No signing method available');
       return null;
     }
 
@@ -1072,15 +1024,7 @@ export class NostrCore {
     };
 
     try {
-      let signed: NostrEventSigned;
-
-      if (isExtension) {
-        signed = await this.signEventWithExtension(event);
-      } else {
-        const privkey = CredentialManager.getPrivateKey();
-        if (!privkey) throw new Error('Private key not found');
-        signed = NostrCrypto.signEvent(event, privkey);
-      }
+      const signed = await this.signAnyMode(event);
 
       if (!signed) throw new Error('Failed to sign event');
 
@@ -1122,6 +1066,29 @@ export class NostrCore {
   /**
    * Sign event using extension or private key
    */
+  /**
+   * Sign an event with whatever this session logged in with. Every publish
+   * used to carry its own copy of this if/else, which is why adding a third
+   * signer meant touching ten places.
+   *
+   * With an Android signer (NIP-55) there is no in-page signing: this
+   * navigates to the signer app and never returns. The page comes back
+   * through the callback URL and the signed event is published there.
+   */
+  static async signAnyMode(event: NostrEvent): Promise<NostrEventSigned> {
+    if (CredentialManager.isAmberMode()) {
+      const pubkey = CredentialManager.getPublicKey();
+      if (!pubkey) throw new Error('Public key not found');
+      return requestSignature(event, pubkey);
+    }
+    if (CredentialManager.isExtensionMode()) {
+      return this.signEventWithExtension(event);
+    }
+    const privkey = CredentialManager.getPrivateKey();
+    if (!privkey) throw new Error('Private key not found');
+    return NostrCrypto.signEvent(event, privkey);
+  }
+
   private static async signEventWithExtension(event: NostrEvent): Promise<NostrEventSigned> {
     // NIP-07: the template must contain ONLY created_at/kind/tags/content —
     // strict extensions reject templates with extra fields like pubkey
@@ -1149,10 +1116,8 @@ export class NostrCore {
     emoji: string = '+',
     authorPubkey?: string
   ): Promise<NostrEventSigned | null> {
-    const isExtension = CredentialManager.isExtensionMode();
-
-    if (!isExtension && !CredentialManager.getPrivateKey()) {
-      console.error('Private key not found');
+    if (!CredentialManager.canSign()) {
+      console.error('No signing method available');
       return null;
     }
 
@@ -1168,15 +1133,7 @@ export class NostrCore {
         tags: [['e', eventId], ['p', author]]
       };
 
-      let signed: NostrEventSigned;
-
-      if (isExtension) {
-        signed = await this.signEventWithExtension(event);
-      } else {
-        const privkey = CredentialManager.getPrivateKey();
-        if (!privkey) throw new Error('Private key not found');
-        signed = NostrCrypto.signEvent(event, privkey);
-      }
+      const signed = await this.signAnyMode(event);
 
       if (!signed) throw new Error('Failed to sign event');
 
@@ -1196,10 +1153,8 @@ export class NostrCore {
    * Repost an event (NIP-18, kind 6)
    */
   static async repostEvent(original: NostrEventSigned): Promise<NostrEventSigned | null> {
-    const isExtension = CredentialManager.isExtensionMode();
-
-    if (!isExtension && !CredentialManager.getPrivateKey()) {
-      console.error('Private key not found');
+    if (!CredentialManager.canSign()) {
+      console.error('No signing method available');
       return null;
     }
 
@@ -1210,15 +1165,7 @@ export class NostrCore {
         tags: [['e', original.id], ['p', original.pubkey]]
       };
 
-      let signed: NostrEventSigned;
-
-      if (isExtension) {
-        signed = await this.signEventWithExtension(event);
-      } else {
-        const privkey = CredentialManager.getPrivateKey();
-        if (!privkey) throw new Error('Private key not found');
-        signed = NostrCrypto.signEvent(event, privkey);
-      }
+      const signed = await this.signAnyMode(event);
 
       if (!signed) throw new Error('Failed to sign event');
 
@@ -1326,10 +1273,9 @@ export class NostrCore {
    * Delete an event (kind 5)
    */
   static async deleteEvent(eventId: string): Promise<NostrEventSigned | null> {
-    const isExtension = CredentialManager.isExtensionMode();
     
-    if (!isExtension && !CredentialManager.getPrivateKey()) {
-      console.error('Private key not found');
+    if (!CredentialManager.canSign()) {
+      console.error('No signing method available');
       return null;
     }
 
@@ -1340,15 +1286,7 @@ export class NostrCore {
     };
 
     try {
-      let signed: NostrEventSigned;
-
-      if (isExtension) {
-        signed = await this.signEventWithExtension(event);
-      } else {
-        const privkey = CredentialManager.getPrivateKey();
-        if (!privkey) throw new Error('Private key not found');
-        signed = NostrCrypto.signEvent(event, privkey);
-      }
+      const signed = await this.signAnyMode(event);
 
       if (!signed) throw new Error('Failed to sign event');
 

@@ -113,11 +113,19 @@ export class DirectMessageCore {
    * messages back).
    */
   static async sendDirectMessage(recipientPubkey: string, content: string, replyTo?: string): Promise<boolean> {
-    const isExtension = CredentialManager.isExtensionMode();
-    if (!isExtension && !CredentialManager.getPrivateKey()) {
-      throw new Error('Private key not found');
+    if (!CredentialManager.canSign()) {
+      throw new Error('No signing method available — log in again');
     }
-    if (isExtension && !ExtensionManager.hasNip44()) {
+    // NIP-55 signers encrypt through their own intents (nip44_encrypt /
+    // nip44_decrypt), which this client doesn't implement yet — so say so
+    // instead of building a message nothing can read
+    if (CredentialManager.isAmberMode()) {
+      throw new Error(
+        'Private messages need encryption from the signer app, which this client does not support yet. ' +
+        'Posting, likes and zaps work; for DMs use a stored key or a NIP-44 capable extension.'
+      );
+    }
+    if (CredentialManager.isExtensionMode() && !ExtensionManager.hasNip44()) {
       throw new Error(
         'Your NOSTR extension does not support NIP-44 encryption, required for private messages.'
       );

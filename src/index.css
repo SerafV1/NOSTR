@@ -4841,3 +4841,23 @@ a.capability-indicator.paid:hover {
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+/* Amber (NIP-55) login block, shown on Android where there is no extension */
+.amber-login {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.amber-login h3 {
+  margin: 0;
+}
+
+.login-error {
+  padding: var(--spacing-sm);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: var(--border-radius);
+  background: rgba(248, 113, 113, 0.1);
+  color: var(--error-color);
+  font-size: 0.85rem;
+}
