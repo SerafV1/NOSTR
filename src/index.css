@@ -4861,3 +4861,10 @@ a.capability-indicator.paid:hover {
   color: var(--error-color);
   font-size: 0.85rem;
 }
+
+.login-error-retry {
+  display: block;
+  margin-top: var(--spacing-sm);
+  color: var(--primary-color);
+  font-weight: 600;
+}

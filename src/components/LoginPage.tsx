@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NostrCrypto, ExtensionManager } from '../nostr/crypto';
-import { requestPublicKey, isAndroid } from '../nostr/amber';
+import { requestPublicKey, publicKeyIntentUri, isAndroid } from '../nostr/amber';
 
 interface LoginPageProps {
   onLogin: (privkey: string) => void;
@@ -111,7 +111,17 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                       >
                         🔗 Login with Amber
                       </button>
-                      {amberError && <div className="login-error">{amberError}</div>}
+                      {amberError && (
+                        <div className="login-error">
+                          {amberError}
+                          {/* Some browsers drop a bare nostrsigner: link but
+                              follow an intent: one — worth one deliberate try
+                              before concluding nothing is installed */}
+                          <a className="login-error-retry" href={publicKeyIntentUri()}>
+                            Try again via Android intent
+                          </a>
+                        </div>
+                      )}
                       <div className="form-divider">or</div>
                     </div>
                   )}

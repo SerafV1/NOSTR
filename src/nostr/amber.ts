@@ -30,11 +30,11 @@ export type AmberResult =
 export const isAndroid = (): boolean =>
   typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
 
-/**
- * Amber never opening is indistinguishable from a slow app, so give up after
- * a moment rather than leaving the caller waiting on a promise forever.
- */
-const OPEN_TIMEOUT_MS = 2500;
+// A cold signer app can take a couple of seconds to come up, and firing a
+// second navigation while it does would yank the page out from under it —
+// so wait generously and then stop, rather than trying again behind the
+// user's back.
+const GIVE_UP_MS = 4000;
 
 const callbackUrl = (param: string): string => {
   const url = new URL(window.location.href);
@@ -67,38 +67,96 @@ const readPending = (): PendingRequest | null => {
 export const clearPending = (): void => localStorage.removeItem(PENDING_KEY);
 
 /**
- * Hand off to the signer. Resolves only if the navigation didn't happen —
- * on success the page is gone and the answer arrives in the callback URL.
+ * Android switching to the signer app does NOT unload this page — it goes to
+ * the background and comes back later. So a successful hand-off is signalled
+ * by the document being hidden or the window losing focus, never by unload:
+ * watching for pagehide reported "Amber did not open" every single time,
+ * while Amber was in fact open in front of the user.
  */
 const handOff = (uri: string, request: PendingRequest): Promise<never> => {
   storePending(request);
   return new Promise<never>((_, reject) => {
-    const timer = setTimeout(() => {
-      clearPending();
-      reject(new Error(
-        'Amber did not open. Install Amber (or another NIP-55 signer) and try again.'
-      ));
-    }, OPEN_TIMEOUT_MS);
+    let settled = false;
 
-    // A completed hand-off unloads the page, so this listener firing is the
-    // signal that it worked and the timeout should not
-    window.addEventListener('pagehide', () => clearTimeout(timer), { once: true });
+    const cleanup = () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('blur', succeeded);
+      window.removeEventListener('pagehide', succeeded);
+    };
+
+    const succeeded = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      cleanup();
+      // The pending request stays: the signer has it, and the answer arrives
+      // on the callback URL once the user approves
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') succeeded();
+    };
+
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('blur', succeeded);
+    window.addEventListener('pagehide', succeeded);
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      // Deliberately keeps the pending request. Whether the signer opened
+      // can't be known for certain from in here — a phone that switched apps
+      // without firing blur or visibilitychange looks identical to one with
+      // nothing installed. Throwing away the request would turn that
+      // uncertainty into a broken round trip; leaving it means that if the
+      // signer did open, coming back still completes the job, and the worst
+      // case is a message the user can ignore.
+      reject(new Error(
+        'No signer app answered yet. If Amber opened, approve there and this page will pick it up. ' +
+        'Otherwise install Amber (or another NIP-55 signer) and try again.'
+      ));
+    }, GIVE_UP_MS);
+
     window.location.href = uri;
   });
 };
 
-/** Ask the signer who the user is. Navigates away. */
-export const requestPublicKey = (): Promise<never> => {
-  const params = new URLSearchParams({
+/**
+ * The same request written as an Android intent: URL. Some browsers drop a
+ * bare custom-scheme navigation but resolve this one, so it's offered as a
+ * deliberate retry — never fired automatically, since a second navigation
+ * while the signer is still opening would interrupt it.
+ */
+export const intentUri = (params: Record<string, string>, payload?: string): string => {
+  const extras = Object.entries(params)
+    .map(([key, value]) => `S.${key}=${encodeURIComponent(value)}`)
+    .join(';');
+  const data = payload ? encodeURIComponent(payload) : '';
+  return `intent://${data}#Intent;scheme=nostrsigner;${extras};end`;
+};
+
+/** The login request as an intent: URL, for the explicit retry */
+export const publicKeyIntentUri = (): string =>
+  intentUri({
     compressionType: 'none',
     returnType: 'signature',
     type: 'get_public_key',
     callbackUrl: callbackUrl('amberPubkey')
   });
-  return handOff(`nostrsigner:?${params.toString()}`, {
+
+/** Ask the signer who the user is. Navigates away. */
+export const requestPublicKey = (): Promise<never> => {
+  const params = {
+    compressionType: 'none',
+    returnType: 'signature',
     type: 'get_public_key',
-    startedAt: Date.now()
-  });
+    callbackUrl: callbackUrl('amberPubkey')
+  };
+  return handOff(
+    `nostrsigner:?${new URLSearchParams(params).toString()}`,
+    { type: 'get_public_key', startedAt: Date.now() }
+  );
 };
 
 /**
@@ -115,13 +173,14 @@ export const requestSignature = (event: NostrEvent, pubkey: string): Promise<nev
     content: event.content,
     pubkey
   };
-  const params = new URLSearchParams({
+  const params = {
     compressionType: 'none',
     returnType: 'event',
     type: 'sign_event',
     callbackUrl: callbackUrl('amberEvent')
-  });
-  const uri = `nostrsigner:${encodeURIComponent(JSON.stringify(template))}?${params.toString()}`;
+  };
+  const payload = JSON.stringify(template);
+  const uri = `nostrsigner:${encodeURIComponent(payload)}?${new URLSearchParams(params).toString()}`;
   return handOff(uri, { type: 'sign_event', event: template, startedAt: Date.now() });
 };
 
