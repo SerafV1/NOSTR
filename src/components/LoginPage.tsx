@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { NostrCrypto, CredentialManager, ExtensionManager } from '../nostr/crypto';
-import { publicKeySchemeUri, publicKeyIntentUri, isAndroid } from '../nostr/amber';
-import { connectBunker, startNostrConnect, reconnectBunker, readPairing, forgetPairing } from '../nostr/bunker';
+import { isAndroid } from '../utils/platform';
+import {
+  connectBunker,
+  startNostrConnect,
+  reconnectBunker,
+  readPairing,
+  forgetPairing,
+  EVERYDAY_PERMISSIONS
+} from '../nostr/bunker';
 
 interface LoginPageProps {
   onLogin: (privkey: string) => void;
@@ -13,7 +20,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   // the clipboard instead — NIP-55 says as much, and Amber does exactly that
   // for web callers. So the paste box opens alongside the request rather
   // than being offered only after something visibly fails.
-  const [amberPaste, setAmberPaste] = useState('');
 
   const [bunkerUri, setBunkerUri] = useState('');
   const [bunkerBusy, setBunkerBusy] = useState(false);
@@ -28,7 +34,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       const pubkey = await connectBunker(bunkerUri);
       CredentialManager.storePublicKey(pubkey);
       CredentialManager.setBunkerMode(true);
-      onLogin('__amber__');
+      onLogin('__signer__');
     } catch (error) {
       setAmberError(error instanceof Error ? error.message : 'Could not reach the signer');
     } finally {
@@ -48,7 +54,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       const pubkey = await reconnectBunker();
       CredentialManager.storePublicKey(pubkey);
       CredentialManager.setBunkerMode(true);
-      onLogin('__amber__');
+      onLogin('__signer__');
     } catch (error) {
       setAmberError(
         (error instanceof Error ? error.message : 'The signer did not answer') +
@@ -59,6 +65,10 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     }
   };
 
+  // Whether to ask the signer for standing permission on everyday actions,
+  // or have it ask each time. Anything beyond this list — your profile, your
+  // follow list, your block list — is always asked about.
+  const [grantEveryday, setGrantEveryday] = useState(false);
   const [connectUri, setConnectUri] = useState('');
   const [connectWaiting, setConnectWaiting] = useState(false);
   // What the pairing is doing, shown as it happens — otherwise a failure
@@ -74,7 +84,10 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     setAmberError(null);
     setConnectCopied(false);
     setConnectStatus('Opening Amber…');
-    const { uri, connected } = startNostrConnect(setConnectStatus);
+    const { uri, connected } = startNostrConnect(
+      setConnectStatus,
+      grantEveryday ? EVERYDAY_PERMISSIONS : undefined
+    );
     setConnectUri(uri);
     setConnectWaiting(true);
     window.location.href = uri;
@@ -82,7 +95,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       .then(pubkey => {
         CredentialManager.storePublicKey(pubkey);
         CredentialManager.setBunkerMode(true);
-        onLogin('__amber__');
+        onLogin('__signer__');
       })
       .catch(error => {
         setAmberError(error instanceof Error ? error.message : 'The signer never connected');
@@ -96,46 +109,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       setConnectCopied(true);
     } catch {
       setAmberError('Could not copy — select the link above and copy it by hand.');
-    }
-  };
-
-  const pubkeyFromPaste = (value: string): string | null => {
-    const trimmed = value.trim().replace(/^nostr:/i, '');
-    if (/^[0-9a-f]{64}$/i.test(trimmed)) return trimmed.toLowerCase();
-    if (/^npub1[a-z0-9]+$/i.test(trimmed)) return NostrCrypto.npubDecode(trimmed) || null;
-    return null;
-  };
-
-  const handleAmberPaste = () => {
-    const pubkey = pubkeyFromPaste(amberPaste);
-    if (!pubkey) {
-      setAmberError('That does not look like a public key. Paste the npub Amber copied.');
-      return;
-    }
-    CredentialManager.storePublicKey(pubkey);
-    CredentialManager.setAmberMode(true);
-    onLogin('__amber__');
-  };
-
-  const pasteFromClipboard = async () => {
-    setAmberError(null);
-    try {
-      const text = await navigator.clipboard.readText();
-      if (!text.trim()) {
-        // Chrome on Android often refuses to read the clipboard rather than
-        // reporting it empty, so an empty string proves nothing either way
-        setAmberError(
-          'Nothing came back from the clipboard. Chrome on Android usually blocks reading it — ' +
-          'press and hold the box above and choose Paste instead.'
-        );
-        return;
-      }
-      setAmberPaste(text);
-    } catch {
-      setAmberError(
-        'The browser will not let this page read the clipboard. ' +
-        'Press and hold the box above and choose Paste instead.'
-      );
     }
   };
 
@@ -219,43 +192,15 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                     <div className="amber-login">
                       <h3>📱 Login with Amber</h3>
                       <p className="extension-desc">
-                        Logging in only needs your <strong>public</strong> key — open Amber,
-                        copy your npub, and paste it below. Your private key never leaves
-                        the signer app.
+                        Amber keeps your key and approves each action. Pair once and
+                        posting works from here, without leaving the page.
                       </p>
-
-                      <div className="amber-paste">
-                        <input
-                          type="text"
-                          className="private-key-input amber-paste-input"
-                          placeholder="npub1…"
-                          value={amberPaste}
-                          onChange={(e) => setAmberPaste(e.target.value)}
-                        />
-                        <div className="amber-paste-actions">
-                          <button type="button" className="btn btn-secondary btn-small" onClick={pasteFromClipboard}>
-                            Paste
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-primary btn-small"
-                            onClick={handleAmberPaste}
-                            disabled={!amberPaste.trim()}
-                          >
-                            Use this key
-                          </button>
-                        </div>
-                        <p className="extension-desc">
-                          If Paste does nothing, press and hold the box and choose Paste —
-                          Chrome on Android usually blocks pages from reading the clipboard.
-                        </p>
-                      </div>
 
                       {/* Pairing once, over a relay. Worth its own step
                           because signing afterwards costs no app switch —
                           which is what makes posting from a phone work at
                           all, given how the hand-off gets throttled. */}
-                      <div className="amber-paste">
+                      <div className="signer-pairing">
                         <p className="extension-desc">
                           <strong>For posting, not just reading:</strong> in Amber open
                           <em> nsec bunker</em>, copy the <code>bunker://</code> link and paste it
@@ -263,7 +208,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                         </p>
                         <input
                           type="text"
-                          className="private-key-input amber-paste-input"
+                          className="private-key-input signer-pairing-input"
                           placeholder="bunker://…"
                           value={bunkerUri}
                           onChange={(e) => setBunkerUri(e.target.value)}
@@ -310,6 +255,17 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                           {!knownSigner && <em>nsec bunker</em>}
                           {!knownSigner && ' in Amber? Go the other way:'}
                         </p>
+                        <label className="permission-choice">
+                          <input
+                            type="checkbox"
+                            checked={grantEveryday}
+                            onChange={(e) => setGrantEveryday(e.target.checked)}
+                          />
+                          <span>
+                            Approve posts, likes, reposts and zaps up front — otherwise Amber
+                            asks every time. Profile, follows and blocks are always asked about.
+                          </span>
+                        </label>
                         <button
                           type="button"
                           className="btn btn-secondary btn-small"
@@ -344,20 +300,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                           </div>
                         )}
                       </div>
-
-                      {/* Kept as a shortcut for browsers that do hand off
-                          cleanly, but not the way in: Chrome throttles
-                          repeated launches of an external app from a page,
-                          so this can work once and then stop. */}
-                      <details className="amber-handoff">
-                        <summary>Or ask Amber directly</summary>
-                        <a className="btn btn-secondary btn-small" href={publicKeySchemeUri()}>
-                          Open Amber
-                        </a>
-                        <a className="btn btn-secondary btn-small" href={publicKeyIntentUri()}>
-                          Open Amber (alternative link)
-                        </a>
-                      </details>
 
                       {amberError && <div className="login-error">{amberError}</div>}
                       <div className="form-divider">or</div>

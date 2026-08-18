@@ -4871,41 +4871,11 @@ a.capability-indicator.paid:hover {
 
 /* Signer fallback: NIP-55 says a signer with nowhere to return the answer
    copies it to the clipboard, which is what Amber does for web callers */
-.amber-paste {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm);
-  border: 1px dashed var(--border-color);
-  border-radius: var(--border-radius);
-}
 
-.amber-paste-input {
-  width: 100%;
-  min-height: 0;
-  font-size: 0.9rem;
-}
 
-.amber-paste-actions {
-  display: flex;
-  gap: var(--spacing-sm);
-}
 
-.amber-paste-actions .btn {
-  flex: 1;
-}
 
-.amber-handoff summary {
-  cursor: pointer;
-  color: var(--text-secondary);
-  font-size: 0.85rem;
-  margin-bottom: var(--spacing-sm);
-}
 
-.amber-handoff .btn {
-  display: block;
-  margin-bottom: var(--spacing-sm);
-}
 
 .connect-uri {
   display: flex;
@@ -4962,4 +4932,34 @@ a.capability-indicator.paid:hover {
   font-size: 0.78rem;
   text-decoration: underline;
   cursor: pointer;
+}
+
+/* Pairing box: the bunker:// link and the invitation it answers */
+.signer-pairing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.signer-pairing-input {
+  width: 100%;
+  min-height: 0;
+  font-size: 0.9rem;
+}
+
+.permission-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.permission-choice input {
+  margin-top: 2px;
+  flex-shrink: 0;
 }

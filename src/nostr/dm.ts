@@ -116,10 +116,10 @@ export class DirectMessageCore {
     if (!CredentialManager.canSign()) {
       throw new Error('No signing method available — log in again');
     }
-    // NIP-55 signers encrypt through their own intents (nip44_encrypt /
-    // nip44_decrypt), which this client doesn't implement yet — so say so
-    // instead of building a message nothing can read
-    if (CredentialManager.isAmberMode()) {
+    // A remote signer encrypts through its own nip44_encrypt/nip44_decrypt
+    // calls, which this client doesn't implement yet — so say so instead of
+    // building a message nothing can read
+    if (CredentialManager.isBunkerMode()) {
       throw new Error(
         'Private messages need encryption from the signer app, which this client does not support yet. ' +
         'Posting, likes and zaps work; for DMs use a stored key or a NIP-44 capable extension.'

@@ -9,7 +9,6 @@ import {
 import { nip19 } from 'nostr-tools';
 import { NostrCrypto, CredentialManager, ExtensionManager } from './crypto';
 import { getRelayPool } from './relay';
-import { requestSignature } from './amber';
 import { bunkerSignEvent } from './bunker';
 import { isEffectivelyLive } from '../utils/liveStream';
 
@@ -1081,11 +1080,6 @@ export class NostrCore {
     // returns here rather than navigating the page away
     if (CredentialManager.isBunkerMode()) {
       return bunkerSignEvent(event);
-    }
-    if (CredentialManager.isAmberMode()) {
-      const pubkey = CredentialManager.getPublicKey();
-      if (!pubkey) throw new Error('Public key not found');
-      return requestSignature(event, pubkey);
     }
     if (CredentialManager.isExtensionMode()) {
       return this.signEventWithExtension(event);

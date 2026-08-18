@@ -326,8 +326,23 @@ const CONNECT_RELAYS = ['wss://nos.lol', 'wss://relay.primal.net', 'wss://nostr.
  * find than the bunker screen — and the signer's own key stays unknown to us
  * until it answers, so the secret is what proves the answer is genuine.
  */
+/**
+ * What the app may sign without asking again, if the user chooses to grant it
+ * up front. Deliberately not "sign_event" on its own: that is every kind
+ * there is, including replacing your contact list. These are the actions you
+ * take dozens of times an hour.
+ */
+export const EVERYDAY_PERMISSIONS = [
+  'sign_event:1',    // notes and replies
+  'sign_event:7',    // reactions
+  'sign_event:6',    // reposts
+  'sign_event:9734', // zap requests
+  'sign_event:1311'  // live chat
+].join(',');
+
 export const startNostrConnect = (
-  onProgress?: (status: string) => void
+  onProgress?: (status: string) => void,
+  perms?: string
 ): { uri: string; connected: Promise<string> } => {
   // Reuse the key a signer has already approved, so it sees the same
   // application coming back rather than a stranger to be swapped in
@@ -344,7 +359,10 @@ export const startNostrConnect = (
 
   // relay is repeatable in the URI, so the signer can pick whichever it can
   // reach — the same reason we listen on all of them
-  const params = new URLSearchParams({ secret, perms: 'sign_event', name: 'NOSTR Web App' });
+  // No perms at all means the signer asks about every request, which is the
+  // safer default and the one that leaves the choice where it belongs
+  const params = new URLSearchParams({ secret, name: 'NOSTR Web App' });
+  if (perms) params.append('perms', perms);
   for (const url of CONNECT_RELAYS) params.append('relay', url);
   const uri = `nostrconnect://${session.clientPubkey}?${params.toString()}`;
 

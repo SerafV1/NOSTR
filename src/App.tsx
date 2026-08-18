@@ -14,9 +14,7 @@ import { getRelayPool, DEFAULT_RELAYS } from './nostr/relay';
 import { NotificationCore, NotificationStore, cacheNotifications } from './nostr/notifications';
 import { DirectMessageCore, DirectMessageStore } from './nostr/dm';
 import { NostrCore, EventCache } from './nostr/core';
-import { consumeCallback } from './nostr/amber';
 import { clearSession as clearBunkerSession } from './nostr/bunker';
-import { getRelayPool as getPoolForAmber } from './nostr/relay';
 import { UserProfile } from './types';
 import './index.css';
 import LoginPage from './components/LoginPage';
@@ -201,44 +199,6 @@ function App() {
     setNavOpen(false); // picking a destination closes the menu behind you
   }, [location.pathname]);
 
-  // Coming back from an Android signer app (NIP-55): the result rides in on
-  // the URL, because signing there means leaving the page entirely. Login
-  // finishes here; a signed event is published here too, since every signing
-  // path in this app ends in a publish.
-  useEffect(() => {
-    const result = consumeCallback();
-    if (!result) return;
-
-    if (result.type === 'error') {
-      alert(`Signer error: ${result.message}`);
-      return;
-    }
-
-    if (result.type === 'get_public_key') {
-      const pubkey = NostrCrypto.npubDecode(result.pubkey) || result.pubkey;
-      CredentialManager.storePublicKey(pubkey);
-      CredentialManager.setAmberMode(true);
-      setPublicKey(pubkey);
-      setIsLoggedIn(true);
-      return;
-    }
-
-    // A signed event: hand it to the relays. Waiting for the pool to be up
-    // would mean dropping it, since this runs on the load right after the
-    // round trip.
-    (async () => {
-      try {
-        const results = await getPoolForAmber().publishEvent(result.event);
-        if (!Array.from(results.values()).some(Boolean)) {
-          alert('Signed, but no relay accepted it — check your relay connections');
-        }
-      } catch (error) {
-        console.error('Failed to publish the signed event:', error);
-        alert('Signed, but publishing failed — check your relay connections');
-      }
-    })();
-  }, []);
-
   // Initialize relays on mount
   useEffect(() => {
     const initializeRelays = async () => {
@@ -403,7 +363,7 @@ function App() {
     try {
       let pubkey: string;
 
-      if (privkey === '__extension__' || privkey === '__amber__') {
+      if (privkey === '__extension__' || privkey === '__signer__') {
         // The signer holds the key; only the public key was stored for us
         pubkey = CredentialManager.getPublicKey() || '';
         if (!pubkey) {
