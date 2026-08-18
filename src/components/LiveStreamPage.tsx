@@ -188,22 +188,15 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
             ✕
           </button>
 
-          {/* Desktop only: the chat as its own window, to keep beside the
-              video or on a second screen */}
-          <button
-            type="button"
-            className="live-chat-popout"
-            title="Open the chat in its own window"
-            onClick={() => window.open(
+          <LiveChatPanel
+            address={address}
+            // Desktop only: the chat as its own window, to keep beside the
+            // video or on a second screen
+            onPopOut={() => window.open(
               `${window.location.origin}/live/${naddrParam}/chat`,
               `chat-${naddrParam}`,
               'width=420,height=760,menubar=no,toolbar=no'
             )}
-          >
-            ⧉ Pop out
-          </button>
-          <LiveChatPanel
-            address={address}
             relaysConnected={relaysConnected}
             disabled={stream.status !== 'live'}
             onNavigateToProfile={onNavigateToProfile}

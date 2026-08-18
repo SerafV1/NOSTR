@@ -15,9 +15,11 @@ interface LiveChatPanelProps {
   onNavigateToTopic?: (topic: string) => void;
   /** Loading before the relays are up finds nothing and never retries */
   relaysConnected?: boolean;
+  /** Given only where a second window makes sense — not in that window itself */
+  onPopOut?: () => void;
 }
 
-const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true }) => {
+const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut }) => {
   const [messages, setMessages] = useState<NostrEventSigned[]>([]);
   const [profiles, setProfiles] = useState<Map<string, UserProfile>>(new Map());
   const [input, setInput] = useState('');
@@ -120,7 +122,19 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
 
   return (
     <div className="live-chat-panel">
-      <div className="live-chat-header">Stream Chat</div>
+      <div className="live-chat-header">
+        <span>Stream Chat</span>
+        {onPopOut && (
+          <button
+            type="button"
+            className="live-chat-popout"
+            title="Open the chat in its own window"
+            onClick={onPopOut}
+          >
+            ⧉ Pop out
+          </button>
+        )}
+      </div>
       <div className="live-chat-messages" ref={listRef}>
         {messages.length === 0 && (
           <div className="live-chat-empty">No messages yet — say hello!</div>
