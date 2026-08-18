@@ -13,9 +13,11 @@ interface LiveChatPanelProps {
   onNavigateToProfile: (pubkey: string) => void;
   onNavigateToNote: (noteId: string) => void;
   onNavigateToTopic?: (topic: string) => void;
+  /** Loading before the relays are up finds nothing and never retries */
+  relaysConnected?: boolean;
 }
 
-const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
+const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true }) => {
   const [messages, setMessages] = useState<NostrEventSigned[]>([]);
   const [profiles, setProfiles] = useState<Map<string, UserProfile>>(new Map());
   const [input, setInput] = useState('');
@@ -31,6 +33,11 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   // pattern as the home feed: a REQ with `since` replays what's stored and
   // keeps streaming new matches as they're published, no polling needed.
   useEffect(() => {
+    // In a popped-out window the relays start from scratch, so loading on
+    // mount asked before anything was connected and came back empty — with
+    // no reason to ever ask again
+    if (!relaysConnected) return;
+
     let cancelled = false;
     let subId: string | null = null;
 
@@ -60,7 +67,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
       if (subId) NostrCore.unsubscribeLive(subId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address]);
+  }, [address, relaysConnected]);
 
   // Stick to the bottom as new messages come in
   useEffect(() => {
@@ -134,6 +141,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                 </button>
                 <span className="live-chat-text">
                   <RichText
+                    inlineImages
                     content={message.content}
                     onNavigateToProfile={onNavigateToProfile}
                     onNavigateToNote={onNavigateToNote}

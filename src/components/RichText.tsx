@@ -3,13 +3,15 @@ import { nip19 } from 'nostr-tools';
 import { UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { formatAddress } from '../utils/helpers';
-import { splitContentTokens } from '../utils/media';
+import { splitContentTokens, extractImageUrls } from '../utils/media';
 
 interface RichTextProps {
   content: string;
   onNavigateToProfile?: (pubkey: string) => void;
   onNavigateToNote?: (noteId: string) => void;
   onNavigateToTopic?: (topic: string) => void;
+  /** Draw picture links as pictures — chat messages are mostly images */
+  inlineImages?: boolean;
   className?: string;
 }
 
@@ -55,6 +57,7 @@ const RichText: React.FC<RichTextProps> = ({
   onNavigateToProfile,
   onNavigateToNote,
   onNavigateToTopic,
+  inlineImages = false,
   className
 }) => {
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
@@ -100,6 +103,29 @@ const RichText: React.FC<RichTextProps> = ({
   const pushPlain = (text: string) => {
     for (const token of splitContentTokens(text)) {
       if (token.type === 'link') {
+        // A link to a picture is more useful as the picture — otherwise a
+        // chat full of images reads as a wall of URLs
+        if (inlineImages && extractImageUrls(token.value).length > 0) {
+          parts.push(
+            <a
+              key={key++}
+              href={token.value}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rich-image-link"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={token.value}
+                alt=""
+                className="rich-image"
+                loading="lazy"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            </a>
+          );
+          continue;
+        }
         parts.push(
           <a
             key={key++}

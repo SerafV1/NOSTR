@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
-import { parseLiveEvent, LiveStreamInfo, liveEventAddress } from '../utils/liveStream';
+import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr } from '../utils/liveStream';
 import { formatAddress } from '../utils/helpers';
 import LiveVideoPlayer from './LiveVideoPlayer';
 import LiveChatPanel from './LiveChatPanel';
@@ -20,6 +20,10 @@ interface LiveStreamPageProps {
 }
 
 const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifier, relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
+  // On a phone the chat sits below the video and the details, far from what
+  // it is about. Opening it over the page keeps the stream in view while
+  // reading along, the way stream sites do it.
+  const [chatOpen, setChatOpen] = useState(false);
   const [stream, setStream] = useState<LiveStreamInfo | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -96,6 +100,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   const hostName = profile?.display_name || profile?.name || formatAddress(stream.hostPubkey);
 
   const address = liveEventAddress(kind, stream.pubkey, stream.dTag);
+  const naddrParam = encodeLiveNaddr(kind, stream.pubkey, stream.dTag);
 
   return (
     <div className="live-stream-page">
@@ -173,13 +178,48 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
           </div>
         </div>
 
-        <LiveChatPanel
-          address={address}
-          disabled={stream.status !== 'live'}
-          onNavigateToProfile={onNavigateToProfile}
-          onNavigateToNote={onNavigateToNote}
-          onNavigateToTopic={onNavigateToTopic}
-        />
+        <div className={`live-chat-dock ${chatOpen ? 'open' : ''}`}>
+          <button
+            type="button"
+            className="live-chat-close"
+            onClick={() => setChatOpen(false)}
+            aria-label="Close chat"
+          >
+            ✕
+          </button>
+
+          {/* Desktop only: the chat as its own window, to keep beside the
+              video or on a second screen */}
+          <button
+            type="button"
+            className="live-chat-popout"
+            title="Open the chat in its own window"
+            onClick={() => window.open(
+              `${window.location.origin}/live/${naddrParam}/chat`,
+              `chat-${naddrParam}`,
+              'width=420,height=760,menubar=no,toolbar=no'
+            )}
+          >
+            ⧉ Pop out
+          </button>
+          <LiveChatPanel
+            address={address}
+            relaysConnected={relaysConnected}
+            disabled={stream.status !== 'live'}
+            onNavigateToProfile={onNavigateToProfile}
+            onNavigateToNote={onNavigateToNote}
+            onNavigateToTopic={onNavigateToTopic}
+          />
+        </div>
+
+        {/* Only on phones, where the dock is off-screen until asked for */}
+        <button
+          type="button"
+          className="live-chat-fab"
+          onClick={() => setChatOpen(open => !open)}
+        >
+          💬 {chatOpen ? 'Hide chat' : 'Chat'}
+        </button>
       </div>
     </div>
   );

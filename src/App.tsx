@@ -28,6 +28,7 @@ import MessagesPage from './components/MessagesPage';
 import ComposeModal from './components/ComposeModal';
 import LivePage from './components/LivePage';
 import LiveStreamPage from './components/LiveStreamPage';
+import LiveChatPage from './components/LiveChatPage';
 import { BellIcon, MessageIcon, SettingsIcon } from './components/Icons';
 import { decodeLiveNaddr } from './utils/liveStream';
 
@@ -144,6 +145,27 @@ function LiveStreamRoute({ relaysConnected, onNavigateToProfile, onNavigateToNot
   );
 }
 
+function LiveChatRoute({ relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }: RouteCallbacks) {
+  const { naddr } = useParams();
+  const address = naddr ? decodeLiveNaddr(naddr) : null;
+
+  if (!address) {
+    return <div className="live-chat-page"><div className="error">Invalid stream link</div></div>;
+  }
+
+  return (
+    <LiveChatPage
+      kind={address.kind}
+      pubkey={address.pubkey}
+      identifier={address.identifier}
+      relaysConnected={relaysConnected}
+      onNavigateToProfile={onNavigateToProfile}
+      onNavigateToNote={onNavigateToNote}
+      onNavigateToTopic={onNavigateToTopic}
+    />
+  );
+}
+
 function MessagesRoute({ relaysConnected, publicKey, onNavigateToProfile, onMarkMessagesRead }: RouteCallbacks) {
   const { npub } = useParams();
   const recipient = decodeNpubParam(npub);
@@ -181,6 +203,10 @@ function App() {
 
   const navigate = useNavigate();
   const location = useLocation();
+
+  // The popped-out chat is a window of its own: the app's chrome would only
+  // take up room it doesn't have
+  const poppedOutChat = /^\/live\/[^/]+\/chat$/.test(location.pathname);
 
   // Show a "back to top" button once the page content is scrolled down a
   // bit — .app-main is the actual scrolling element (the window itself
@@ -437,7 +463,7 @@ function App() {
 
   return (
     <div className="app">
-      <header className="app-header">
+      {!poppedOutChat && <header className="app-header">
         <div className="header-content">
           <h1 className="app-title">⚡ NOSTR</h1>
           <button
@@ -508,9 +534,9 @@ function App() {
             </button>
           </div>
         </div>
-      </header>
+      </header>}
 
-      <main className="app-main" ref={mainRef}>
+      <main className={`app-main ${poppedOutChat ? 'bare' : ''}`} ref={mainRef}>
         <Routes>
           <Route
             path="/"
@@ -528,6 +554,7 @@ function App() {
           <Route path="/search" element={<SearchRoute {...callbacks} />} />
           <Route path="/live" element={<LivePage relaysConnected={relaysConnected} />} />
           <Route path="/live/:naddr" element={<LiveStreamRoute {...callbacks} />} />
+          <Route path="/live/:naddr/chat" element={<LiveChatRoute {...callbacks} />} />
           <Route
             path="/notifications"
             element={
