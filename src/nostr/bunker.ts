@@ -1,4 +1,10 @@
 import * as nostrTools from 'nostr-tools';
+// NIP-44 only. The nostr-tools this app is built on predates the final v2
+// derivation, so its ciphertexts and a modern signer's don't interoperate —
+// proven by cross-decrypting: same version byte, "invalid MAC". Rather than
+// migrate the whole app's relay and signing API mid-flight, the modern
+// implementation is brought in for this one job.
+import { nip44 as modernNip44 } from 'nostr-tools-v2';
 import { NostrEvent, NostrEventSigned } from '../types';
 import { NostrCrypto } from './crypto';
 
@@ -97,8 +103,20 @@ export const parseBunkerUri = (uri: string): { remotePubkey: string; relays: str
  * throws, and the reply then looks like noise and gets dropped — which is
  * indistinguishable from the signer never answering.
  */
+const hexToBytes = (hex: string): Uint8Array =>
+  Uint8Array.from((hex.match(/.{1,2}/g) || []).map(byte => parseInt(byte, 16)));
+
+const modernKey = (session: BunkerSession, counterparty: string): Uint8Array =>
+  modernNip44.v2.utils.getConversationKey(hexToBytes(session.clientSecret), counterparty);
+
 const decrypt = async (session: BunkerSession, content: string, from: string): Promise<string> => {
   try {
+    return modernNip44.v2.decrypt(content, modernKey(session, from));
+  } catch {
+    // fall through
+  }
+  try {
+    // The older derivation, for a signer built against the same vintage
     return NostrCrypto.decryptNip44(content, session.clientSecret, from);
   } catch {
     // fall through
@@ -129,7 +147,7 @@ const shapeOf = (content: string): string => {
 
 const encrypt = async (session: BunkerSession, content: string, scheme: 'nip44' | 'nip04'): Promise<string> => {
   if (scheme === 'nip44') {
-    return NostrCrypto.encryptNip44(content, session.clientSecret, session.remotePubkey);
+    return modernNip44.v2.encrypt(content, modernKey(session, session.remotePubkey));
   }
   return (nostrTools as any).nip04.encrypt(session.clientSecret, session.remotePubkey, content);
 };
