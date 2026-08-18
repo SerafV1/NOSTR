@@ -299,6 +299,8 @@ export class CredentialManager {
   // and a NIP-07 extension. Like extension mode, only the public key is kept
   // here — the secret never enters this app.
   private static readonly AMBER_MODE_KEY = 'nostr_amber_mode';
+  // NIP-46: a signer reachable over a relay rather than through the OS
+  private static readonly BUNKER_MODE_KEY = 'nostr_bunker_mode';
 
   static setAmberMode(enabled: boolean): void {
     if (enabled) {
@@ -311,6 +313,20 @@ export class CredentialManager {
 
   static isAmberMode(): boolean {
     return localStorage.getItem(this.AMBER_MODE_KEY) === 'true';
+  }
+
+  static setBunkerMode(enabled: boolean): void {
+    if (enabled) {
+      localStorage.setItem(this.BUNKER_MODE_KEY, 'true');
+      localStorage.removeItem(this.AMBER_MODE_KEY);
+      localStorage.removeItem(this.EXTENSION_MODE_KEY);
+    } else {
+      localStorage.removeItem(this.BUNKER_MODE_KEY);
+    }
+  }
+
+  static isBunkerMode(): boolean {
+    return localStorage.getItem(this.BUNKER_MODE_KEY) === 'true';
   }
 
   static setExtensionMode(enabled: boolean): void {
@@ -330,6 +346,7 @@ export class CredentialManager {
     localStorage.removeItem(this.KEY_PREFIX + 'pubkey');
     localStorage.removeItem(this.EXTENSION_MODE_KEY);
     localStorage.removeItem(this.AMBER_MODE_KEY);
+    localStorage.removeItem(this.BUNKER_MODE_KEY);
   }
 
   /**
@@ -339,11 +356,17 @@ export class CredentialManager {
    * answered "you can't post" for anyone logged in through Amber.
    */
   static canSign(): boolean {
-    return this.getPrivateKey() !== null || this.isExtensionMode() || this.isAmberMode();
+    return this.getPrivateKey() !== null
+      || this.isExtensionMode()
+      || this.isAmberMode()
+      || this.isBunkerMode();
   }
 
   static isLoggedIn(): boolean {
-    return this.getPrivateKey() !== null || this.isExtensionMode() || this.isAmberMode();
+    return this.getPrivateKey() !== null
+      || this.isExtensionMode()
+      || this.isAmberMode()
+      || this.isBunkerMode();
   }
 }
 

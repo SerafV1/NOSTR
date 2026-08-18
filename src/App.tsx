@@ -15,6 +15,7 @@ import { NotificationCore, NotificationStore, cacheNotifications } from './nostr
 import { DirectMessageCore, DirectMessageStore } from './nostr/dm';
 import { NostrCore, EventCache } from './nostr/core';
 import { consumeCallback } from './nostr/amber';
+import { clearSession as clearBunkerSession } from './nostr/bunker';
 import { getRelayPool as getPoolForAmber } from './nostr/relay';
 import { UserProfile } from './types';
 import './index.css';
@@ -426,6 +427,9 @@ function App() {
 
   const handleLogout = () => {
     CredentialManager.clear();
+    // The pairing with a remote signer is a credential too — leaving it
+    // behind would keep this browser able to ask for signatures
+    clearBunkerSession();
     getRelayPool().closeAll();
     // Nothing to clear here: the home feed and recent-searches caches are
     // keyed per-pubkey (see HomePage/SearchPage) and the global feed cache

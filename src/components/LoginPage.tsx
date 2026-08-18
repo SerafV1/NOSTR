@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NostrCrypto, CredentialManager, ExtensionManager } from '../nostr/crypto';
 import { publicKeySchemeUri, publicKeyIntentUri, isAndroid } from '../nostr/amber';
+import { connectBunker } from '../nostr/bunker';
 
 interface LoginPageProps {
   onLogin: (privkey: string) => void;
@@ -13,6 +14,27 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   // for web callers. So the paste box opens alongside the request rather
   // than being offered only after something visibly fails.
   const [amberPaste, setAmberPaste] = useState('');
+
+  const [bunkerUri, setBunkerUri] = useState('');
+  const [bunkerBusy, setBunkerBusy] = useState(false);
+
+  // Pairing over a relay instead of handing off to the app: nothing here
+  // depends on the browser being willing to launch another application, so
+  // signing keeps working where NIP-55 gets throttled
+  const handleBunkerConnect = async () => {
+    setAmberError(null);
+    setBunkerBusy(true);
+    try {
+      const pubkey = await connectBunker(bunkerUri);
+      CredentialManager.storePublicKey(pubkey);
+      CredentialManager.setBunkerMode(true);
+      onLogin('__amber__');
+    } catch (error) {
+      setAmberError(error instanceof Error ? error.message : 'Could not reach the signer');
+    } finally {
+      setBunkerBusy(false);
+    }
+  };
 
   const pubkeyFromPaste = (value: string): string | null => {
     const trimmed = value.trim().replace(/^nostr:/i, '');
@@ -164,6 +186,33 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                           If Paste does nothing, press and hold the box and choose Paste —
                           Chrome on Android usually blocks pages from reading the clipboard.
                         </p>
+                      </div>
+
+                      {/* Pairing once, over a relay. Worth its own step
+                          because signing afterwards costs no app switch —
+                          which is what makes posting from a phone work at
+                          all, given how the hand-off gets throttled. */}
+                      <div className="amber-paste">
+                        <p className="extension-desc">
+                          <strong>For posting, not just reading:</strong> in Amber open
+                          <em> nsec bunker</em>, copy the <code>bunker://</code> link and paste it
+                          here once. Approvals then arrive in Amber without leaving this page.
+                        </p>
+                        <input
+                          type="text"
+                          className="private-key-input amber-paste-input"
+                          placeholder="bunker://…"
+                          value={bunkerUri}
+                          onChange={(e) => setBunkerUri(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-small"
+                          onClick={handleBunkerConnect}
+                          disabled={bunkerBusy || !bunkerUri.trim()}
+                        >
+                          {bunkerBusy ? 'Waiting for Amber…' : 'Pair with Amber'}
+                        </button>
                       </div>
 
                       {/* Kept as a shortcut for browsers that do hand off

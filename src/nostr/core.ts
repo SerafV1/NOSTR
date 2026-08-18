@@ -10,6 +10,7 @@ import { nip19 } from 'nostr-tools';
 import { NostrCrypto, CredentialManager, ExtensionManager } from './crypto';
 import { getRelayPool } from './relay';
 import { requestSignature } from './amber';
+import { bunkerSignEvent } from './bunker';
 import { isEffectivelyLive } from '../utils/liveStream';
 
 /**
@@ -1076,6 +1077,11 @@ export class NostrCore {
    * through the callback URL and the signed event is published there.
    */
   static async signAnyMode(event: NostrEvent): Promise<NostrEventSigned> {
+    // A paired remote signer answers over a relay, so unlike NIP-55 this
+    // returns here rather than navigating the page away
+    if (CredentialManager.isBunkerMode()) {
+      return bunkerSignEvent(event);
+    }
     if (CredentialManager.isAmberMode()) {
       const pubkey = CredentialManager.getPublicKey();
       if (!pubkey) throw new Error('Public key not found');
