@@ -991,6 +991,88 @@ export class NostrCore {
    * event they belong to. Returned oldest-first, ready to render top to
    * bottom like a normal chat log.
    */
+  /**
+   * Sign a NIP-57 zap request (kind 9734) to hand to the LNURL provider.
+   * It is never published by us — the provider embeds it in the receipt it
+   * publishes once the invoice is paid, which is what makes a zap public.
+   * Returns null when we cannot sign, leaving the payment anonymous.
+   */
+  static async createZapRequest(params: {
+    recipientPubkey: string;
+    amountMsats: number;
+    eventId?: string;
+    eventAddress?: string;
+    comment?: string;
+  }): Promise<string | null> {
+    if (!CredentialManager.canSign()) return null;
+
+    try {
+      const relays = getRelayPool().getRelays().slice(0, 6);
+      const tags: string[][] = [
+        ['p', params.recipientPubkey],
+        ['amount', String(params.amountMsats)],
+        ['relays', ...relays]
+      ];
+      if (params.eventId) tags.push(['e', params.eventId]);
+      if (params.eventAddress) tags.push(['a', params.eventAddress]);
+
+      const signed = await this.signAnyMode({
+        kind: EVENT_KINDS.ZAP_REQUEST,
+        content: params.comment || '',
+        tags
+      });
+      return JSON.stringify(signed);
+    } catch (error) {
+      console.error('Failed to create zap request:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Zap receipts (kind 9735) aimed at a live stream — the ones tagged with
+   * the stream's address, which is how a zap made from the stream page is
+   * distinguished from any other zap to the same person.
+   */
+  static async fetchLiveZaps(address: string, limit: number = 100): Promise<NostrEventSigned[]> {
+    try {
+      const events = await getRelayPool().fetchEvents([
+        { kinds: [EVENT_KINDS.ZAP_RECEIPT], '#a': [address], limit }
+      ]);
+      return events.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+    } catch (error) {
+      console.error('Failed to fetch live stream zaps:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Who paid, per the zap request the provider embedded in the receipt.
+   * The receipt itself is signed by the provider, so its pubkey is the
+   * wallet's, not the sender's.
+   */
+  static zapSenderPubkey(zapReceipt: NostrEventSigned): string | null {
+    try {
+      const description = zapReceipt.tags.find(t => t[0] === 'description')?.[1];
+      if (!description) return null;
+      const zapRequest = JSON.parse(description);
+      return typeof zapRequest.pubkey === 'string' ? zapRequest.pubkey : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** The message the sender attached to the zap, if any */
+  static zapComment(zapReceipt: NostrEventSigned): string {
+    try {
+      const description = zapReceipt.tags.find(t => t[0] === 'description')?.[1];
+      if (!description) return '';
+      const zapRequest = JSON.parse(description);
+      return typeof zapRequest.content === 'string' ? zapRequest.content : '';
+    } catch {
+      return '';
+    }
+  }
+
   static async fetchLiveChatMessages(address: string, limit: number = 200): Promise<NostrEventSigned[]> {
     try {
       const relayPool = getRelayPool();
@@ -1186,7 +1268,7 @@ export class NostrCore {
   /**
    * Extract the amount in sats from a zap receipt (kind 9735)
    */
-  private static parseZapAmountSats(zapReceipt: NostrEventSigned): number {
+  static parseZapAmountSats(zapReceipt: NostrEventSigned): number {
     // Primary source: the bolt11 invoice amount (lnbc<amount><multiplier>1...)
     const bolt11 = zapReceipt.tags.find(t => t[0] === 'bolt11')?.[1];
     if (bolt11) {

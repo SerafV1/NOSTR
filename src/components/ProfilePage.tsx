@@ -494,7 +494,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                     {blockLoading ? '...' : isBlocked ? 'Unblock' : 'Block'}
                   </button>
                   {profile.lud16 && (
-                    <ZapButton lud16={profile.lud16} triggerClassName="btn btn-secondary btn-small btn-with-icon">
+                    <ZapButton
+                      lud16={profile.lud16}
+                      recipientPubkey={pubkey}
+                      triggerClassName="btn btn-secondary btn-small btn-with-icon"
+                    >
                       <ZapIcon /> Zap
                     </ZapButton>
                   )}

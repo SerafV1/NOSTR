@@ -9,7 +9,17 @@ interface LnurlPayResponse {
   callback?: string;
   minSendable?: number;
   maxSendable?: number;
+  /** NIP-57: set when the provider will publish a zap receipt */
+  allowsNostr?: boolean;
+  nostrPubkey?: string;
 }
+
+/**
+ * Builds the signed kind 9734 to attach to the payment. Given by the
+ * caller because signing lives in the nostr layer, not here. Returning
+ * null falls back to a plain, private LNURL payment.
+ */
+export type ZapRequestBuilder = (amountMsats: number) => Promise<string | null>;
 
 interface LnurlInvoiceResponse {
   pr?: string;
@@ -20,7 +30,11 @@ interface LnurlInvoiceResponse {
  * Resolve a Lightning Address + amount into a payable BOLT11 invoice.
  * Throws with a user-facing message on any failure.
  */
-export async function resolveLnurlInvoice(lud16: string, amountSats: number): Promise<string> {
+export async function resolveLnurlInvoice(
+  lud16: string,
+  amountSats: number,
+  buildZapRequest?: ZapRequestBuilder
+): Promise<string> {
   const [name, domain] = lud16.split('@');
   if (!name || !domain) {
     throw new Error('Invalid lightning address');
@@ -46,9 +60,21 @@ export async function resolveLnurlInvoice(lud16: string, amountSats: number): Pr
     throw new Error(`Maximum amount is ${Math.floor(payInfo.maxSendable / 1000)} sats`);
   }
 
+  // Without the `nostr` parameter the payment is just a payment: the
+  // provider publishes no zap receipt, so nobody — not the recipient, not
+  // the stream — ever learns it happened. Only providers that advertise
+  // allowsNostr accept it.
+  let zapRequestParam = '';
+  if (payInfo.allowsNostr && payInfo.nostrPubkey && buildZapRequest) {
+    const zapRequest = await buildZapRequest(amountMsats);
+    if (zapRequest) {
+      zapRequestParam = `&nostr=${encodeURIComponent(zapRequest)}`;
+    }
+  }
+
   const separator = payInfo.callback.includes('?') ? '&' : '?';
   const invoiceInfo = await fetchJson<LnurlInvoiceResponse>(
-    `${payInfo.callback}${separator}amount=${amountMsats}`,
+    `${payInfo.callback}${separator}amount=${amountMsats}${zapRequestParam}`,
     'Failed to request an invoice'
   );
 

@@ -1888,6 +1888,18 @@ button.poll-option-vote:disabled {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
+/* Inside the chat there is nowhere to open: the message list scrolls and
+   the panel clips it. Float the menu over the window instead. */
+.live-chat-messages .zap-menu {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+  width: min(280px, calc(100vw - var(--spacing-md) * 2));
+  z-index: 1200;
+}
+
 .zap-menu-empty {
   font-size: 0.85rem;
   color: var(--text-secondary);
@@ -1921,6 +1933,22 @@ button.poll-option-vote:disabled {
 .zap-amount-btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.zap-comment {
+  width: 100%;
+  margin-bottom: var(--spacing-sm);
+  background: var(--dark-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  color: var(--text-primary);
+  padding: var(--spacing-sm);
+  font-size: 0.85rem;
+}
+
+.zap-comment:focus {
+  outline: none;
+  border-color: var(--primary-color);
 }
 
 .zap-custom {
@@ -4481,6 +4509,68 @@ a.capability-indicator.paid:hover {
   display: flex;
   gap: var(--spacing-sm);
   align-items: flex-start;
+}
+
+/* A zap is set apart from the talk — it is the thing people watch for */
+.live-chat-zap {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: flex-start;
+  padding: var(--spacing-sm);
+  border: 1px solid rgba(247, 147, 26, 0.45);
+  border-radius: var(--border-radius);
+  background: rgba(247, 147, 26, 0.08);
+}
+
+.live-chat-zap-line {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.live-chat-zap-line strong {
+  color: #f7931a;
+  white-space: nowrap;
+}
+
+/* The name, and the tip button that only appears on hover */
+.live-chat-message-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.live-chat-zap-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  display: inline-flex;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.live-chat-zap-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.live-chat-message:hover .live-chat-zap-btn,
+.live-chat-zap-btn:focus-visible {
+  opacity: 1;
+}
+
+.live-chat-zap-btn:hover {
+  color: #f7931a;
+  opacity: 1;
+}
+
+/* No hover on a touchscreen, so it simply stays visible there */
+@media (hover: none) {
+  .live-chat-zap-btn {
+    opacity: 0.7;
+  }
 }
 
 .live-chat-avatar {

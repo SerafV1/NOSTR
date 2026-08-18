@@ -138,6 +138,8 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
               {profile?.lud16 && (
                 <ZapButton
                   lud16={profile.lud16}
+                  recipientPubkey={stream.hostPubkey}
+                  eventAddress={address}
                   triggerClassName="btn btn-secondary btn-small btn-with-icon"
                   triggerTitle={`Zap ${hostName}`}
                 >

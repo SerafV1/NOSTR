@@ -764,7 +764,13 @@ const EventCard: React.FC<EventCardProps> = ({
           )}
         </div>
 
-        <ZapButton lud16={profile?.lud16} triggerClassName="action-btn" triggerTitle="Zap with lightning">
+        <ZapButton
+          lud16={profile?.lud16}
+          recipientPubkey={event.pubkey}
+          eventId={event.id}
+          triggerClassName="action-btn"
+          triggerTitle="Zap with lightning"
+        >
           <ZapIcon className="action-icon" filled={zapSats > 0} />
           <span className="action-count">{formatSats(zapSats)}</span>
         </ZapButton>

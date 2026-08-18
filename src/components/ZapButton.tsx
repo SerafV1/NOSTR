@@ -1,11 +1,17 @@
 import React, { useState } from 'react';
 import { resolveLnurlInvoice } from '../utils/zap';
+import { NostrCore } from '../nostr/core';
 
 interface ZapButtonProps {
   lud16?: string;
   triggerClassName: string;
   triggerTitle?: string;
   children: React.ReactNode;
+  /** Who is being paid. Without it the zap stays private — see sendZap */
+  recipientPubkey?: string;
+  /** What the zap is for: a note, or a live stream's address */
+  eventId?: string;
+  eventAddress?: string;
 }
 
 const PRESET_AMOUNTS = [21, 100, 500, 1000, 5000, 21000];
@@ -16,9 +22,18 @@ const PRESET_AMOUNTS = [21, 100, 500, 1000, 5000, 21000];
  * the user's wallet — a bare `lightning:user@domain` URI isn't valid and
  * silently fails in most wallets, which is why zapping needs this step.
  */
-const ZapButton: React.FC<ZapButtonProps> = ({ lud16, triggerClassName, triggerTitle, children }) => {
+const ZapButton: React.FC<ZapButtonProps> = ({
+  lud16,
+  triggerClassName,
+  triggerTitle,
+  children,
+  recipientPubkey,
+  eventId,
+  eventAddress
+}) => {
   const [showMenu, setShowMenu] = useState(false);
   const [customAmount, setCustomAmount] = useState('');
+  const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(false);
 
   const sendZap = async (amountSats: number) => {
@@ -26,10 +41,23 @@ const ZapButton: React.FC<ZapButtonProps> = ({ lud16, triggerClassName, triggerT
 
     setLoading(true);
     try {
-      const invoice = await resolveLnurlInvoice(lud16, amountSats);
+      // Told who the recipient is, the payment becomes a real NIP-57 zap:
+      // the wallet publishes a receipt, so it shows up on the note, the
+      // profile and — for a stream — in its chat. Without a recipient it
+      // is an ordinary private lightning payment, as before.
+      const invoice = await resolveLnurlInvoice(lud16, amountSats, recipientPubkey
+        ? (amountMsats) => NostrCore.createZapRequest({
+            recipientPubkey,
+            amountMsats,
+            eventId,
+            eventAddress,
+            comment: comment.trim()
+          })
+        : undefined);
       window.open(`lightning:${invoice}`, '_blank');
       setShowMenu(false);
       setCustomAmount('');
+      setComment('');
     } catch (error) {
       console.error('Zap failed:', error);
       alert(error instanceof Error ? error.message : 'Failed to create zap invoice');
@@ -68,6 +96,17 @@ const ZapButton: React.FC<ZapButtonProps> = ({ lud16, triggerClassName, triggerT
                   </button>
                 ))}
               </div>
+              {recipientPubkey && (
+                <input
+                  type="text"
+                  className="zap-comment"
+                  placeholder="Comment (optional)"
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  disabled={loading}
+                  maxLength={200}
+                />
+              )}
               <div className="zap-custom">
                 <input
                   type="number"

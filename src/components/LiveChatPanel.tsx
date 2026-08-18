@@ -5,6 +5,16 @@ import { CredentialManager } from '../nostr/crypto';
 import RichText from './RichText';
 import { formatAddress } from '../utils/helpers';
 import EmojiPicker from './EmojiPicker';
+import ZapButton from './ZapButton';
+import { ZapIcon } from './Icons';
+
+interface TimelineEntry {
+  kind: 'message' | 'zap';
+  event: NostrEventSigned;
+  /** For a zap this is the payer, not the event's signer */
+  author: string | null;
+  sats: number;
+}
 
 interface LiveChatPanelProps {
   address: string;
@@ -21,6 +31,7 @@ interface LiveChatPanelProps {
 
 const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut }) => {
   const [messages, setMessages] = useState<NostrEventSigned[]>([]);
+  const [zaps, setZaps] = useState<NostrEventSigned[]>([]);
   const [profiles, setProfiles] = useState<Map<string, UserProfile>>(new Map());
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -44,20 +55,41 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     let subId: string | null = null;
 
     (async () => {
-      const history = await NostrCore.fetchLiveChatMessages(address);
+      const [history, zapHistory] = await Promise.all([
+        NostrCore.fetchLiveChatMessages(address),
+        NostrCore.fetchLiveZaps(address)
+      ]);
       if (cancelled) return;
       setMessages(history);
+      setZaps(zapHistory);
 
-      const profileMap = await NostrCore.fetchProfiles(history.map(m => m.pubkey));
+      const zapSenders = zapHistory
+        .map(zap => NostrCore.zapSenderPubkey(zap))
+        .filter((pubkey): pubkey is string => !!pubkey);
+      const profileMap = await NostrCore.fetchProfiles([
+        ...history.map(m => m.pubkey),
+        ...zapSenders
+      ]);
       if (!cancelled) setProfiles(profileMap);
 
       const since = Math.floor(Date.now() / 1000);
       subId = NostrCore.subscribeLive(
-        [{ kinds: [EVENT_KINDS.LIVE_CHAT_MESSAGE], '#a': [address], since }],
+        [{
+          kinds: [EVENT_KINDS.LIVE_CHAT_MESSAGE, EVENT_KINDS.ZAP_RECEIPT],
+          '#a': [address],
+          since
+        }],
         async (event) => {
-          setMessages(prev => (prev.some(m => m.id === event.id) ? prev : [...prev, event]));
-          if (!profilesRef.current.has(event.pubkey)) {
-            const fetched = await NostrCore.fetchProfiles([event.pubkey]);
+          // A zap receipt is signed by the wallet, so the person to name
+          // and to look up is the one inside the zap request it carries
+          const isZap = event.kind === EVENT_KINDS.ZAP_RECEIPT;
+          const author = isZap ? NostrCore.zapSenderPubkey(event) : event.pubkey;
+
+          const add = isZap ? setZaps : setMessages;
+          add(prev => (prev.some(e => e.id === event.id) ? prev : [...prev, event]));
+
+          if (author && !profilesRef.current.has(author)) {
+            const fetched = await NostrCore.fetchProfiles([author]);
             setProfiles(prev => new Map([...prev, ...fetched]));
           }
         }
@@ -76,7 +108,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
-  }, [messages.length]);
+  }, [messages.length, zaps.length]);
 
 
   const insertEmoji = (emoji: string) => {
@@ -120,6 +152,23 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     }
   };
 
+  // Messages and zaps are two separate subscriptions but one conversation,
+  // so they are interleaved by time the way the room actually experienced them
+  const timeline: TimelineEntry[] = [
+    ...messages.map((event): TimelineEntry => ({
+      kind: 'message',
+      event,
+      author: event.pubkey,
+      sats: 0
+    })),
+    ...zaps.map((event): TimelineEntry => ({
+      kind: 'zap',
+      event,
+      author: NostrCore.zapSenderPubkey(event),
+      sats: NostrCore.parseZapAmountSats(event)
+    }))
+  ].sort((a, b) => (a.event.created_at || 0) - (b.event.created_at || 0));
+
   return (
     <div className="live-chat-panel">
       <div className="live-chat-header">
@@ -136,27 +185,80 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
         )}
       </div>
       <div className="live-chat-messages" ref={listRef}>
-        {messages.length === 0 && (
+        {timeline.length === 0 && (
           <div className="live-chat-empty">No messages yet — say hello!</div>
         )}
-        {messages.map(message => {
-          const profile = profiles.get(message.pubkey);
-          const name = profile?.display_name || profile?.name || formatAddress(message.pubkey);
+        {timeline.map(entry => {
+          const event = entry.event;
+          const author = entry.author;
+          const profile = author ? profiles.get(author) : undefined;
+          const name = profile?.display_name || profile?.name
+            || (author ? formatAddress(author) : 'Someone');
+
+          const avatar = profile?.picture ? (
+            <img src={profile.picture} alt="" className="live-chat-avatar" />
+          ) : (
+            <div className="live-chat-avatar-placeholder">{name.charAt(0).toUpperCase()}</div>
+          );
+
+          // A zap is an event in the room, not a message: it says who paid
+          // the streamer and how much, with the sender's note underneath
+          if (entry.kind === 'zap') {
+            const comment = NostrCore.zapComment(event);
+            return (
+              <div key={event.id} className="live-chat-zap">
+                {avatar}
+                <div className="live-chat-message-body">
+                  <span className="live-chat-zap-line">
+                    <button className="live-chat-author" onClick={() => author && onNavigateToProfile(author)}>
+                      {name}
+                    </button>
+                    {' zapped '}
+                    <strong>⚡ {entry.sats.toLocaleString()} sats</strong>
+                  </span>
+                  {comment && (
+                    <span className="live-chat-text">
+                      <RichText
+                        inlineImages
+                        content={comment}
+                        onNavigateToProfile={onNavigateToProfile}
+                        onNavigateToNote={onNavigateToNote}
+                        onNavigateToTopic={onNavigateToTopic}
+                      />
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          }
+
           return (
-            <div key={message.id} className="live-chat-message">
-              {profile?.picture ? (
-                <img src={profile.picture} alt="" className="live-chat-avatar" />
-              ) : (
-                <div className="live-chat-avatar-placeholder">{name.charAt(0).toUpperCase()}</div>
-              )}
+            <div key={event.id} className="live-chat-message">
+              {avatar}
               <div className="live-chat-message-body">
-                <button className="live-chat-author" onClick={() => onNavigateToProfile(message.pubkey)}>
-                  {name}
-                </button>
+                <span className="live-chat-message-head">
+                  <button className="live-chat-author" onClick={() => author && onNavigateToProfile(author)}>
+                    {name}
+                  </button>
+                  {/* Tipping whoever said something, not just the host.
+                      Only offered when they publish a Lightning address. */}
+                  {profile?.lud16 && (
+                    <ZapButton
+                      lud16={profile.lud16}
+                      recipientPubkey={author || undefined}
+                      eventId={event.id}
+                      eventAddress={address}
+                      triggerClassName="live-chat-zap-btn"
+                      triggerTitle={`Zap ${name}`}
+                    >
+                      <ZapIcon />
+                    </ZapButton>
+                  )}
+                </span>
                 <span className="live-chat-text">
                   <RichText
                     inlineImages
-                    content={message.content}
+                    content={event.content}
                     onNavigateToProfile={onNavigateToProfile}
                     onNavigateToNote={onNavigateToNote}
                     onNavigateToTopic={onNavigateToTopic}
