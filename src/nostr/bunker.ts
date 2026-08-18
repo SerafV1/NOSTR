@@ -101,8 +101,30 @@ const decrypt = async (session: BunkerSession, content: string, from: string): P
   try {
     return NostrCrypto.decryptNip44(content, session.clientSecret, from);
   } catch {
-    return (nostrTools as any).nip04.decrypt(session.clientSecret, from, content);
+    // fall through
   }
+  try {
+    // Awaited on purpose: nip04.decrypt is async, and returning its promise
+    // from inside the try means a rejection escapes this catch entirely —
+    // which skipped everything below and reported the reply as unreadable
+    return await (nostrTools as any).nip04.decrypt(session.clientSecret, from, content);
+  } catch {
+    // fall through
+  }
+  // Not every reply is encrypted — an auth_url, for one, may arrive as plain
+  // JSON. Reading it as-is beats discarding it as unreadable.
+  if (content.trimStart().startsWith('{')) return content;
+  throw new Error(shapeOf(content));
+};
+
+/**
+ * Describe an unreadable payload without printing it: the leading bytes say
+ * which scheme it was meant to be, which is the one thing worth reporting.
+ */
+const shapeOf = (content: string): string => {
+  if (content.includes('?iv=')) return 'looks like NIP-04 but would not decrypt';
+  if (/^A[A-Za-z0-9+/]/.test(content)) return `looks like NIP-44 (starts "${content.slice(0, 6)}") but would not decrypt`;
+  return `unrecognised format (starts "${content.slice(0, 10)}", ${content.length} chars)`;
 };
 
 const encrypt = async (session: BunkerSession, content: string, scheme: 'nip44' | 'nip04'): Promise<string> => {
@@ -260,13 +282,25 @@ export const startNostrConnect = (
       let plaintext: string;
       try {
         plaintext = await decrypt(session, event.content, event.pubkey);
-      } catch {
-        onProgress?.('A reply arrived but could not be decrypted with either scheme.');
+      } catch (error) {
+        onProgress?.(
+          `A reply arrived but could not be read: ${error instanceof Error ? error.message : 'unknown'}`
+        );
         return;
       }
 
       try {
-        const message = JSON.parse(plaintext) as { result?: string; error?: string };
+        const message = JSON.parse(plaintext) as { result?: string; error?: string; auth_url?: string };
+
+        // Some signers ask the user to approve on a web page first and send
+        // the address to open; it isn't a refusal and isn't the answer either
+        const authUrl = message.auth_url || (message.result === 'auth_url' ? message.error : undefined);
+        if (authUrl) {
+          onProgress?.('The signer wants approval in a browser page — opening it.');
+          window.open(authUrl, '_blank', 'noopener');
+          return;
+        }
+
         if (message.error) {
           onProgress?.(`The signer refused: ${message.error}`);
           return;
