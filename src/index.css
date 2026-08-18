@@ -1935,6 +1935,32 @@ button.poll-option-vote:disabled {
   cursor: default;
 }
 
+.zap-invoice-hint {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.zap-invoice-text {
+  width: 100%;
+  background: var(--dark-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  color: var(--text-secondary);
+  padding: var(--spacing-sm);
+  font-family: monospace;
+  font-size: 0.7rem;
+  resize: none;
+  word-break: break-all;
+}
+
+.zap-invoice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
 .zap-comment {
   width: 100%;
   margin-bottom: var(--spacing-sm);

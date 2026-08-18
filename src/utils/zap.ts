@@ -84,6 +84,24 @@ export async function resolveLnurlInvoice(
   return invoiceInfo.pr;
 }
 
+/**
+ * Hand a BOLT11 invoice to the browser's lightning wallet over WebLN.
+ *
+ * A `lightning:` URI only works when something on the machine has claimed
+ * that scheme, which a browser extension generally has not — so opening one
+ * did nothing at all for extension wallets like Alby. WebLN is the interface
+ * they actually expose. Returns false when there is no WebLN wallet, so the
+ * caller can fall back to showing the invoice.
+ */
+export async function payWithWebln(invoice: string): Promise<boolean> {
+  const webln = (window as any).webln;
+  if (!webln) return false;
+
+  await webln.enable();
+  await webln.sendPayment(invoice);
+  return true;
+}
+
 async function fetchJson<T>(url: string, errorContext: string): Promise<T> {
   let response: Response;
   try {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { resolveLnurlInvoice } from '../utils/zap';
+import { resolveLnurlInvoice, payWithWebln } from '../utils/zap';
 import { NostrCore } from '../nostr/core';
 
 interface ZapButtonProps {
@@ -35,6 +35,8 @@ const ZapButton: React.FC<ZapButtonProps> = ({
   const [customAmount, setCustomAmount] = useState('');
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(false);
+  const [invoice, setInvoice] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const sendZap = async (amountSats: number) => {
     if (!lud16 || loading) return;
@@ -54,16 +56,33 @@ const ZapButton: React.FC<ZapButtonProps> = ({
             comment: comment.trim()
           })
         : undefined);
-      window.open(`lightning:${invoice}`, '_blank');
-      setShowMenu(false);
-      setCustomAmount('');
-      setComment('');
+
+      // An extension wallet answers over WebLN, not the `lightning:` scheme
+      const paid = await payWithWebln(invoice);
+      if (paid) {
+        setShowMenu(false);
+        setCustomAmount('');
+        setComment('');
+        return;
+      }
+
+      // No WebLN wallet here: show the invoice so it can be paid elsewhere,
+      // rather than opening a URI nothing is listening for
+      setInvoice(invoice);
     } catch (error) {
       console.error('Zap failed:', error);
       alert(error instanceof Error ? error.message : 'Failed to create zap invoice');
     } finally {
       setLoading(false);
     }
+  };
+
+  const closeMenu = () => {
+    setShowMenu(false);
+    setInvoice(null);
+    setCustomAmount('');
+    setComment('');
+    setCopied(false);
   };
 
   return (
@@ -79,7 +98,34 @@ const ZapButton: React.FC<ZapButtonProps> = ({
 
       {showMenu && (
         <div className="zap-menu">
-          {!lud16 ? (
+          {invoice ? (
+            // Nothing here can pay it, so the invoice itself is the answer
+            <div className="zap-invoice">
+              <div className="zap-invoice-hint">
+                No lightning wallet in this browser — pay this invoice from your wallet:
+              </div>
+              <textarea className="zap-invoice-text" readOnly value={invoice} rows={4} />
+              <div className="zap-invoice-actions">
+                <button
+                  type="button"
+                  className="btn btn-primary btn-small"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(invoice);
+                    setCopied(true);
+                  }}
+                >
+                  {copied ? 'Copied' : 'Copy invoice'}
+                </button>
+                {/* A real link, so the click reaches any handler that does exist */}
+                <a className="btn btn-secondary btn-small" href={`lightning:${invoice}`}>
+                  Open wallet
+                </a>
+                <button type="button" className="btn btn-secondary btn-small" onClick={closeMenu}>
+                  Close
+                </button>
+              </div>
+            </div>
+          ) : !lud16 ? (
             <div className="zap-menu-empty">No lightning address set for this profile</div>
           ) : (
             <>
