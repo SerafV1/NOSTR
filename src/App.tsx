@@ -11,9 +11,9 @@ import {
 } from 'react-router-dom';
 import { CredentialManager, NostrCrypto } from './nostr/crypto';
 import { getRelayPool, DEFAULT_RELAYS } from './nostr/relay';
-import { NotificationCore, NotificationStore } from './nostr/notifications';
+import { NotificationCore, NotificationStore, cacheNotifications } from './nostr/notifications';
 import { DirectMessageCore, DirectMessageStore } from './nostr/dm';
-import { NostrCore, EventCache, PersistentCache } from './nostr/core';
+import { NostrCore, EventCache } from './nostr/core';
 import { consumeCallback } from './nostr/amber';
 import { getRelayPool as getPoolForAmber } from './nostr/relay';
 import { UserProfile } from './types';
@@ -359,12 +359,14 @@ function App() {
 
     const refreshUnread = async () => {
       try {
-        const notifications = await NotificationCore.fetchNotifications(publicKey, 50);
-        setUnreadNotifications(NotificationStore.countUnread(publicKey, notifications));
-        // This poll already holds exactly what the Notifications page shows.
-        // Keeping only the count meant the page re-fetched all of it from
-        // the relays on open, so a badge you just saw led to a spinner.
-        PersistentCache.set(`notifications_${publicKey}`, notifications);
+        const fetched = await NotificationCore.fetchNotifications(publicKey, 50);
+        // This poll already holds exactly what the Notifications page shows,
+        // so it fills that cache too — otherwise opening the page re-fetched
+        // everything and showed a spinner for a badge you'd just seen. Merged
+        // rather than written over: this runs every 30 seconds, and one thin
+        // answer from the relays would otherwise erase the history.
+        const merged = cacheNotifications(publicKey, fetched);
+        setUnreadNotifications(NotificationStore.countUnread(publicKey, merged));
       } catch (error) {
         console.error('Failed to refresh notification badge:', error);
       }

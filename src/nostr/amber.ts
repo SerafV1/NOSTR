@@ -1,3 +1,4 @@
+import { getEventHash, nip19 } from 'nostr-tools';
 import { NostrEvent, NostrEventSigned } from '../types';
 
 /**
@@ -151,6 +152,9 @@ export const requestPublicKey = (): Promise<never> => {
     compressionType: 'none',
     returnType: 'signature',
     type: 'get_public_key',
+    appName: 'NOSTR Web App',
+    // Asked for at connection time so posting doesn't prompt separately
+    permissions: JSON.stringify([{ type: 'sign_event' }]),
     callbackUrl: callbackUrl('amberPubkey')
   };
   return handOff(
@@ -188,41 +192,101 @@ export const requestSignature = (event: NostrEvent, pubkey: string): Promise<nev
  * Read whatever the signer appended to the URL on its way back, and clean
  * the address bar so a reload doesn't replay it.
  */
+/**
+ * Read whatever the signer appended on its way back.
+ *
+ * Deliberately not looking for one parameter name: the spec says only that
+ * the result is "appended to the callbackUrl", and signers differ on what
+ * they call it — so match on the shape of the value instead, across every
+ * parameter present. A returned bare signature is enough too: the pending
+ * request still holds the event it belongs to.
+ */
 export const consumeCallback = (): AmberResult | null => {
   const url = new URL(window.location.href);
-  const pubkey = url.searchParams.get('amberPubkey');
-  const eventParam = url.searchParams.get('amberEvent');
-  const error = url.searchParams.get('amberError');
-  if (!pubkey && !eventParam && !error) return null;
+  const allParams = Array.from(url.searchParams.entries());
+  if (allParams.length === 0) return null;
 
   const pending = readPending();
-  clearPending();
+  // Nothing was asked for, so nothing here is an answer — leave the URL be
+  if (!pending) return null;
 
-  url.searchParams.delete('amberPubkey');
-  url.searchParams.delete('amberEvent');
-  url.searchParams.delete('amberError');
-  window.history.replaceState({}, '', url.toString());
+  // Keep the empty ones in view: a reply of "?amberPubkey=" with nothing
+  // after it is a failure worth saying out loud, not silence to return to
+  // the login screen with
+  const params = allParams.filter(([, value]) => value.trim() !== '');
+  const values = params.map(([, value]) => value.trim());
+  const explicitError = url.searchParams.get('amberError') || url.searchParams.get('error');
 
-  if (error) return { type: 'error', message: error };
+  const cleanUrl = () => {
+    for (const [key] of allParams) url.searchParams.delete(key);
+    window.history.replaceState({}, '', url.toString());
+  };
 
-  if (pubkey) return { type: 'get_public_key', pubkey };
-
-  if (eventParam) {
-    try {
-      const parsed = JSON.parse(eventParam);
-      // Some signers return only the signature; the template we kept has
-      // everything else needed to make a complete event out of it
-      if (typeof parsed === 'object' && parsed.sig && parsed.id) {
-        return { type: 'sign_event', event: parsed as NostrEventSigned };
+  const asPubkey = (value: string): string | null => {
+    if (/^[0-9a-f]{64}$/i.test(value)) return value.toLowerCase();
+    if (/^npub1[a-z0-9]+$/i.test(value)) {
+      try {
+        const decoded = nip19.decode(value);
+        if (decoded.type === 'npub' && typeof decoded.data === 'string') return decoded.data;
+      } catch {
+        // not a usable npub after all
       }
-      return { type: 'error', message: 'Signer returned an incomplete event' };
-    } catch {
-      if (pending?.event) {
-        return { type: 'error', message: 'Could not read the signed event from Amber' };
-      }
-      return { type: 'error', message: 'Unexpected reply from Amber' };
     }
+    return null;
+  };
+
+  const asSignedEvent = (value: string): NostrEventSigned | null => {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && parsed.sig && parsed.id && parsed.pubkey) return parsed as NostrEventSigned;
+    } catch {
+      // not JSON — may still be a bare signature, handled below
+    }
+    return null;
+  };
+
+  clearPending();
+  cleanUrl();
+
+  if (explicitError) return { type: 'error', message: explicitError };
+
+  if (values.length === 0) {
+    return {
+      type: 'error',
+      message: `The signer came back empty (${allParams.map(([key]) => key).join(', ')}). ` +
+        'It may have refused the request, or it may need to be approved in the app first.'
+    };
   }
 
-  return null;
+  if (pending.type === 'get_public_key') {
+    for (const value of values) {
+      const pubkey = asPubkey(value);
+      if (pubkey) return { type: 'get_public_key', pubkey };
+    }
+    return {
+      type: 'error',
+      message: `Signer replied without a usable public key: ${values.join(' | ').slice(0, 160)}`
+    };
+  }
+
+  // sign_event
+  for (const value of values) {
+    const event = asSignedEvent(value);
+    if (event) return { type: 'sign_event', event };
+  }
+  // returnType=signature gives back only the signature; the template we kept
+  // supplies everything else the event needs
+  const signature = values.find(value => /^[0-9a-f]{128}$/i.test(value));
+  if (signature && pending.event) {
+    const template = pending.event as NostrEvent & { pubkey: string; created_at: number };
+    return {
+      type: 'sign_event',
+      event: { ...template, id: getEventHash(template as any), sig: signature } as NostrEventSigned
+    };
+  }
+
+  return {
+    type: 'error',
+    message: `Signer replied with something unrecognised: ${values.join(' | ').slice(0, 160)}`
+  };
 };

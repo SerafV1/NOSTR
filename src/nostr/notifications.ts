@@ -1,5 +1,6 @@
 import { NostrEventSigned, NostrFilter, EVENT_KINDS } from '../types';
 import { getRelayPool } from './relay';
+import { PersistentCache } from './core';
 
 export type NotificationType = 'reply' | 'mention' | 'reaction' | 'repost' | 'zap';
 
@@ -7,6 +8,39 @@ export interface NostrNotification {
   id: string;
   type: NotificationType;
   event: NostrEventSigned;
+}
+
+// Enough history to scroll back through without letting the list grow forever
+const NOTIFICATION_CACHE_LIMIT = 200;
+
+const notificationsCacheKey = (pubkey: string): string => `notifications_${pubkey}`;
+
+export function readCachedNotifications(pubkey: string): NostrNotification[] {
+  return PersistentCache.get<NostrNotification[]>(notificationsCacheKey(pubkey)) || [];
+}
+
+/**
+ * Fold a fetch into what's already stored, and return the whole list.
+ *
+ * Both callers used to write the fetch straight over the cache. Relays answer
+ * partially far more often than not — the pool returns shortly after the
+ * first one replies — so a thin result quietly threw away everything older,
+ * and an empty one wiped the page. Merging by id means a poor fetch can only
+ * ever add.
+ */
+export function cacheNotifications(
+  pubkey: string,
+  fresh: NostrNotification[]
+): NostrNotification[] {
+  const byId = new Map(readCachedNotifications(pubkey).map(n => [n.id, n]));
+  for (const notification of fresh) byId.set(notification.id, notification);
+
+  const merged = Array.from(byId.values())
+    .sort((a, b) => (b.event.created_at || 0) - (a.event.created_at || 0))
+    .slice(0, NOTIFICATION_CACHE_LIMIT);
+
+  PersistentCache.set(notificationsCacheKey(pubkey), merged);
+  return merged;
 }
 
 /**

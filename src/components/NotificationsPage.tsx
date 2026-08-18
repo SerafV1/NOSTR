@@ -1,7 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NostrEventSigned, UserProfile } from '../types';
-import { NostrCore, PersistentCache } from '../nostr/core';
-import { NotificationCore, NotificationStore, NostrNotification, NotificationType } from '../nostr/notifications';
+import { NostrCore } from '../nostr/core';
+import {
+  NotificationCore,
+  NotificationStore,
+  NostrNotification,
+  NotificationType,
+  cacheNotifications,
+  readCachedNotifications
+} from '../nostr/notifications';
 import { formatDate, formatAddress } from '../utils/helpers';
 import { stripMediaUrls } from '../utils/media';
 
@@ -46,8 +53,8 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
   const initialLastSeenRef = useRef(NotificationStore.getLastSeen(pubkey));
 
   const loadNotifications = async () => {
-    const cached = PersistentCache.get<NostrNotification[]>(`notifications_${pubkey}`);
-    if (cached && cached.length > 0) {
+    const cached = readCachedNotifications(pubkey);
+    if (cached.length > 0) {
       setNotifications(cached);
       setLoading(false);
     } else {
@@ -69,8 +76,9 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
         setTargetNotes(prev => ({ ...prev, ...Object.fromEntries(targets) }));
       }
 
-      setNotifications(fetched);
-      PersistentCache.set(`notifications_${pubkey}`, fetched);
+      // Merged, not replaced: a partial answer from the relays must not
+      // take away notifications that were already on screen
+      setNotifications(cacheNotifications(pubkey, fetched));
     } catch (error) {
       console.error('Failed to load notifications:', error);
     } finally {
@@ -82,8 +90,8 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
     if (relaysConnected) {
       loadNotifications();
     } else {
-      const cached = PersistentCache.get<NostrNotification[]>(`notifications_${pubkey}`);
-      if (cached && cached.length > 0) {
+      const cached = readCachedNotifications(pubkey);
+      if (cached.length > 0) {
         setNotifications(cached);
         setLoading(false);
       }
