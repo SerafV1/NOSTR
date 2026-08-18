@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NostrCrypto, CredentialManager, ExtensionManager } from '../nostr/crypto';
 import { publicKeySchemeUri, publicKeyIntentUri, isAndroid } from '../nostr/amber';
-import { connectBunker } from '../nostr/bunker';
+import { connectBunker, startNostrConnect } from '../nostr/bunker';
 
 interface LoginPageProps {
   onLogin: (privkey: string) => void;
@@ -33,6 +33,39 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       setAmberError(error instanceof Error ? error.message : 'Could not reach the signer');
     } finally {
       setBunkerBusy(false);
+    }
+  };
+
+  const [connectUri, setConnectUri] = useState('');
+  const [connectWaiting, setConnectWaiting] = useState(false);
+  const [connectCopied, setConnectCopied] = useState(false);
+
+  // The direction Amber makes easy: this page publishes an invitation and
+  // the signer joins it, so nothing has to be found in Amber's own menus
+  const handleStartConnect = () => {
+    setAmberError(null);
+    setConnectCopied(false);
+    const { uri, connected } = startNostrConnect();
+    setConnectUri(uri);
+    setConnectWaiting(true);
+    connected
+      .then(pubkey => {
+        CredentialManager.storePublicKey(pubkey);
+        CredentialManager.setBunkerMode(true);
+        onLogin('__amber__');
+      })
+      .catch(error => {
+        setAmberError(error instanceof Error ? error.message : 'The signer never connected');
+      })
+      .finally(() => setConnectWaiting(false));
+  };
+
+  const copyConnectUri = async () => {
+    try {
+      await navigator.clipboard.writeText(connectUri);
+      setConnectCopied(true);
+    } catch {
+      setAmberError('Could not copy — select the link above and copy it by hand.');
     }
   };
 
@@ -213,6 +246,35 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                         >
                           {bunkerBusy ? 'Waiting for Amber…' : 'Pair with Amber'}
                         </button>
+
+                        {/* The same pairing from the other end. Amber's own
+                            screen for adding an application is easier to find
+                            than its bunker screen, so this is offered first
+                            for anyone who can't locate that one. */}
+                        <p className="extension-desc">
+                          Can't find <em>nsec bunker</em> in Amber? Go the other way:
+                        </p>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-small"
+                          onClick={handleStartConnect}
+                          disabled={connectWaiting}
+                        >
+                          {connectWaiting ? 'Waiting for Amber to connect…' : 'Create a link for Amber'}
+                        </button>
+
+                        {connectUri && (
+                          <div className="connect-uri">
+                            <code className="connect-uri-text">{connectUri}</code>
+                            <button type="button" className="btn btn-secondary btn-small" onClick={copyConnectUri}>
+                              {connectCopied ? 'Copied ✓' : 'Copy link'}
+                            </button>
+                            <p className="extension-desc">
+                              Copy it, open Amber, and add it there as a new application.
+                              This page waits and logs you in as soon as Amber connects.
+                            </p>
+                          </div>
+                        )}
                       </div>
 
                       {/* Kept as a shortcut for browsers that do hand off

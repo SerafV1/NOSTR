@@ -88,15 +88,15 @@ export const parseBunkerUri = (uri: string): { remotePubkey: string; relays: str
   }
 };
 
-const decrypt = async (session: BunkerSession, content: string): Promise<string> =>
-  (nostrTools as any).nip04.decrypt(session.clientSecret, session.remotePubkey, content);
+const decrypt = async (session: BunkerSession, content: string, from: string): Promise<string> =>
+  (nostrTools as any).nip04.decrypt(session.clientSecret, from, content);
 
 const encrypt = async (session: BunkerSession, content: string): Promise<string> =>
   (nostrTools as any).nip04.encrypt(session.clientSecret, session.remotePubkey, content);
 
 const handleResponse = async (session: BunkerSession, event: NostrEventSigned): Promise<void> => {
   try {
-    const plaintext = await decrypt(session, event.content);
+    const plaintext = await decrypt(session, event.content, event.pubkey);
     const message = JSON.parse(plaintext) as { id: string; result?: string; error?: string };
     const call = pending.get(message.id);
     if (!call) return; // not ours, or already timed out
@@ -133,7 +133,10 @@ const ensureConnected = async (session: BunkerSession): Promise<any> => {
       subscription = candidate.sub([
         {
           kinds: [RPC_KIND],
-          authors: [session.remotePubkey],
+          // No authors filter: in the client-initiated flow the signer's key
+          // is unknown until it answers, and its identity is checked against
+          // the secret instead
+          ...(session.remotePubkey ? { authors: [session.remotePubkey] } : {}),
           '#p': [session.clientPubkey],
           // Only what comes after this point: older replies are answers to
           // requests that no longer exist
@@ -178,6 +181,78 @@ const call = async (session: BunkerSession, method: string, params: string[]): P
 
   await connection.publish(event);
   return answer;
+};
+
+// Where the client listens for a signer that connects to it. One reliable
+// relay is enough, and it only carries the pairing conversation.
+const CONNECT_RELAY = 'wss://relay.damus.io';
+
+/**
+ * The other direction: this browser publishes an invitation and the signer
+ * comes to it. Amber offers this as connecting an app, which is easier to
+ * find than the bunker screen — and the signer's own key stays unknown to us
+ * until it answers, so the secret is what proves the answer is genuine.
+ */
+export const startNostrConnect = (): { uri: string; connected: Promise<string> } => {
+  const clientSecret = (nostrTools as any).generatePrivateKey();
+  const secret = Math.random().toString(36).slice(2, 12);
+  const session: BunkerSession = {
+    clientSecret,
+    clientPubkey: (nostrTools as any).getPublicKey(clientSecret),
+    remotePubkey: '', // learned from whoever answers
+    relays: [CONNECT_RELAY],
+    secret
+  };
+
+  const params = new URLSearchParams({
+    relay: CONNECT_RELAY,
+    secret,
+    perms: 'sign_event',
+    name: 'NOSTR Web App'
+  });
+  const uri = `nostrconnect://${session.clientPubkey}?${params.toString()}`;
+
+  const connected = new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error('No signer connected. Paste the link into Amber and approve it there.')),
+      5 * 60 * 1000
+    );
+
+    ensureConnected(session)
+      .then(() => {
+        subscription.on('event', async (event: NostrEventSigned) => {
+          if (session.remotePubkey) return; // already paired
+          try {
+            const plaintext = await decrypt(session, event.content, event.pubkey);
+            const message = JSON.parse(plaintext) as { result?: string };
+            // The secret coming back is what proves this is the signer we
+            // invited, and not someone else answering the invitation
+            if (message.result !== secret) return;
+
+            clearTimeout(timer);
+            session.remotePubkey = event.pubkey;
+            writeSession(session);
+
+            const userPubkey = await call(session, 'get_public_key', []);
+            if (!/^[0-9a-f]{64}$/i.test(userPubkey)) {
+              reject(new Error('The signer connected but did not return a usable public key'));
+              return;
+            }
+            session.userPubkey = userPubkey.toLowerCase();
+            writeSession(session);
+            resolve(session.userPubkey);
+          } catch {
+            // not for us, or not readable — keep waiting
+          }
+        });
+      })
+      .catch(error => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+
+  return { uri, connected };
 };
 
 /**

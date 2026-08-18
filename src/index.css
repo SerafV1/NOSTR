@@ -4906,3 +4906,24 @@ a.capability-indicator.paid:hover {
   display: block;
   margin-bottom: var(--spacing-sm);
 }
+
+.connect-uri {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.connect-uri-text {
+  display: block;
+  padding: var(--spacing-sm);
+  border-radius: calc(var(--border-radius) / 2);
+  background: var(--dark-bg);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  /* A connection string is long and must never widen the page */
+  word-break: break-all;
+  user-select: all;
+}
