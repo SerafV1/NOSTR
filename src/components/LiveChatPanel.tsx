@@ -12,14 +12,23 @@ import LiveChatReactions, { ReactionTally } from './LiveChatReactions';
 
 /**
  * NIP-25 reactions carry '+' for a like and '-' for a dislike rather than an
- * emoji, and an empty content is treated as a like too. Anything else is
- * shown as sent.
+ * emoji, and an empty content is treated as a like too — so all of those pile
+ * up under one 👍 instead of sitting apart. Anything else is shown as sent.
  */
 const normalizeReaction = (content: string): string => {
   const trimmed = content.trim();
   if (trimmed === '' || trimmed === '+') return '👍';
   if (trimmed === '-') return '👎';
-  return trimmed.slice(0, 12);
+  return trimmed.slice(0, 20);
+};
+
+/**
+ * NIP-30: a reaction may be a `:shortcode:` whose picture is named by an
+ * `emoji` tag on the same event. Without this the chip reads ":blobDance:".
+ */
+const customEmojiUrl = (reaction: NostrEventSigned, shortcode: string): string | undefined => {
+  const name = shortcode.replace(/^:|:$/g, '');
+  return reaction.tags.find(t => t[0] === 'emoji' && t[1] === name)?.[2];
 };
 
 interface TimelineEntry {
@@ -172,10 +181,22 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     if (existing) {
       existing.count += 1;
       existing.mine = existing.mine || reaction.pubkey === myPubkey;
+      existing.image = existing.image || customEmojiUrl(reaction, emojiUsed);
     } else {
-      tallies.push({ emoji: emojiUsed, count: 1, mine: reaction.pubkey === myPubkey });
+      tallies.push({
+        emoji: emojiUsed,
+        count: 1,
+        mine: reaction.pubkey === myPubkey,
+        image: customEmojiUrl(reaction, emojiUsed)
+      });
     }
     talliesByMessage.set(target, tallies);
+  }
+
+  // Busiest first, and alphabetical among equals — otherwise the row is in
+  // whatever order the relays happened to answer in, and reshuffles on reload
+  for (const tallies of talliesByMessage.values()) {
+    tallies.sort((a, b) => b.count - a.count || a.emoji.localeCompare(b.emoji));
   }
 
   const react = async (messageId: string, authorPubkey: string, emojiUsed: string) => {

@@ -4609,6 +4609,18 @@ a.capability-indicator.paid:hover {
   font-size: 0.85rem;
 }
 
+/* A custom emoji is a picture, sized to sit on the same line as the rest */
+.live-chat-reaction-image {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  display: block;
+}
+
+.live-chat-reaction-rest {
+  color: var(--text-secondary);
+}
+
 .live-chat-react-wrapper {
   display: inline-flex;
 }

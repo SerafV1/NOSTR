@@ -7,7 +7,15 @@ export interface ReactionTally {
   count: number;
   /** Already reacted with this one — reacting twice says nothing new */
   mine: boolean;
+  /** NIP-30 custom emoji: the picture behind a `:shortcode:` */
+  image?: string;
 }
+
+/**
+ * A busy message can collect more kinds of reaction than fit beside it in a
+ * chat this narrow, so the tail is folded away until asked for.
+ */
+const COLLAPSED_KINDS = 6;
 
 interface LiveChatReactionsProps {
   tallies: ReactionTally[];
@@ -22,7 +30,11 @@ interface LiveChatReactionsProps {
  */
 const LiveChatReactions: React.FC<LiveChatReactionsProps> = ({ tallies, canReact, onReact }) => {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const picker = useAnchoredPopup(pickerOpen, () => setPickerOpen(false));
+
+  const shown = expanded ? tallies : tallies.slice(0, COLLAPSED_KINDS);
+  const hidden = tallies.length - shown.length;
 
   const react = (emoji: string) => {
     setPickerOpen(false);
@@ -31,19 +43,34 @@ const LiveChatReactions: React.FC<LiveChatReactionsProps> = ({ tallies, canReact
 
   return (
     <span className="live-chat-reactions">
-      {tallies.map(tally => (
+      {shown.map(tally => (
         <button
           key={tally.emoji}
           type="button"
           className={`live-chat-reaction ${tally.mine ? 'mine' : ''}`}
           disabled={!canReact || tally.mine}
-          title={tally.mine ? 'You reacted with this' : `React with ${tally.emoji}`}
+          title={`${tally.count} × ${tally.emoji}${tally.mine ? ' — including you' : ''}`}
           onClick={() => react(tally.emoji)}
         >
-          <span className="live-chat-reaction-emoji">{tally.emoji}</span>
+          {tally.image ? (
+            <img src={tally.image} alt={tally.emoji} className="live-chat-reaction-image" />
+          ) : (
+            <span className="live-chat-reaction-emoji">{tally.emoji}</span>
+          )}
           {tally.count > 1 && <span className="live-chat-reaction-count">{tally.count}</span>}
         </button>
       ))}
+
+      {hidden > 0 && (
+        <button
+          type="button"
+          className="live-chat-reaction live-chat-reaction-rest"
+          title={`Show ${hidden} more`}
+          onClick={() => setExpanded(true)}
+        >
+          +{hidden}
+        </button>
+      )}
 
       {canReact && (
         <span className="live-chat-react-wrapper" ref={picker.containerRef}>
