@@ -229,7 +229,9 @@ const CONNECT_RELAYS = ['wss://nos.lol', 'wss://relay.primal.net', 'wss://nostr.
  * find than the bunker screen — and the signer's own key stays unknown to us
  * until it answers, so the secret is what proves the answer is genuine.
  */
-export const startNostrConnect = (): { uri: string; connected: Promise<string> } => {
+export const startNostrConnect = (
+  onProgress?: (status: string) => void
+): { uri: string; connected: Promise<string> } => {
   const clientSecret = (nostrTools as any).generatePrivateKey();
   const secret = Math.random().toString(36).slice(2, 12);
   const session: BunkerSession = {
@@ -254,19 +256,35 @@ export const startNostrConnect = (): { uri: string; connected: Promise<string> }
 
     const onSignerReply = async (event: NostrEventSigned) => {
       if (session.remotePubkey) return; // already paired
+      onProgress?.('A signer answered — reading its reply…');
+      let plaintext: string;
       try {
-        const plaintext = await decrypt(session, event.content, event.pubkey);
-        const message = JSON.parse(plaintext) as { result?: string };
-        // The secret coming back is what proves this is the signer we
-        // invited, and not someone else answering the invitation. Some
-        // signers reply "ack" instead; that's accepted only because the
-        // reply is addressed to a key that exists nowhere but in the
-        // invitation itself.
-        if (message.result !== secret && message.result !== 'ack') return;
+        plaintext = await decrypt(session, event.content, event.pubkey);
+      } catch {
+        onProgress?.('A reply arrived but could not be decrypted with either scheme.');
+        return;
+      }
+
+      try {
+        const message = JSON.parse(plaintext) as { result?: string; error?: string };
+        if (message.error) {
+          onProgress?.(`The signer refused: ${message.error}`);
+          return;
+        }
+
+        // Being able to decrypt this at all means the sender did ECDH with
+        // the ephemeral key that exists nowhere but in the invitation — so
+        // whatever it answers, it is the signer the invitation went to.
+        // Insisting on a particular `result` string only turned working
+        // signers away, since implementations differ on what they send.
+        if (message.result && message.result !== secret && message.result !== 'ack') {
+          onProgress?.(`Signer answered "${message.result.slice(0, 24)}" — continuing.`);
+        }
 
         clearTimeout(timer);
         session.remotePubkey = event.pubkey;
         writeSession(session);
+        onProgress?.('Paired. Asking which account it signs for…');
 
         const userPubkey = await call(session, 'get_public_key', []);
         if (!/^[0-9a-f]{64}$/i.test(userPubkey)) {
@@ -276,12 +294,16 @@ export const startNostrConnect = (): { uri: string; connected: Promise<string> }
         session.userPubkey = userPubkey.toLowerCase();
         writeSession(session);
         resolve(session.userPubkey);
-      } catch {
-        // not for us, or not readable — keep waiting
+      } catch (error) {
+        onProgress?.(
+          `Could not use the reply: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     };
 
-    ensureConnected(session, onSignerReply).catch(error => {
+    ensureConnected(session, onSignerReply)
+      .then(relays => onProgress?.(`Listening on ${relays.length} relay(s) for Amber…`))
+      .catch(error => {
       clearTimeout(timer);
       reject(error);
     });

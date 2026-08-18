@@ -38,6 +38,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
   const [connectUri, setConnectUri] = useState('');
   const [connectWaiting, setConnectWaiting] = useState(false);
+  // What the pairing is doing, shown as it happens — otherwise a failure
+  // gives nothing to act on but "still waiting"
+  const [connectStatus, setConnectStatus] = useState<string | null>(null);
   const [connectCopied, setConnectCopied] = useState(false);
 
   // The direction Amber makes easy: this page publishes an invitation and
@@ -47,7 +50,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const handleStartConnect = () => {
     setAmberError(null);
     setConnectCopied(false);
-    const { uri, connected } = startNostrConnect();
+    setConnectStatus('Opening Amber…');
+    const { uri, connected } = startNostrConnect(setConnectStatus);
     setConnectUri(uri);
     setConnectWaiting(true);
     window.location.href = uri;
@@ -273,6 +277,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                                 ? 'Approve it in Amber — this page logs you in the moment it connects, with nothing to bring back.'
                                 : 'Amber connected.'}
                             </p>
+                            {connectStatus && <p className="connect-status">{connectStatus}</p>}
                             {/* Amber registers this scheme, so a second try
                                 costs one tap. Only shown after the first
                                 attempt, so the ordinary path stays a single

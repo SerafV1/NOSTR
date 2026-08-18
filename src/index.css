@@ -4934,3 +4934,12 @@ a.capability-indicator.paid:hover {
   font-size: 0.8rem;
   margin-bottom: var(--spacing-sm);
 }
+
+.connect-status {
+  margin: 0;
+  padding: var(--spacing-sm);
+  border-radius: calc(var(--border-radius) / 2);
+  background: var(--dark-bg);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
