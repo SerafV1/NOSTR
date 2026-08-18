@@ -4,7 +4,7 @@ import { NostrCore, EventCache } from '../nostr/core';
 import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr } from '../utils/liveStream';
 import { formatAddress } from '../utils/helpers';
 import LiveVideoPlayer from './LiveVideoPlayer';
-import LiveChatPanel from './LiveChatPanel';
+import LiveChatPanel, { PresentPerson } from './LiveChatPanel';
 import ZapButton from './ZapButton';
 import RichText from './RichText';
 import { ZapIcon } from './Icons';
@@ -19,11 +19,15 @@ interface LiveStreamPageProps {
   onNavigateToTopic?: (topic: string) => void;
 }
 
+/** Beyond this the row of faces starts crowding the line it sits on */
+const VISIBLE_FACES = 8;
+
 const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifier, relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
   // On a phone the chat sits below the video and the details, far from what
   // it is about. Opening it over the page keeps the stream in view while
   // reading along, the way stream sites do it.
   const [chatOpen, setChatOpen] = useState(false);
+  const [present, setPresent] = useState<PresentPerson[]>([]);
   const [stream, setStream] = useState<LiveStreamInfo | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -150,8 +154,44 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
               )}
             </div>
 
-            {stream.currentParticipants !== undefined && (
-              <div className="live-stream-viewers-count">👁 {stream.currentParticipants} watching</div>
+            {(stream.currentParticipants !== undefined || present.length > 0) && (
+              <div className="live-stream-presence">
+                {stream.currentParticipants !== undefined && (
+                  <span className="live-stream-viewers-count">
+                    👁 {stream.currentParticipants} watching
+                  </span>
+                )}
+
+                {/* Nobody publishes a viewer list — a live event names only its
+                    host — so these are the people talking in the chat, which is
+                    the only presence a client can actually know about. */}
+                {present.length > 0 && (
+                  <div className="live-stream-faces" title="Talking in the chat">
+                    {present.slice(0, VISIBLE_FACES).map(person => (
+                      <button
+                        key={person.pubkey}
+                        type="button"
+                        className="live-stream-face"
+                        title={person.name}
+                        onClick={() => onNavigateToProfile(person.pubkey)}
+                      >
+                        {person.picture ? (
+                          <img src={person.picture} alt={person.name} />
+                        ) : (
+                          <span className="live-stream-face-initial">
+                            {person.name.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                    {present.length > VISIBLE_FACES && (
+                      <span className="live-stream-face-more">
+                        +{present.length - VISIBLE_FACES}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
 
             {stream.summary && (
@@ -202,6 +242,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
               'width=420,height=760,menubar=no,toolbar=no'
             )}
             relaysConnected={relaysConnected}
+            onPeoplePresent={setPresent}
             disabled={stream.status !== 'live'}
             onNavigateToProfile={onNavigateToProfile}
             onNavigateToNote={onNavigateToNote}

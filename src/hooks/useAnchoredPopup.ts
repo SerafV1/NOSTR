@@ -9,6 +9,19 @@ const openPopups = new Set<() => void>();
 /** Below this width the popups become bottom sheets in CSS — see index.css */
 const SHEET_BREAKPOINT = 768;
 
+/**
+ * bottom/right/margin/transform are cleared, not just left unset: the CSS
+ * anchors these popups to their trigger, and a fixed element with both edges
+ * set stretches between them instead of taking its own size.
+ */
+const FREED_FROM_FLOW: CSSProperties = {
+  position: 'fixed',
+  bottom: 'auto',
+  right: 'auto',
+  margin: 0,
+  transform: 'none'
+};
+
 interface AnchoredPopup {
   /** Wraps trigger and popup, so a click inside is not "outside" */
   containerRef: React.RefObject<HTMLDivElement>;
@@ -43,14 +56,27 @@ export function useAnchoredPopup(
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<CSSProperties>({ visibility: 'hidden' });
+  const [measured, setMeasured] = useState(false);
 
   useLayoutEffect(() => {
     if (!open) {
       setStyle({ visibility: 'hidden' });
+      setMeasured(false);
       return;
     }
     if (window.innerWidth <= SHEET_BREAKPOINT) {
       setStyle({});
+      return;
+    }
+
+    // Measured in two passes. Left in the flow, the popup is only as wide as
+    // the button it hangs off, which makes it far taller than it will end up
+    // — and a position worked out from that height leaves it floating well
+    // above its trigger. So it is taken out of the flow first, at a corner
+    // where it can size itself freely, and measured on the next pass.
+    if (!measured) {
+      setStyle({ ...FREED_FROM_FLOW, top: 0, left: 0, visibility: 'hidden' });
+      setMeasured(true);
       return;
     }
 
@@ -71,20 +97,9 @@ export function useAnchoredPopup(
       Math.max(margin, window.innerWidth - p.width - margin)
     );
 
-    // bottom/right are cleared because the CSS anchors these popups to their
-    // trigger — left with those set, a fixed element stretches between edges
-    setStyle({
-      position: 'fixed',
-      top: Math.max(margin, top),
-      left,
-      bottom: 'auto',
-      right: 'auto',
-      margin: 0,
-      transform: 'none',
-      visibility: 'visible'
-    });
+    setStyle({ ...FREED_FROM_FLOW, top: Math.max(margin, top), left, visibility: 'visible' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, ...remeasure]);
+  }, [open, measured, ...remeasure]);
 
   // Everything that should dismiss it: another popup opening, a click outside,
   // Escape, and scrolling — anchored to a point in the viewport, it would
