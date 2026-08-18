@@ -1061,6 +1061,23 @@ export class NostrCore {
     }
   }
 
+  /**
+   * Who was paid. The receipt carries the recipient's 'p' tag, but not every
+   * provider copies it across, so fall back to the embedded zap request.
+   */
+  static zapRecipientPubkey(zapReceipt: NostrEventSigned): string | null {
+    const direct = zapReceipt.tags.find(t => t[0] === 'p')?.[1];
+    if (direct) return direct;
+    try {
+      const description = zapReceipt.tags.find(t => t[0] === 'description')?.[1];
+      if (!description) return null;
+      const zapRequest = JSON.parse(description);
+      return (zapRequest.tags as string[][] | undefined)?.find(t => t[0] === 'p')?.[1] || null;
+    } catch {
+      return null;
+    }
+  }
+
   /** The message the sender attached to the zap, if any */
   static zapComment(zapReceipt: NostrEventSigned): string {
     try {

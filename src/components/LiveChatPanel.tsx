@@ -13,6 +13,8 @@ interface TimelineEntry {
   event: NostrEventSigned;
   /** For a zap this is the payer, not the event's signer */
   author: string | null;
+  /** Zaps only: who was paid */
+  recipient: string | null;
   sats: number;
 }
 
@@ -63,12 +65,12 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
       setMessages(history);
       setZaps(zapHistory);
 
-      const zapSenders = zapHistory
-        .map(zap => NostrCore.zapSenderPubkey(zap))
+      const zapParties = zapHistory
+        .flatMap(zap => [NostrCore.zapSenderPubkey(zap), NostrCore.zapRecipientPubkey(zap)])
         .filter((pubkey): pubkey is string => !!pubkey);
       const profileMap = await NostrCore.fetchProfiles([
         ...history.map(m => m.pubkey),
-        ...zapSenders
+        ...zapParties
       ]);
       if (!cancelled) setProfiles(profileMap);
 
@@ -84,12 +86,15 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
           // and to look up is the one inside the zap request it carries
           const isZap = event.kind === EVENT_KINDS.ZAP_RECEIPT;
           const author = isZap ? NostrCore.zapSenderPubkey(event) : event.pubkey;
+          const recipient = isZap ? NostrCore.zapRecipientPubkey(event) : null;
 
           const add = isZap ? setZaps : setMessages;
           add(prev => (prev.some(e => e.id === event.id) ? prev : [...prev, event]));
 
-          if (author && !profilesRef.current.has(author)) {
-            const fetched = await NostrCore.fetchProfiles([author]);
+          const unknown = [author, recipient]
+            .filter((pubkey): pubkey is string => !!pubkey && !profilesRef.current.has(pubkey));
+          if (unknown.length) {
+            const fetched = await NostrCore.fetchProfiles(unknown);
             setProfiles(prev => new Map([...prev, ...fetched]));
           }
         }
@@ -159,12 +164,14 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
       kind: 'message',
       event,
       author: event.pubkey,
+      recipient: null,
       sats: 0
     })),
     ...zaps.map((event): TimelineEntry => ({
       kind: 'zap',
       event,
       author: NostrCore.zapSenderPubkey(event),
+      recipient: NostrCore.zapRecipientPubkey(event),
       sats: NostrCore.parseZapAmountSats(event)
     }))
   ].sort((a, b) => (a.event.created_at || 0) - (b.event.created_at || 0));
@@ -201,10 +208,14 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
             <div className="live-chat-avatar-placeholder">{name.charAt(0).toUpperCase()}</div>
           );
 
-          // A zap is an event in the room, not a message: it says who paid
-          // the streamer and how much, with the sender's note underneath
+          // A zap is an event in the room, not a message: who paid whom, how
+          // much, and whatever the sender said with it
           if (entry.kind === 'zap') {
             const comment = NostrCore.zapComment(event);
+            const recipient = entry.recipient;
+            const recipientProfile = recipient ? profiles.get(recipient) : undefined;
+            const recipientName = recipientProfile?.display_name || recipientProfile?.name
+              || (recipient ? formatAddress(recipient) : '');
             return (
               <div key={event.id} className="live-chat-zap">
                 {avatar}
@@ -214,6 +225,16 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                       {name}
                     </button>
                     {' zapped '}
+                    {/* Not always the streamer — anyone in the chat can be
+                        zapped, so say who was actually paid */}
+                    {recipient && recipient !== author && (
+                      <>
+                        <button className="live-chat-author" onClick={() => onNavigateToProfile(recipient)}>
+                          {recipientName}
+                        </button>
+                        {' '}
+                      </>
+                    )}
                     <strong>⚡ {entry.sats.toLocaleString()} sats</strong>
                   </span>
                   {comment && (
