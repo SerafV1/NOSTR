@@ -45,25 +45,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   // A signer this browser has been paired with before — logging back in
   // through it needs no new invitation
   const [knownSigner, setKnownSigner] = useState(() => !!readPairing());
-  const [reconnecting, setReconnecting] = useState(false);
-
-  const handleReconnect = async () => {
-    setAmberError(null);
-    setReconnecting(true);
-    try {
-      const pubkey = await reconnectBunker();
-      CredentialManager.storePublicKey(pubkey);
-      CredentialManager.setBunkerMode(true);
-      onLogin('__signer__');
-    } catch (error) {
-      setAmberError(
-        (error instanceof Error ? error.message : 'The signer did not answer') +
-        ' — you can pair again below.'
-      );
-    } finally {
-      setReconnecting(false);
-    }
-  };
 
   const [connectUri, setConnectUri] = useState('');
   const [connectWaiting, setConnectWaiting] = useState(false);
@@ -76,9 +57,26 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   // the signer joins it, so nothing has to be found in Amber's own menus
   // One tap: make the invitation and open Amber with it. Splitting those in
   // two only made sense while the link had to be carried by hand.
-  const handleStartConnect = () => {
+  const handleStartConnect = async () => {
     setAmberError(null);
     setConnectCopied(false);
+
+    // Already paired? Ask that signer directly. Sending it a fresh
+    // invitation would only produce a connection it has to replace — and
+    // while it decides that, this page has nothing to wait for.
+    if (readPairing()) {
+      setConnectStatus('Asking the signer you are already paired with…');
+      try {
+        const pubkey = await reconnectBunker();
+        CredentialManager.storePublicKey(pubkey);
+        CredentialManager.setBunkerMode(true);
+        onLogin('__signer__');
+        return;
+      } catch {
+        setConnectStatus('That signer did not answer — inviting it afresh.');
+        forgetPairing();
+      }
+    }
     setConnectStatus('Opening Amber…');
     // The invitation names what it will ask to sign. That isn't the app
     // granting itself anything — it's what Amber shows you to approve or
@@ -188,105 +186,77 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                     <div className="amber-login">
                       <h3>📱 Login with Amber</h3>
                       <p className="extension-desc">
-                        Amber keeps your key and approves each action. Pair once and
-                        posting works from here, without leaving the page.
+                        Your key stays in Amber, which asks you to approve each action.
                       </p>
 
-                      {/* Pairing once, over a relay. Worth its own step
-                          because signing afterwards costs no app switch —
-                          which is what makes posting from a phone work at
-                          all, given how the hand-off gets throttled. */}
-                      <div className="signer-pairing">
-                        <p className="extension-desc">
-                          <strong>For posting, not just reading:</strong> in Amber open
-                          <em> nsec bunker</em>, copy the <code>bunker://</code> link and paste it
-                          here once. Approvals then arrive in Amber without leaving this page.
-                        </p>
-                        <input
-                          type="text"
-                          className="private-key-input signer-pairing-input"
-                          placeholder="bunker://…"
-                          value={bunkerUri}
-                          onChange={(e) => setBunkerUri(e.target.value)}
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-small"
-                          onClick={handleBunkerConnect}
-                          disabled={bunkerBusy || !bunkerUri.trim()}
-                        >
-                          {bunkerBusy ? 'Waiting for Amber…' : 'Pair with Amber'}
-                        </button>
+                      {/* One button. It works out whether this browser is
+                          already paired and either asks that signer directly
+                          or sends it a fresh invitation — a choice the person
+                          logging in has no way to make correctly, and no
+                          reason to be asked about. */}
+                      <button
+                        type="button"
+                        className="btn btn-extension"
+                        onClick={handleStartConnect}
+                        disabled={connectWaiting}
+                      >
+                        {connectWaiting ? 'Waiting for Amber…' : '🔗 Login with Amber'}
+                      </button>
 
-                        {/* The same pairing from the other end. Amber's own
-                            screen for adding an application is easier to find
-                            than its bunker screen, so this is offered first
-                            for anyone who can't locate that one. */}
-                        {knownSigner && (
-                          <div className="known-signer">
-                            <p className="extension-desc">
-                              This browser is already paired with a signer — just approve the
-                              request in Amber, nothing to replace.
-                            </p>
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-small"
-                              onClick={handleReconnect}
-                              disabled={reconnecting}
-                            >
-                              {reconnecting ? 'Waiting for Amber…' : 'Continue with Amber'}
-                            </button>
-                            <button
-                              type="button"
-                              className="link-button"
-                              onClick={() => { forgetPairing(); setKnownSigner(false); }}
-                            >
-                              Forget this signer
-                            </button>
-                          </div>
-                        )}
+                      {connectStatus && <p className="connect-status">{connectStatus}</p>}
+                      {amberError && <div className="login-error">{amberError}</div>}
 
-                        <p className="extension-desc">
-                          {knownSigner ? 'Or pair a different signer:' : "Can't find "}
-                          {!knownSigner && <em>nsec bunker</em>}
-                          {!knownSigner && ' in Amber? Go the other way:'}
-                        </p>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-small"
-                          onClick={handleStartConnect}
-                          disabled={connectWaiting}
-                        >
-                          {connectWaiting ? 'Waiting for Amber…' : 'Connect Amber'}
-                        </button>
+                      <details className="amber-handoff">
+                        <summary>Amber didn't open, or nothing happened?</summary>
 
                         {connectUri && (
                           <div className="connect-uri">
-                            <p className="extension-desc">
-                              {connectWaiting
-                                ? 'Approve it in Amber — this page logs you in the moment it connects, with nothing to bring back.'
-                                : 'Amber connected.'}
-                            </p>
-                            {connectStatus && <p className="connect-status">{connectStatus}</p>}
-                            {/* Amber registers this scheme, so a second try
-                                costs one tap. Only shown after the first
-                                attempt, so the ordinary path stays a single
-                                click. */}
                             <a className="btn btn-secondary btn-small" href={connectUri}>
                               Open Amber again
                             </a>
-                            <details>
-                              <summary className="connect-uri-summary">Amber didn't open? Copy the link</summary>
-                              <code className="connect-uri-text">{connectUri}</code>
-                              <button type="button" className="btn btn-secondary btn-small" onClick={copyConnectUri}>
-                                {connectCopied ? 'Copied ✓' : 'Copy link'}
-                              </button>
-                            </details>
+                            <p className="extension-desc">
+                              Or copy this into Amber, as a new application:
+                            </p>
+                            <code className="connect-uri-text">{connectUri}</code>
+                            <button type="button" className="btn btn-secondary btn-small" onClick={copyConnectUri}>
+                              {connectCopied ? 'Copied ✓' : 'Copy link'}
+                            </button>
                           </div>
                         )}
-                      </div>
 
-                      {amberError && <div className="login-error">{amberError}</div>}
+                        <div className="signer-pairing">
+                          <p className="extension-desc">
+                            Or go the other way: in Amber open <em>nsec bunker</em> and paste
+                            its <code>bunker://</code> link here.
+                          </p>
+                          <input
+                            type="text"
+                            className="private-key-input signer-pairing-input"
+                            placeholder="bunker://…"
+                            value={bunkerUri}
+                            onChange={(e) => setBunkerUri(e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-small"
+                            onClick={handleBunkerConnect}
+                            disabled={bunkerBusy || !bunkerUri.trim()}
+                          >
+                            {bunkerBusy ? 'Waiting for Amber…' : 'Pair with this link'}
+                          </button>
+                        </div>
+
+                        {knownSigner && (
+                          <button
+                            type="button"
+                            className="link-button"
+                            onClick={() => { forgetPairing(); setKnownSigner(false); }}
+                          >
+                            Forget the signer this browser is paired with
+                          </button>
+                        )}
+                      </details>
+
                       <div className="form-divider">or</div>
                     </div>
                   )}

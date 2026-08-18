@@ -332,26 +332,25 @@ const CONNECT_RELAYS = ['wss://nos.lol', 'wss://relay.primal.net', 'wss://nostr.
  * every kind there is, including replacing a contact list, and a signer
  * offered that has nothing meaningful to ask about.
  */
-export const EVERYDAY_PERMISSIONS = [
-  'sign_event:1',    // notes and replies
-  'sign_event:7',    // reactions
-  'sign_event:6',    // reposts
-  'sign_event:9734', // zap requests
-  'sign_event:1311'  // live chat
-].join(',');
+// What the invitation asks for. Kind-qualified entries ("sign_event:1") are
+// what the spec suggests, but Amber answered the plain form and went quiet
+// on the qualified one — and a permission request the signer won't show is
+// worse for the user than a broad one it will.
+export const EVERYDAY_PERMISSIONS = 'sign_event';
 
 export const startNostrConnect = (
   onProgress?: (status: string) => void,
   perms?: string
 ): { uri: string; connected: Promise<string> } => {
-  // Reuse the key a signer has already approved, so it sees the same
-  // application coming back rather than a stranger to be swapped in
-  const existing = readPairing();
-  const clientSecret = existing?.clientSecret || (nostrTools as any).generatePrivateKey();
+  // A new key every time. Reusing one the signer already knows made it see an
+  // application it was already connected to — nothing to confirm, so no
+  // connect reply, and the page waited forever. Coming back to a signer you
+  // are already paired with is reconnectBunker's job, not this one's.
+  const clientSecret = (nostrTools as any).generatePrivateKey();
   const secret = Math.random().toString(36).slice(2, 12);
   const session: BunkerSession = {
     clientSecret,
-    clientPubkey: existing?.clientPubkey || (nostrTools as any).getPublicKey(clientSecret),
+    clientPubkey: (nostrTools as any).getPublicKey(clientSecret),
     remotePubkey: '', // learned from whoever answers
     relays: CONNECT_RELAYS,
     secret
