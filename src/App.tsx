@@ -401,11 +401,11 @@ function App() {
     try {
       let pubkey: string;
 
-      if (privkey === '__extension__') {
-        // Extension mode - get public key from localStorage (set by ExtensionManager)
+      if (privkey === '__extension__' || privkey === '__amber__') {
+        // The signer holds the key; only the public key was stored for us
         pubkey = CredentialManager.getPublicKey() || '';
         if (!pubkey) {
-          alert('Extension login failed: could not retrieve public key');
+          alert('Signer login failed: could not retrieve public key');
           return;
         }
       } else {

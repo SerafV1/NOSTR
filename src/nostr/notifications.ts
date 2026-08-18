@@ -44,6 +44,34 @@ export function cacheNotifications(
 }
 
 /**
+ * The notes a notification is *about* — the post that was liked, reposted or
+ * zapped. They live in memory otherwise, so every reload showed the list
+ * without its previews until the network answered again. Kept beside the
+ * notifications, and trimmed to the same horizon.
+ */
+const targetsCacheKey = (pubkey: string): string => `notification_targets_${pubkey}`;
+
+export function readCachedTargets(pubkey: string): Record<string, NostrEventSigned> {
+  return PersistentCache.get<Record<string, NostrEventSigned>>(targetsCacheKey(pubkey)) || {};
+}
+
+export function cacheTargets(
+  pubkey: string,
+  targets: Record<string, NostrEventSigned>
+): Record<string, NostrEventSigned> {
+  const merged = { ...readCachedTargets(pubkey), ...targets };
+
+  // Bounded by the notifications they belong to, newest first
+  const trimmed = Object.entries(merged)
+    .sort(([, a], [, b]) => (b.created_at || 0) - (a.created_at || 0))
+    .slice(0, NOTIFICATION_CACHE_LIMIT);
+
+  const result = Object.fromEntries(trimmed);
+  PersistentCache.set(targetsCacheKey(pubkey), result);
+  return result;
+}
+
+/**
  * Notifications = events that reference (`#p`) the logged-in user:
  * replies/mentions (kind 1), reposts (kind 6), reactions (kind 7) and
  * zap receipts (kind 9735).

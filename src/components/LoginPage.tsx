@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NostrCrypto, ExtensionManager } from '../nostr/crypto';
+import { NostrCrypto, CredentialManager, ExtensionManager } from '../nostr/crypto';
 import { requestPublicKey, publicKeyIntentUri, isAndroid } from '../nostr/amber';
 
 interface LoginPageProps {
@@ -8,17 +8,59 @@ interface LoginPageProps {
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [amberError, setAmberError] = useState<string | null>(null);
+  // A signer that can't hand the answer back through the URL copies it to
+  // the clipboard instead — NIP-55 says as much, and Amber does exactly that
+  // for web callers. So the paste box opens alongside the request rather
+  // than being offered only after something visibly fails.
+  const [amberPaste, setAmberPaste] = useState('');
+  // Kept in sessionStorage, not component state: asking the signer navigates
+  // away, and the box has to be waiting when the browser comes back — which
+  // is exactly the moment the pasted key is needed.
+  const [showAmberPaste, setShowAmberPaste] = useState(
+    () => sessionStorage.getItem('amber_paste_open') === 'true'
+  );
 
   // On Android there is no NIP-07 extension to talk to, so the signer app is
   // the only way in that doesn't mean typing a private key into a phone
   const handleAmberLogin = async () => {
     setAmberError(null);
+    setShowAmberPaste(true);
+    sessionStorage.setItem('amber_paste_open', 'true');
     try {
-      // Navigates to the signer and does not return; App picks the answer up
-      // from the callback URL when the browser comes back
+      // Navigates to the signer; if it can return through the callback URL,
+      // App picks the answer up when the browser comes back and this box is
+      // never needed
       await requestPublicKey();
     } catch (error) {
       setAmberError(error instanceof Error ? error.message : 'Could not reach a signer app');
+    }
+  };
+
+  const pubkeyFromPaste = (value: string): string | null => {
+    const trimmed = value.trim().replace(/^nostr:/i, '');
+    if (/^[0-9a-f]{64}$/i.test(trimmed)) return trimmed.toLowerCase();
+    if (/^npub1[a-z0-9]+$/i.test(trimmed)) return NostrCrypto.npubDecode(trimmed) || null;
+    return null;
+  };
+
+  const handleAmberPaste = () => {
+    const pubkey = pubkeyFromPaste(amberPaste);
+    if (!pubkey) {
+      setAmberError('That does not look like a public key. Paste the npub Amber copied.');
+      return;
+    }
+    CredentialManager.storePublicKey(pubkey);
+    CredentialManager.setAmberMode(true);
+    sessionStorage.removeItem('amber_paste_open');
+    onLogin('__amber__');
+  };
+
+  const pasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setAmberPaste(text);
+    } catch {
+      setAmberError('The browser would not share the clipboard — paste into the box by hand.');
     }
   };
 
@@ -111,6 +153,34 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                       >
                         🔗 Login with Amber
                       </button>
+                      {showAmberPaste && (
+                        <div className="amber-paste">
+                          <p className="extension-desc">
+                            Approved in Amber but landed back here? It copied your public key
+                            instead of sending it — paste it below.
+                          </p>
+                          <input
+                            type="text"
+                            className="private-key-input amber-paste-input"
+                            placeholder="npub1…"
+                            value={amberPaste}
+                            onChange={(e) => setAmberPaste(e.target.value)}
+                          />
+                          <div className="amber-paste-actions">
+                            <button type="button" className="btn btn-secondary btn-small" onClick={pasteFromClipboard}>
+                              Paste
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-small"
+                              onClick={handleAmberPaste}
+                              disabled={!amberPaste.trim()}
+                            >
+                              Use this key
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       {amberError && (
                         <div className="login-error">
                           {amberError}

@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NostrEventSigned, UserProfile } from '../types';
-import { NostrCore } from '../nostr/core';
+import { NostrCore, EventCache } from '../nostr/core';
 import {
   NotificationCore,
   NotificationStore,
   NostrNotification,
   NotificationType,
   cacheNotifications,
-  readCachedNotifications
+  readCachedNotifications,
+  cacheTargets,
+  readCachedTargets
 } from '../nostr/notifications';
 import { formatDate, formatAddress } from '../utils/helpers';
+import RichText from './RichText';
 import { stripMediaUrls } from '../utils/media';
 
 interface NotificationsPageProps {
@@ -47,7 +50,10 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
   const [notifications, setNotifications] = useState<NostrNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
-  const [targetNotes, setTargetNotes] = useState<Record<string, NostrEventSigned>>({});
+  // Seeded so previews are on screen with the list, not a beat later
+  const [targetNotes, setTargetNotes] = useState<Record<string, NostrEventSigned>>(
+    () => readCachedTargets(pubkey)
+  );
   // Captured once on mount so items stay highlighted as "new" for this
   // viewing even after the seen marker below advances past them
   const initialLastSeenRef = useRef(NotificationStore.getLastSeen(pubkey));
@@ -73,7 +79,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
         .filter((id): id is string => !!id);
       if (targetIds.length > 0) {
         const targets = await NostrCore.fetchEventsByIds(targetIds);
-        setTargetNotes(prev => ({ ...prev, ...Object.fromEntries(targets) }));
+        setTargetNotes(cacheTargets(pubkey, Object.fromEntries(targets)));
       }
 
       // Merged, not replaced: a partial answer from the relays must not
@@ -132,13 +138,17 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
     }
   };
 
-  const renderPreview = (notification: NostrNotification): string | null => {
+  const renderPreview = (notification: NostrNotification): React.ReactNode => {
     let rawContent: string | undefined;
     if (notification.type === 'reply' || notification.type === 'mention') {
       rawContent = notification.event.content;
     } else {
       const targetId = notification.event.tags.find(t => t[0] === 'e')?.[1];
-      rawContent = targetId ? targetNotes[targetId]?.content : undefined;
+      // The note this is about is often already in memory — from the feed,
+      // or from an earlier visit — so read it straight out rather than
+      // showing an empty preview until the network answers
+      const target = targetId ? (targetNotes[targetId] || EventCache.getEvent(targetId)) : undefined;
+      rawContent = target?.content;
     }
     if (!rawContent) return null;
 
@@ -147,7 +157,16 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
     // of showing that literal string, falling back to a plain label when
     // stripping leaves nothing else to preview
     const stripped = stripMediaUrls(rawContent);
-    return stripped || '🔁 Quoted a post';
+    if (!stripped) return '🔁 Quoted a post';
+
+    // Mentions, hashtags and links were showing as raw "nostr:npub1…" text
+    return (
+      <RichText
+        content={stripped}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNote={onNavigateToNote}
+      />
+    );
   };
 
   return (
@@ -166,7 +185,11 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
 
       <div className="notification-list">
         {notifications.map((notification) => {
-          const profile = profiles[notification.event.pubkey];
+          // Profiles persist locally, so the name and avatar are usually
+          // known before any request goes out — reading them here stops the
+          // list rendering as anonymous placeholders on every visit
+          const profile = profiles[notification.event.pubkey]
+            || EventCache.getProfile(notification.event.pubkey);
           const displayName = profile?.display_name || profile?.name || formatAddress(notification.event.pubkey);
           const meta = TYPE_META[notification.type];
           const icon = notification.type === 'reaction'

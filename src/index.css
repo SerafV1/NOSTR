@@ -4868,3 +4868,29 @@ a.capability-indicator.paid:hover {
   color: var(--primary-color);
   font-weight: 600;
 }
+
+/* Signer fallback: NIP-55 says a signer with nowhere to return the answer
+   copies it to the clipboard, which is what Amber does for web callers */
+.amber-paste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.amber-paste-input {
+  width: 100%;
+  min-height: 0;
+  font-size: 0.9rem;
+}
+
+.amber-paste-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.amber-paste-actions .btn {
+  flex: 1;
+}
