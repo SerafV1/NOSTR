@@ -4894,3 +4894,15 @@ a.capability-indicator.paid:hover {
 .amber-paste-actions .btn {
   flex: 1;
 }
+
+.amber-handoff summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-bottom: var(--spacing-sm);
+}
+
+.amber-handoff .btn {
+  display: block;
+  margin-bottom: var(--spacing-sm);
+}

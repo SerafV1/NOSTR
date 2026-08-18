@@ -33,11 +33,24 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   };
 
   const pasteFromClipboard = async () => {
+    setAmberError(null);
     try {
       const text = await navigator.clipboard.readText();
+      if (!text.trim()) {
+        // Chrome on Android often refuses to read the clipboard rather than
+        // reporting it empty, so an empty string proves nothing either way
+        setAmberError(
+          'Nothing came back from the clipboard. Chrome on Android usually blocks reading it — ' +
+          'press and hold the box above and choose Paste instead.'
+        );
+        return;
+      }
       setAmberPaste(text);
     } catch {
-      setAmberError('The browser would not share the clipboard — paste into the box by hand.');
+      setAmberError(
+        'The browser will not let this page read the clipboard. ' +
+        'Press and hold the box above and choose Paste instead.'
+      );
     }
   };
 
@@ -121,29 +134,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                     <div className="amber-login">
                       <h3>📱 Login with Amber</h3>
                       <p className="extension-desc">
-                        Your key stays in the signer app. Tap to approve, then come back here.
+                        Logging in only needs your <strong>public</strong> key — open Amber,
+                        copy your npub, and paste it below. Your private key never leaves
+                        the signer app.
                       </p>
 
-                      {/* Two shapes of the same request. Which one a phone
-                          honours depends on the browser and the signer build,
-                          and nothing in here can tell — so both are offered
-                          instead of one being guessed at. */}
-                      <a className="btn btn-extension" href={publicKeySchemeUri()}>
-                        🔗 Open Amber
-                      </a>
-                      <a className="btn btn-secondary btn-small" href={publicKeyIntentUri()}>
-                        Open Amber (alternative link)
-                      </a>
-
-                      {/* Always here, not hidden behind a failure: a signer
-                          that can't answer through the URL copies the key to
-                          the clipboard instead, and then this is the only way
-                          in. NIP-55 says as much. */}
                       <div className="amber-paste">
-                        <p className="extension-desc">
-                          Back here and still logged out? Amber copied your public key —
-                          paste it in.
-                        </p>
                         <input
                           type="text"
                           className="private-key-input amber-paste-input"
@@ -164,7 +160,25 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                             Use this key
                           </button>
                         </div>
+                        <p className="extension-desc">
+                          If Paste does nothing, press and hold the box and choose Paste —
+                          Chrome on Android usually blocks pages from reading the clipboard.
+                        </p>
                       </div>
+
+                      {/* Kept as a shortcut for browsers that do hand off
+                          cleanly, but not the way in: Chrome throttles
+                          repeated launches of an external app from a page,
+                          so this can work once and then stop. */}
+                      <details className="amber-handoff">
+                        <summary>Or ask Amber directly</summary>
+                        <a className="btn btn-secondary btn-small" href={publicKeySchemeUri()}>
+                          Open Amber
+                        </a>
+                        <a className="btn btn-secondary btn-small" href={publicKeyIntentUri()}>
+                          Open Amber (alternative link)
+                        </a>
+                      </details>
 
                       {amberError && <div className="login-error">{amberError}</div>}
                       <div className="form-divider">or</div>
