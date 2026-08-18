@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NostrCrypto, CredentialManager, ExtensionManager } from '../nostr/crypto';
 import { publicKeySchemeUri, publicKeyIntentUri, isAndroid } from '../nostr/amber';
-import { connectBunker, startNostrConnect } from '../nostr/bunker';
+import { connectBunker, startNostrConnect, reconnectBunker, readPairing, forgetPairing } from '../nostr/bunker';
 
 interface LoginPageProps {
   onLogin: (privkey: string) => void;
@@ -33,6 +33,29 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       setAmberError(error instanceof Error ? error.message : 'Could not reach the signer');
     } finally {
       setBunkerBusy(false);
+    }
+  };
+
+  // A signer this browser has been paired with before — logging back in
+  // through it needs no new invitation
+  const [knownSigner, setKnownSigner] = useState(() => !!readPairing());
+  const [reconnecting, setReconnecting] = useState(false);
+
+  const handleReconnect = async () => {
+    setAmberError(null);
+    setReconnecting(true);
+    try {
+      const pubkey = await reconnectBunker();
+      CredentialManager.storePublicKey(pubkey);
+      CredentialManager.setBunkerMode(true);
+      onLogin('__amber__');
+    } catch (error) {
+      setAmberError(
+        (error instanceof Error ? error.message : 'The signer did not answer') +
+        ' — you can pair again below.'
+      );
+    } finally {
+      setReconnecting(false);
     }
   };
 
@@ -258,8 +281,34 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                             screen for adding an application is easier to find
                             than its bunker screen, so this is offered first
                             for anyone who can't locate that one. */}
+                        {knownSigner && (
+                          <div className="known-signer">
+                            <p className="extension-desc">
+                              This browser is already paired with a signer — just approve the
+                              request in Amber, nothing to replace.
+                            </p>
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-small"
+                              onClick={handleReconnect}
+                              disabled={reconnecting}
+                            >
+                              {reconnecting ? 'Waiting for Amber…' : 'Continue with Amber'}
+                            </button>
+                            <button
+                              type="button"
+                              className="link-button"
+                              onClick={() => { forgetPairing(); setKnownSigner(false); }}
+                            >
+                              Forget this signer
+                            </button>
+                          </div>
+                        )}
+
                         <p className="extension-desc">
-                          Can't find <em>nsec bunker</em> in Amber? Go the other way:
+                          {knownSigner ? 'Or pair a different signer:' : "Can't find "}
+                          {!knownSigner && <em>nsec bunker</em>}
+                          {!knownSigner && ' in Amber? Go the other way:'}
                         </p>
                         <button
                           type="button"

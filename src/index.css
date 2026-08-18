@@ -4943,3 +4943,23 @@ a.capability-indicator.paid:hover {
   color: var(--text-secondary);
   font-size: 0.78rem;
 }
+
+.known-signer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border: 1px solid var(--primary-color);
+  border-radius: var(--border-radius);
+}
+
+.link-button {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  text-decoration: underline;
+  cursor: pointer;
+}

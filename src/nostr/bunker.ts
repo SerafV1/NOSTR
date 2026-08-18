@@ -19,6 +19,11 @@ import { NostrCrypto } from './crypto';
  */
 
 const SESSION_KEY = 'nostr_bunker_session';
+// Which signer this browser knows, and the key it talks to it with. Kept
+// across logout on purpose: generating a fresh key each time made the signer
+// see a brand-new application and ask to replace the old one, when the
+// pairing it already had was perfectly good.
+const PAIRING_KEY = 'nostr_bunker_pairing';
 const RPC_KIND = 24133;
 
 // The signer prompts a person on another device, so this has to allow for
@@ -60,6 +65,58 @@ export const readSession = (): BunkerSession | null => {
 
 const writeSession = (session: BunkerSession): void => {
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  writePairing(session);
+};
+
+interface BunkerPairing {
+  clientSecret: string;
+  clientPubkey: string;
+  remotePubkey: string;
+  relays: string[];
+}
+
+export const readPairing = (): BunkerPairing | null => {
+  try {
+    const raw = localStorage.getItem(PAIRING_KEY);
+    return raw ? (JSON.parse(raw) as BunkerPairing) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writePairing = (session: BunkerSession): void => {
+  if (!session.remotePubkey) return;
+  localStorage.setItem(PAIRING_KEY, JSON.stringify({
+    clientSecret: session.clientSecret,
+    clientPubkey: session.clientPubkey,
+    remotePubkey: session.remotePubkey,
+    relays: session.relays
+  }));
+};
+
+/** Forget the signer entirely — the next login pairs from scratch. */
+export const forgetPairing = (): void => {
+  localStorage.removeItem(PAIRING_KEY);
+  clearSession();
+};
+
+/**
+ * Log back in through a signer this browser is already paired with. No new
+ * invitation, so nothing for the signer to replace: it recognises the same
+ * application and only has to approve the request.
+ */
+export const reconnectBunker = async (): Promise<string> => {
+  const pairing = readPairing();
+  if (!pairing) throw new Error('This browser is not paired with a signer');
+
+  const session: BunkerSession = { ...pairing };
+  const userPubkey = await call(session, 'get_public_key', []);
+  if (!/^[0-9a-f]{64}$/i.test(userPubkey)) {
+    throw new Error('The signer answered without a usable public key');
+  }
+  session.userPubkey = userPubkey.toLowerCase();
+  writeSession(session);
+  return session.userPubkey;
 };
 
 export const clearSession = (): void => {
@@ -272,11 +329,14 @@ const CONNECT_RELAYS = ['wss://nos.lol', 'wss://relay.primal.net', 'wss://nostr.
 export const startNostrConnect = (
   onProgress?: (status: string) => void
 ): { uri: string; connected: Promise<string> } => {
-  const clientSecret = (nostrTools as any).generatePrivateKey();
+  // Reuse the key a signer has already approved, so it sees the same
+  // application coming back rather than a stranger to be swapped in
+  const existing = readPairing();
+  const clientSecret = existing?.clientSecret || (nostrTools as any).generatePrivateKey();
   const secret = Math.random().toString(36).slice(2, 12);
   const session: BunkerSession = {
     clientSecret,
-    clientPubkey: (nostrTools as any).getPublicKey(clientSecret),
+    clientPubkey: existing?.clientPubkey || (nostrTools as any).getPublicKey(clientSecret),
     remotePubkey: '', // learned from whoever answers
     relays: CONNECT_RELAYS,
     secret
