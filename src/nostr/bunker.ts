@@ -1,5 +1,6 @@
 import * as nostrTools from 'nostr-tools';
 import { NostrEvent, NostrEventSigned } from '../types';
+import { NostrCrypto } from './crypto';
 
 /**
  * NIP-46: signing by talking to a remote signer over a relay.
@@ -90,11 +91,26 @@ export const parseBunkerUri = (uri: string): { remotePubkey: string; relays: str
   }
 };
 
-const decrypt = async (session: BunkerSession, content: string, from: string): Promise<string> =>
-  (nostrTools as any).nip04.decrypt(session.clientSecret, from, content);
+/**
+ * NIP-46 moved from NIP-04 to NIP-44 encryption and signers are split across
+ * both, so a reply must be tried each way: reading it with the wrong scheme
+ * throws, and the reply then looks like noise and gets dropped — which is
+ * indistinguishable from the signer never answering.
+ */
+const decrypt = async (session: BunkerSession, content: string, from: string): Promise<string> => {
+  try {
+    return NostrCrypto.decryptNip44(content, session.clientSecret, from);
+  } catch {
+    return (nostrTools as any).nip04.decrypt(session.clientSecret, from, content);
+  }
+};
 
-const encrypt = async (session: BunkerSession, content: string): Promise<string> =>
-  (nostrTools as any).nip04.encrypt(session.clientSecret, session.remotePubkey, content);
+const encrypt = async (session: BunkerSession, content: string, scheme: 'nip44' | 'nip04'): Promise<string> => {
+  if (scheme === 'nip44') {
+    return NostrCrypto.encryptNip44(content, session.clientSecret, session.remotePubkey);
+  }
+  return (nostrTools as any).nip04.encrypt(session.clientSecret, session.remotePubkey, content);
+};
 
 const handleResponse = async (session: BunkerSession, event: NostrEventSigned): Promise<void> => {
   try {
@@ -164,29 +180,40 @@ const call = async (session: BunkerSession, method: string, params: string[]): P
   const id = Math.random().toString(36).slice(2);
   const payload = JSON.stringify({ id, method, params });
 
-  const event = (nostrTools as any).finishEvent(
-    {
-      kind: RPC_KIND,
-      created_at: Math.floor(Date.now() / 1000),
-      tags: [['p', session.remotePubkey]],
-      content: await encrypt(session, payload)
-    },
-    session.clientSecret
-  );
+  const sendWith = async (scheme: 'nip44' | 'nip04') => {
+    const event = (nostrTools as any).finishEvent(
+      {
+        kind: RPC_KIND,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [['p', session.remotePubkey]],
+        content: await encrypt(session, payload, scheme)
+      },
+      session.clientSecret
+    );
+    // Sent on every reachable relay: which one the signer watches is unknown
+    await Promise.allSettled(relays.map(relay => relay.publish(event)));
+  };
 
   const answer = new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => {
       pending.delete(id);
       reject(new Error(
-        `The signer did not answer the ${method} request. Open Amber and check it is still running as a bunker.`
+        `The signer did not answer the ${method} request. Check Amber is still connected to this app.`
       ));
     }, REQUEST_TIMEOUT_MS);
     pending.set(id, { resolve, reject, timer });
   });
 
-  // Sent on every reachable relay: we don't know which one the signer is
-  // actually watching
-  await Promise.allSettled(relays.map(relay => relay.publish(event)));
+  await sendWith('nip44');
+
+  // A signer that only speaks the older scheme can't read what we just sent,
+  // and silence looks the same as a slow user. Say it again the other way
+  // rather than waiting out the whole timeout for nothing.
+  const retry = setTimeout(() => {
+    if (pending.has(id)) sendWith('nip04').catch(() => {});
+  }, 12_000);
+  answer.finally(() => clearTimeout(retry)).catch(() => {});
+
   return answer;
 };
 

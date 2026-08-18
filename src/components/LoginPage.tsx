@@ -42,12 +42,15 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
   // The direction Amber makes easy: this page publishes an invitation and
   // the signer joins it, so nothing has to be found in Amber's own menus
+  // One tap: make the invitation and open Amber with it. Splitting those in
+  // two only made sense while the link had to be carried by hand.
   const handleStartConnect = () => {
     setAmberError(null);
     setConnectCopied(false);
     const { uri, connected } = startNostrConnect();
     setConnectUri(uri);
     setConnectWaiting(true);
+    window.location.href = uri;
     connected
       .then(pubkey => {
         CredentialManager.storePublicKey(pubkey);
@@ -260,22 +263,23 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                           onClick={handleStartConnect}
                           disabled={connectWaiting}
                         >
-                          {connectWaiting ? 'Waiting for Amber to connect…' : 'Create a link for Amber'}
+                          {connectWaiting ? 'Waiting for Amber…' : 'Connect Amber'}
                         </button>
 
                         {connectUri && (
                           <div className="connect-uri">
-                            {/* Amber registers this scheme, so it can simply be
-                                opened. Unlike signing, this hand-off happens once
-                                — and if the browser drops it, the link below is
-                                still there to copy. */}
-                            <a className="btn btn-primary btn-small" href={connectUri}>
-                              Send to Amber
-                            </a>
                             <p className="extension-desc">
-                              This page keeps waiting and logs you in the moment Amber connects —
-                              nothing to bring back.
+                              {connectWaiting
+                                ? 'Approve it in Amber — this page logs you in the moment it connects, with nothing to bring back.'
+                                : 'Amber connected.'}
                             </p>
+                            {/* Amber registers this scheme, so a second try
+                                costs one tap. Only shown after the first
+                                attempt, so the ordinary path stays a single
+                                click. */}
+                            <a className="btn btn-secondary btn-small" href={connectUri}>
+                              Open Amber again
+                            </a>
                             <details>
                               <summary className="connect-uri-summary">Amber didn't open? Copy the link</summary>
                               <code className="connect-uri-text">{connectUri}</code>
