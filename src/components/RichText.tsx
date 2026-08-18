@@ -95,12 +95,13 @@ const RichText: React.FC<RichTextProps> = ({
 
   const parts: React.ReactNode[] = [];
   let key = 0;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  const regex = new RegExp(REF_REGEX);
 
-  // Plain stretches still need links and hashtags picked out of them
-  const pushPlain = (text: string) => {
+  // Links come first, and references are only looked for in what is left
+  // over. A bech32 reference can sit inside a URL's path — a link to a live
+  // stream on this very app ends in an naddr — and scanning for references
+  // first tore such a link in half: the start stayed a link, the naddr
+  // onwards became plain text.
+  const pushLinksAndHashtags = (text: string) => {
     for (const token of splitContentTokens(text)) {
       if (token.type === 'link') {
         // A link to a picture is more useful as the picture — otherwise a
@@ -150,51 +151,60 @@ const RichText: React.FC<RichTextProps> = ({
           </button>
         );
       } else {
-        parts.push(token.value);
+        pushRefs(token.value);
       }
     }
   };
 
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > lastIndex) pushPlain(content.slice(lastIndex, match.index));
+  // Mentions and note references in ordinary text
+  function pushRefs(text: string) {
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    const regex = new RegExp(REF_REGEX);
 
-    const ref = match[0];
-    const lower = bareRef(ref).toLowerCase();
-    const pubkey = lower.startsWith('npub1') || lower.startsWith('nprofile1') ? decodeProfileRef(ref) : null;
-    const noteId = lower.startsWith('note1') || lower.startsWith('nevent1') ? decodeNoteRef(ref) : null;
+    while ((match = regex.exec(text)) !== null) {
+      if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
 
-    if (pubkey) {
-      const profile = profiles[pubkey];
-      const name = profile?.display_name || profile?.name || formatAddress(pubkey);
-      parts.push(
-        <button
-          key={key++}
-          type="button"
-          className="mention-link"
-          onClick={(e) => { e.stopPropagation(); onNavigateToProfile?.(pubkey); }}
-        >
-          @{name}
-        </button>
-      );
-    } else if (noteId) {
-      parts.push(
-        <button
-          key={key++}
-          type="button"
-          className="mention-link"
-          onClick={(e) => { e.stopPropagation(); onNavigateToNote?.(noteId); }}
-        >
-          📝 View note
-        </button>
-      );
-    } else {
-      parts.push(ref);
+      const ref = match[0];
+      const lower = bareRef(ref).toLowerCase();
+      const pubkey = lower.startsWith('npub1') || lower.startsWith('nprofile1') ? decodeProfileRef(ref) : null;
+      const noteId = lower.startsWith('note1') || lower.startsWith('nevent1') ? decodeNoteRef(ref) : null;
+
+      if (pubkey) {
+        const profile = profiles[pubkey];
+        const name = profile?.display_name || profile?.name || formatAddress(pubkey);
+        parts.push(
+          <button
+            key={key++}
+            type="button"
+            className="mention-link"
+            onClick={(e) => { e.stopPropagation(); onNavigateToProfile?.(pubkey); }}
+          >
+            @{name}
+          </button>
+        );
+      } else if (noteId) {
+        parts.push(
+          <button
+            key={key++}
+            type="button"
+            className="mention-link"
+            onClick={(e) => { e.stopPropagation(); onNavigateToNote?.(noteId); }}
+          >
+            📝 View note
+          </button>
+        );
+      } else {
+        parts.push(ref);
+      }
+
+      lastIndex = match.index + ref.length;
     }
 
-    lastIndex = match.index + ref.length;
+    if (lastIndex < text.length) parts.push(text.slice(lastIndex));
   }
 
-  if (lastIndex < content.length) pushPlain(content.slice(lastIndex));
+  pushLinksAndHashtags(content);
 
   return <span className={className}>{parts}</span>;
 };

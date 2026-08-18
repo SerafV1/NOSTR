@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useLayoutEffect, useEffect } from 'react';
 import { resolveLnurlInvoice, payWithWebln } from '../utils/zap';
 import { NostrCore } from '../nostr/core';
 
@@ -37,6 +37,52 @@ const ZapButton: React.FC<ZapButtonProps> = ({
   const [loading, setLoading] = useState(false);
   const [invoice, setInvoice] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({ visibility: 'hidden' });
+
+  // The menu is fixed to the viewport rather than to the trigger, because in
+  // the live chat the trigger sits inside a scrolling panel that clips
+  // anything reaching outside it. Fixed escapes the clipping, so the position
+  // has to be worked out here: beside the icon that was clicked, above it if
+  // there is room, and never off the edge of the screen.
+  useLayoutEffect(() => {
+    if (!showMenu) {
+      setMenuStyle({ visibility: 'hidden' });
+      return;
+    }
+    const trigger = triggerRef.current;
+    const menu = menuRef.current;
+    if (!trigger || !menu) return;
+
+    const margin = 8;
+    const t = trigger.getBoundingClientRect();
+    const m = menu.getBoundingClientRect();
+
+    let top = t.top - m.height - margin;
+    if (top < margin) {
+      top = Math.min(t.bottom + margin, window.innerHeight - m.height - margin);
+    }
+    const left = Math.min(
+      Math.max(margin, t.left),
+      Math.max(margin, window.innerWidth - m.width - margin)
+    );
+
+    setMenuStyle({ top: Math.max(margin, top), left, visibility: 'visible' });
+  }, [showMenu, invoice, loading]);
+
+  // Anchored to a point in the viewport, the menu would otherwise hang there
+  // while the content it belongs to scrolls out from under it
+  useEffect(() => {
+    if (!showMenu) return;
+    const close = () => setShowMenu(false);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [showMenu]);
 
   const sendZap = async (amountSats: number) => {
     if (!lud16 || loading) return;
@@ -88,6 +134,7 @@ const ZapButton: React.FC<ZapButtonProps> = ({
   return (
     <div className="zap-container" onClick={(e) => e.stopPropagation()}>
       <button
+        ref={triggerRef}
         type="button"
         className={triggerClassName}
         onClick={() => setShowMenu(show => !show)}
@@ -97,7 +144,7 @@ const ZapButton: React.FC<ZapButtonProps> = ({
       </button>
 
       {showMenu && (
-        <div className="zap-menu">
+        <div className="zap-menu" ref={menuRef} style={menuStyle}>
           {invoice ? (
             // Nothing here can pay it, so the invoice itself is the answer
             <div className="zap-invoice">

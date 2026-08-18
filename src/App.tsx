@@ -410,7 +410,10 @@ function App() {
 
       setPublicKey(pubkey);
       setIsLoggedIn(true);
-      navigate('/');
+      // No navigation on purpose: the login screen stands in for the routes
+      // instead of living at its own URL, so the address bar still holds
+      // wherever the visitor was headed. Sending them to the home feed threw
+      // away every link they had followed to get here.
     } catch (error) {
       alert('Invalid private key or extension login failed');
     }

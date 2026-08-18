@@ -1875,29 +1875,14 @@ button.poll-option-vote:disabled {
 }
 
 .zap-menu {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
+  position: fixed;
   background: var(--light-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   padding: var(--spacing-md);
-  margin-bottom: var(--spacing-sm);
-  z-index: 100;
+  z-index: 1200;
   width: 240px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-}
-
-/* Inside the chat there is nowhere to open: the message list scrolls and
-   the panel clips it. Float the menu over the window instead. */
-.live-chat-messages .zap-menu {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  bottom: auto;
-  transform: translate(-50%, -50%);
-  width: min(280px, calc(100vw - var(--spacing-md) * 2));
-  z-index: 1200;
 }
 
 .zap-menu-empty {
