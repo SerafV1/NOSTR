@@ -2058,11 +2058,6 @@ button.poll-option-vote:disabled {
     padding-bottom: var(--spacing-md);
   }
 
-  .emoji-picker-grid {
-    /* More of them visible at once, now that there's room */
-    grid-template-columns: repeat(8, 1fr);
-    max-height: 40vh;
-  }
 }
 
 /* Emoji picker — shared by the reaction menu and the compose emoji button */
@@ -2113,6 +2108,16 @@ button.poll-option-vote:disabled {
   gap: 0.15rem;
   max-height: 200px;
   overflow-y: auto;
+}
+
+/* In a bottom sheet there is the whole width to use, so more fit per row.
+   Declared after the rule above, or it would never apply — the sheet's
+   media query carries no more specificity than a bare class. */
+@media (max-width: 768px) {
+  .emoji-picker-grid {
+    grid-template-columns: repeat(8, 1fr);
+    max-height: 40vh;
+  }
 }
 
 .emoji-picker-item {
@@ -2291,15 +2296,22 @@ button.poll-option-vote:disabled {
   background: var(--dark-bg);
 }
 
+/* Only above the phone breakpoint: below it the sheet rules further up own
+   the positioning, and this rule — later in the file, same specificity —
+   would otherwise win and leave the panel anchored and clipped */
+@media (min-width: 769px) {
+  .compose-emoji-popup {
+    position: absolute;
+    top: 100%;
+    /* Anchored to the button's right edge: the button sits at the right of
+       the compose bar, so opening leftwards keeps the panel on screen */
+    right: 0;
+    margin-top: var(--spacing-sm);
+  }
+}
+
 .compose-emoji-popup {
-  position: absolute;
-  top: 100%;
-  /* Anchored to the button's right edge: the button sits at the right of the
-     compose bar, so opening leftwards is the only way the panel stays on a
-     phone screen */
-  right: 0;
-  margin-top: var(--spacing-sm);
-  z-index: 100;
+  z-index: 1200;
 }
 
 .compose-actions-left {
@@ -4700,12 +4712,12 @@ a.capability-indicator.paid:hover {
   cursor: not-allowed;
 }
 
+/* Positioned by useAnchoredPopup on wide screens, and by the phone-sheet
+   rules further up on narrow ones. Anchoring it here would override the
+   sheet: a media query carries no extra specificity, and this rule comes
+   later in the file. */
 .live-chat-emoji-popup {
-  position: absolute;
-  bottom: 100%;
-  right: 0;
-  margin-bottom: var(--spacing-sm);
-  z-index: 100;
+  z-index: 1200;
 }
 
 .live-chat-input {

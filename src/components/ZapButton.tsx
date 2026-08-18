@@ -1,6 +1,7 @@
-import React, { useState, useRef, useLayoutEffect, useEffect } from 'react';
+import React, { useState } from 'react';
 import { resolveLnurlInvoice, payWithWebln } from '../utils/zap';
 import { NostrCore } from '../nostr/core';
+import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 
 interface ZapButtonProps {
   lud16?: string;
@@ -17,12 +18,6 @@ interface ZapButtonProps {
   recipientPicture?: string;
 }
 
-/**
- * Every open picker, so opening one can close the rest. Two menus at once
- * are not just untidy: both float over the page from a fixed position, and
- * the amounts of one sit over the comment box of the other.
- */
-const openPickers = new Set<() => void>();
 
 const PRESET_AMOUNTS = [21, 100, 500, 1000, 5000, 21000];
 
@@ -49,70 +44,8 @@ const ZapButton: React.FC<ZapButtonProps> = ({
   const [loading, setLoading] = useState(false);
   const [invoice, setInvoice] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({ visibility: 'hidden' });
-
-  // The menu is fixed to the viewport rather than to the trigger, because in
-  // the live chat the trigger sits inside a scrolling panel that clips
-  // anything reaching outside it. Fixed escapes the clipping, so the position
-  // has to be worked out here: beside the icon that was clicked, above it if
-  // there is room, and never off the edge of the screen.
-  useLayoutEffect(() => {
-    if (!showMenu) {
-      setMenuStyle({ visibility: 'hidden' });
-      return;
-    }
-    const trigger = triggerRef.current;
-    const menu = menuRef.current;
-    if (!trigger || !menu) return;
-
-    const margin = 8;
-    const t = trigger.getBoundingClientRect();
-    const m = menu.getBoundingClientRect();
-
-    let top = t.top - m.height - margin;
-    if (top < margin) {
-      top = Math.min(t.bottom + margin, window.innerHeight - m.height - margin);
-    }
-    const left = Math.min(
-      Math.max(margin, t.left),
-      Math.max(margin, window.innerWidth - m.width - margin)
-    );
-
-    setMenuStyle({ top: Math.max(margin, top), left, visibility: 'visible' });
-  }, [showMenu, invoice, loading]);
-
-  // Everything that should dismiss the picker: scrolling (it is anchored to a
-  // point in the viewport, so it would hang there while the message it belongs
-  // to scrolls away), resizing, Escape, and a click anywhere outside it.
-  useEffect(() => {
-    if (!showMenu) return;
-
-    const close = () => setShowMenu(false);
-    const closeOnOutside = (e: Event) => {
-      if (!containerRef.current?.contains(e.target as Node)) close();
-    };
-    const closeOnEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close();
-    };
-
-    // Registered so that opening another picker closes this one
-    openPickers.add(close);
-
-    window.addEventListener('scroll', close, true);
-    window.addEventListener('resize', close);
-    document.addEventListener('pointerdown', closeOnOutside, true);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      openPickers.delete(close);
-      window.removeEventListener('scroll', close, true);
-      window.removeEventListener('resize', close);
-      document.removeEventListener('pointerdown', closeOnOutside, true);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [showMenu]);
+  const { containerRef, triggerRef, popupRef, style, openPopup } =
+    useAnchoredPopup(showMenu, () => setShowMenu(false), [invoice, loading]);
 
   const sendZap = async (amountSats: number) => {
     if (!lud16 || loading) return;
@@ -167,18 +100,21 @@ const ZapButton: React.FC<ZapButtonProps> = ({
         ref={triggerRef}
         type="button"
         className={triggerClassName}
-        onClick={() => setShowMenu(show => {
-          if (show) return false;
-          openPickers.forEach(close => close());
-          return true;
-        })}
+        onClick={() => {
+          if (showMenu) {
+            setShowMenu(false);
+            return;
+          }
+          openPopup();
+          setShowMenu(true);
+        }}
         title={triggerTitle || 'Zap with lightning'}
       >
         {children}
       </button>
 
       {showMenu && (
-        <div className="zap-menu" ref={menuRef} style={menuStyle}>
+        <div className="zap-menu" ref={popupRef} style={style}>
           {invoice ? (
             // Nothing here can pay it, so the invoice itself is the answer
             <div className="zap-invoice">

@@ -7,6 +7,7 @@ import { formatAddress } from '../utils/helpers';
 import EmojiPicker from './EmojiPicker';
 import ZapButton from './ZapButton';
 import { ZapIcon } from './Icons';
+import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 
 interface TimelineEntry {
   kind: 'message' | 'zap';
@@ -43,6 +44,10 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   const profilesRef = useRef<Map<string, UserProfile>>(new Map());
   const isLoggedIn = CredentialManager.isLoggedIn();
   profilesRef.current = profiles;
+
+  // The panel clips anything that reaches outside it, and the picker is wider
+  // than the button it hangs off — anchored in CSS it was cut to a strip
+  const emoji = useAnchoredPopup(showEmojiPicker, () => setShowEmojiPicker(false));
 
   // Historical messages, then a live subscription for new ones — same
   // pattern as the home feed: a REQ with `since` replays what's stored and
@@ -294,18 +299,26 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
       </div>
 
       <form className="live-chat-input-row" onSubmit={handleSend}>
-        <div className="live-chat-emoji-wrapper">
+        <div className="live-chat-emoji-wrapper" ref={emoji.containerRef}>
           <button
+            ref={emoji.triggerRef}
             type="button"
             className="live-chat-emoji-btn"
-            onClick={() => setShowEmojiPicker(show => !show)}
+            onClick={() => {
+              if (showEmojiPicker) {
+                setShowEmojiPicker(false);
+                return;
+              }
+              emoji.openPopup();
+              setShowEmojiPicker(true);
+            }}
             disabled={!isLoggedIn || disabled || sending}
             title="Add emoji"
           >
             😊
           </button>
           {showEmojiPicker && (
-            <div className="live-chat-emoji-popup">
+            <div className="live-chat-emoji-popup" ref={emoji.popupRef} style={emoji.style}>
               <EmojiPicker onSelect={insertEmoji} />
             </div>
           )}
