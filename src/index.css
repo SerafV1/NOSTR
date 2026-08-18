@@ -4927,3 +4927,10 @@ a.capability-indicator.paid:hover {
   word-break: break-all;
   user-select: all;
 }
+
+.connect-uri-summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  margin-bottom: var(--spacing-sm);
+}

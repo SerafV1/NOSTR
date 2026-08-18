@@ -265,14 +265,24 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
                         {connectUri && (
                           <div className="connect-uri">
-                            <code className="connect-uri-text">{connectUri}</code>
-                            <button type="button" className="btn btn-secondary btn-small" onClick={copyConnectUri}>
-                              {connectCopied ? 'Copied ✓' : 'Copy link'}
-                            </button>
+                            {/* Amber registers this scheme, so it can simply be
+                                opened. Unlike signing, this hand-off happens once
+                                — and if the browser drops it, the link below is
+                                still there to copy. */}
+                            <a className="btn btn-primary btn-small" href={connectUri}>
+                              Send to Amber
+                            </a>
                             <p className="extension-desc">
-                              Copy it, open Amber, and add it there as a new application.
-                              This page waits and logs you in as soon as Amber connects.
+                              This page keeps waiting and logs you in the moment Amber connects —
+                              nothing to bring back.
                             </p>
+                            <details>
+                              <summary className="connect-uri-summary">Amber didn't open? Copy the link</summary>
+                              <code className="connect-uri-text">{connectUri}</code>
+                              <button type="button" className="btn btn-secondary btn-small" onClick={copyConnectUri}>
+                                {connectCopied ? 'Copied ✓' : 'Copy link'}
+                              </button>
+                            </details>
                           </div>
                         )}
                       </div>

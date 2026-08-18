@@ -36,8 +36,10 @@ interface PendingCall {
   timer: ReturnType<typeof setTimeout>;
 }
 
-let relay: any = null;
-let subscription: any = null;
+// Every reachable relay, not just the first: one being down was enough to
+// leave an invitation with nowhere to be answered
+let connections: any[] = [];
+let subscriptions: any[] = [];
 const pending = new Map<string, PendingCall>();
 
 export const readSession = (): BunkerSession | null => {
@@ -56,13 +58,13 @@ const writeSession = (session: BunkerSession): void => {
 export const clearSession = (): void => {
   localStorage.removeItem(SESSION_KEY);
   try {
-    subscription?.unsub();
-    relay?.close();
+    subscriptions.forEach(sub => sub.unsub());
+    connections.forEach(conn => conn.close());
   } catch {
     // already gone
   }
-  relay = null;
-  subscription = null;
+  connections = [];
+  subscriptions = [];
 };
 
 /**
@@ -120,42 +122,45 @@ const handleResponse = async (session: BunkerSession, event: NostrEventSigned): 
   }
 };
 
-/** Open (or reuse) the connection the signer listens on. */
-const ensureConnected = async (session: BunkerSession): Promise<any> => {
-  if (relay && relay.status === 1) return relay;
+/** Open (or reuse) every relay the signer might answer on. */
+const ensureConnected = async (session: BunkerSession, onEvent?: (event: NostrEventSigned) => void): Promise<any[]> => {
+  if (connections.length > 0) return connections;
 
-  let lastError: unknown = null;
-  for (const url of session.relays) {
-    try {
+  const filter = {
+    kinds: [RPC_KIND],
+    // No authors filter in the client-initiated flow: the signer's key isn't
+    // known until it answers, and the secret is what proves who it is
+    ...(session.remotePubkey ? { authors: [session.remotePubkey] } : {}),
+    '#p': [session.clientPubkey],
+    since: Math.floor(Date.now() / 1000) - 10
+  };
+
+  const attempts = await Promise.allSettled(
+    session.relays.map(async url => {
       const candidate = (nostrTools as any).relayInit(url);
       await candidate.connect();
-      relay = candidate;
-      subscription = candidate.sub([
-        {
-          kinds: [RPC_KIND],
-          // No authors filter: in the client-initiated flow the signer's key
-          // is unknown until it answers, and its identity is checked against
-          // the secret instead
-          ...(session.remotePubkey ? { authors: [session.remotePubkey] } : {}),
-          '#p': [session.clientPubkey],
-          // Only what comes after this point: older replies are answers to
-          // requests that no longer exist
-          since: Math.floor(Date.now() / 1000) - 10
-        }
-      ]);
-      subscription.on('event', (event: NostrEventSigned) => handleResponse(session, event));
-      return relay;
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw new Error(
-    `Could not reach the signer's relay (${session.relays.join(', ')})${lastError ? '' : ''}`
+      const sub = candidate.sub([filter]);
+      sub.on('event', (event: NostrEventSigned) => {
+        handleResponse(session, event);
+        onEvent?.(event);
+      });
+      subscriptions.push(sub);
+      return candidate;
+    })
   );
+
+  connections = attempts
+    .filter((a): a is PromiseFulfilledResult<any> => a.status === 'fulfilled')
+    .map(a => a.value);
+
+  if (connections.length === 0) {
+    throw new Error(`Could not reach any of the signer's relays (${session.relays.join(', ')})`);
+  }
+  return connections;
 };
 
 const call = async (session: BunkerSession, method: string, params: string[]): Promise<string> => {
-  const connection = await ensureConnected(session);
+  const relays = await ensureConnected(session);
   const id = Math.random().toString(36).slice(2);
   const payload = JSON.stringify({ id, method, params });
 
@@ -179,13 +184,17 @@ const call = async (session: BunkerSession, method: string, params: string[]): P
     pending.set(id, { resolve, reject, timer });
   });
 
-  await connection.publish(event);
+  // Sent on every reachable relay: we don't know which one the signer is
+  // actually watching
+  await Promise.allSettled(relays.map(relay => relay.publish(event)));
   return answer;
 };
 
-// Where the client listens for a signer that connects to it. One reliable
-// relay is enough, and it only carries the pairing conversation.
-const CONNECT_RELAY = 'wss://relay.damus.io';
+// Where the client listens for a signer coming to it. More than one, because
+// a single unreachable relay leaves the invitation with nowhere to be
+// answered — which is exactly what happened with damus.io refusing
+// connections while it was the only one named here.
+const CONNECT_RELAYS = ['wss://nos.lol', 'wss://relay.primal.net', 'wss://nostr.mom'];
 
 /**
  * The other direction: this browser publishes an invitation and the signer
@@ -200,16 +209,14 @@ export const startNostrConnect = (): { uri: string; connected: Promise<string> }
     clientSecret,
     clientPubkey: (nostrTools as any).getPublicKey(clientSecret),
     remotePubkey: '', // learned from whoever answers
-    relays: [CONNECT_RELAY],
+    relays: CONNECT_RELAYS,
     secret
   };
 
-  const params = new URLSearchParams({
-    relay: CONNECT_RELAY,
-    secret,
-    perms: 'sign_event',
-    name: 'NOSTR Web App'
-  });
+  // relay is repeatable in the URI, so the signer can pick whichever it can
+  // reach — the same reason we listen on all of them
+  const params = new URLSearchParams({ secret, perms: 'sign_event', name: 'NOSTR Web App' });
+  for (const url of CONNECT_RELAYS) params.append('relay', url);
   const uri = `nostrconnect://${session.clientPubkey}?${params.toString()}`;
 
   const connected = new Promise<string>((resolve, reject) => {
@@ -218,38 +225,39 @@ export const startNostrConnect = (): { uri: string; connected: Promise<string> }
       5 * 60 * 1000
     );
 
-    ensureConnected(session)
-      .then(() => {
-        subscription.on('event', async (event: NostrEventSigned) => {
-          if (session.remotePubkey) return; // already paired
-          try {
-            const plaintext = await decrypt(session, event.content, event.pubkey);
-            const message = JSON.parse(plaintext) as { result?: string };
-            // The secret coming back is what proves this is the signer we
-            // invited, and not someone else answering the invitation
-            if (message.result !== secret) return;
+    const onSignerReply = async (event: NostrEventSigned) => {
+      if (session.remotePubkey) return; // already paired
+      try {
+        const plaintext = await decrypt(session, event.content, event.pubkey);
+        const message = JSON.parse(plaintext) as { result?: string };
+        // The secret coming back is what proves this is the signer we
+        // invited, and not someone else answering the invitation. Some
+        // signers reply "ack" instead; that's accepted only because the
+        // reply is addressed to a key that exists nowhere but in the
+        // invitation itself.
+        if (message.result !== secret && message.result !== 'ack') return;
 
-            clearTimeout(timer);
-            session.remotePubkey = event.pubkey;
-            writeSession(session);
-
-            const userPubkey = await call(session, 'get_public_key', []);
-            if (!/^[0-9a-f]{64}$/i.test(userPubkey)) {
-              reject(new Error('The signer connected but did not return a usable public key'));
-              return;
-            }
-            session.userPubkey = userPubkey.toLowerCase();
-            writeSession(session);
-            resolve(session.userPubkey);
-          } catch {
-            // not for us, or not readable — keep waiting
-          }
-        });
-      })
-      .catch(error => {
         clearTimeout(timer);
-        reject(error);
-      });
+        session.remotePubkey = event.pubkey;
+        writeSession(session);
+
+        const userPubkey = await call(session, 'get_public_key', []);
+        if (!/^[0-9a-f]{64}$/i.test(userPubkey)) {
+          reject(new Error('The signer connected but did not return a usable public key'));
+          return;
+        }
+        session.userPubkey = userPubkey.toLowerCase();
+        writeSession(session);
+        resolve(session.userPubkey);
+      } catch {
+        // not for us, or not readable — keep waiting
+      }
+    };
+
+    ensureConnected(session, onSignerReply).catch(error => {
+      clearTimeout(timer);
+      reject(error);
+    });
   });
 
   return { uri, connected };
