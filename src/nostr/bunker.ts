@@ -327,10 +327,10 @@ const CONNECT_RELAYS = ['wss://nos.lol', 'wss://relay.primal.net', 'wss://nostr.
  * until it answers, so the secret is what proves the answer is genuine.
  */
 /**
- * What the app may sign without asking again, if the user chooses to grant it
- * up front. Deliberately not "sign_event" on its own: that is every kind
- * there is, including replacing your contact list. These are the actions you
- * take dozens of times an hour.
+ * What the invitation asks to be allowed to sign — the signer presents this
+ * and its user decides. Deliberately not "sign_event" on its own: that is
+ * every kind there is, including replacing a contact list, and a signer
+ * offered that has nothing meaningful to ask about.
  */
 export const EVERYDAY_PERMISSIONS = [
   'sign_event:1',    // notes and replies
@@ -359,9 +359,9 @@ export const startNostrConnect = (
 
   // relay is repeatable in the URI, so the signer can pick whichever it can
   // reach — the same reason we listen on all of them
-  // No perms at all means the signer asks about every request, which is the
-  // safer default and the one that leaves the choice where it belongs
   const params = new URLSearchParams({ secret, name: 'NOSTR Web App' });
+  // Named so the signer can show what's being asked for; leaving it out gave
+  // it nothing to present and the pairing simply sat there
   if (perms) params.append('perms', perms);
   for (const url of CONNECT_RELAYS) params.append('relay', url);
   const uri = `nostrconnect://${session.clientPubkey}?${params.toString()}`;

@@ -4950,16 +4950,4 @@ a.capability-indicator.paid:hover {
   font-size: 0.9rem;
 }
 
-.permission-choice {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--spacing-sm);
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
 
-.permission-choice input {
-  margin-top: 2px;
-  flex-shrink: 0;
-}

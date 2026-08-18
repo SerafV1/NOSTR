@@ -65,10 +65,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     }
   };
 
-  // Whether to ask the signer for standing permission on everyday actions,
-  // or have it ask each time. Anything beyond this list — your profile, your
-  // follow list, your block list — is always asked about.
-  const [grantEveryday, setGrantEveryday] = useState(false);
   const [connectUri, setConnectUri] = useState('');
   const [connectWaiting, setConnectWaiting] = useState(false);
   // What the pairing is doing, shown as it happens — otherwise a failure
@@ -84,10 +80,10 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     setAmberError(null);
     setConnectCopied(false);
     setConnectStatus('Opening Amber…');
-    const { uri, connected } = startNostrConnect(
-      setConnectStatus,
-      grantEveryday ? EVERYDAY_PERMISSIONS : undefined
-    );
+    // The invitation names what it will ask to sign. That isn't the app
+    // granting itself anything — it's what Amber shows you to approve or
+    // refuse, and with nothing named there is nothing for it to offer.
+    const { uri, connected } = startNostrConnect(setConnectStatus, EVERYDAY_PERMISSIONS);
     setConnectUri(uri);
     setConnectWaiting(true);
     window.location.href = uri;
@@ -255,17 +251,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                           {!knownSigner && <em>nsec bunker</em>}
                           {!knownSigner && ' in Amber? Go the other way:'}
                         </p>
-                        <label className="permission-choice">
-                          <input
-                            type="checkbox"
-                            checked={grantEveryday}
-                            onChange={(e) => setGrantEveryday(e.target.checked)}
-                          />
-                          <span>
-                            Approve posts, likes, reposts and zaps up front — otherwise Amber
-                            asks every time. Profile, follows and blocks are always asked about.
-                          </span>
-                        </label>
                         <button
                           type="button"
                           className="btn btn-secondary btn-small"
