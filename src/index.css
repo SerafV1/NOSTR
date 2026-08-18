@@ -1947,9 +1947,46 @@ button.poll-option-vote:disabled {
 .reactions-menu {
   position: absolute;
   bottom: 100%;
-  left: 0;
+  /* The React button sits well into the right half of the action bar, so a
+     panel anchored to its left edge ran off a phone screen — this is the one
+     that gets used for a like, and it was the one still clipped. */
+  left: 50%;
+  transform: translateX(-50%);
   margin-bottom: var(--spacing-sm);
   z-index: 100;
+}
+
+/* On a phone there is no good anchor: a 280px panel hung off whichever edge
+   of the button it was tied to. So it stops being a popup and becomes a
+   sheet across the bottom, where everything in it is reachable. */
+@media (max-width: 768px) {
+  .reactions-menu,
+  .compose-emoji-popup,
+  .live-chat-emoji-popup {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    transform: none;
+    margin: 0;
+    z-index: 1200;
+  }
+
+  .reactions-menu .emoji-picker,
+  .compose-emoji-popup .emoji-picker,
+  .live-chat-emoji-popup .emoji-picker {
+    width: 100%;
+    border-radius: var(--border-radius) var(--border-radius) 0 0;
+    border-bottom: none;
+    padding-bottom: var(--spacing-md);
+  }
+
+  .emoji-picker-grid {
+    /* More of them visible at once, now that there's room */
+    grid-template-columns: repeat(8, 1fr);
+    max-height: 40vh;
+  }
 }
 
 /* Emoji picker — shared by the reaction menu and the compose emoji button */
@@ -1958,7 +1995,8 @@ button.poll-option-vote:disabled {
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   padding: var(--spacing-sm);
-  width: 280px;
+  /* Never wider than the screen it has to fit on */
+  width: min(280px, calc(100vw - 2rem));
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
@@ -1972,6 +2010,7 @@ button.poll-option-vote:disabled {
 
 .emoji-picker-tab {
   flex: 1;
+  min-width: 0;
   background: none;
   border: none;
   font-size: 1.1rem;
@@ -2001,12 +2040,16 @@ button.poll-option-vote:disabled {
 }
 
 .emoji-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
   background: none;
   border: none;
   font-size: 1.2rem;
   line-height: 1;
   cursor: pointer;
-  padding: 0.35rem;
+  padding: 0.2rem;
   border-radius: var(--border-radius);
   transition: var(--transition);
 }
@@ -2175,7 +2218,10 @@ button.poll-option-vote:disabled {
 .compose-emoji-popup {
   position: absolute;
   top: 100%;
-  left: 0;
+  /* Anchored to the button's right edge: the button sits at the right of the
+     compose bar, so opening leftwards is the only way the panel stays on a
+     phone screen */
+  right: 0;
   margin-top: var(--spacing-sm);
   z-index: 100;
 }
@@ -4515,7 +4561,7 @@ a.capability-indicator.paid:hover {
 .live-chat-emoji-popup {
   position: absolute;
   bottom: 100%;
-  left: 0;
+  right: 0;
   margin-bottom: var(--spacing-sm);
   z-index: 100;
 }
@@ -4951,3 +4997,21 @@ a.capability-indicator.paid:hover {
 }
 
 
+
+/* Shown while a remote signer is being waited on, so an action that needs
+   approval elsewhere doesn't look like it was ignored */
+.signing-banner {
+  position: fixed;
+  left: 50%;
+  bottom: var(--spacing-xl);
+  transform: translateX(-50%);
+  z-index: 900;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--light-bg);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  max-width: calc(100vw - 2rem);
+}

@@ -1142,6 +1142,7 @@ export class NostrCore {
       if (!Array.from(results.values()).some(Boolean)) {
         throw new Error('No relay accepted the reaction');
       }
+      this.rememberOwnAction('reactions', eventId, emoji);
       return signed;
     } catch (error) {
       console.error('Failed to add reaction:', error);
@@ -1174,6 +1175,7 @@ export class NostrCore {
       if (!Array.from(results.values()).some(Boolean)) {
         throw new Error('No relay accepted the repost');
       }
+      this.rememberOwnAction('reposts', original.id, '1');
       return signed;
     } catch (error) {
       console.error('Failed to repost:', error);
@@ -1216,6 +1218,31 @@ export class NostrCore {
    * Fetch engagement (replies, reposts, likes, zap total) for an event
    * in one query. zapSats is the summed amount in sats, not a count.
    */
+  /**
+   * What this account has done to a note, remembered locally.
+   *
+   * Relays take a moment to index a reaction and the pool answers shortly
+   * after the first of them replies, so a like you just made is usually
+   * absent from the next engagement query — and the card would drop it,
+   * showing nothing for something that did happen.
+   */
+  private static ownActionsKey(kind: 'reactions' | 'reposts'): string {
+    return `own_${kind}_${CredentialManager.getPublicKey() || 'anon'}`;
+  }
+
+  private static readOwnActions(kind: 'reactions' | 'reposts'): Record<string, string> {
+    return PersistentCache.get<Record<string, string>>(this.ownActionsKey(kind)) || {};
+  }
+
+  private static rememberOwnAction(kind: 'reactions' | 'reposts', eventId: string, value: string): void {
+    const all = this.readOwnActions(kind);
+    all[eventId] = value;
+    // Bounded: only the recent ones matter, since older notes come back from
+    // the relays reliably by then
+    const trimmed = Object.entries(all).slice(-300);
+    PersistentCache.set(this.ownActionsKey(kind), Object.fromEntries(trimmed));
+  }
+
   static async fetchEngagement(eventId: string): Promise<{
     replies: number;
     reposts: number;
@@ -1264,6 +1291,19 @@ export class NostrCore {
       }
     } catch (error) {
       console.error('Failed to fetch engagement:', error);
+    }
+
+    // Fold in what this browser knows it did. Without this a like vanishes
+    // from the card seconds after being made, because the relays haven't
+    // caught up yet.
+    const ownReaction = this.readOwnActions('reactions')[eventId];
+    if (ownReaction && !result.myReaction) {
+      result.myReaction = ownReaction;
+      result.likes += 1;
+    }
+    if (this.readOwnActions('reposts')[eventId] && !result.myRepost) {
+      result.myRepost = true;
+      result.reposts += 1;
     }
 
     return result;

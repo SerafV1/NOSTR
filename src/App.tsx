@@ -14,7 +14,7 @@ import { getRelayPool, DEFAULT_RELAYS } from './nostr/relay';
 import { NotificationCore, NotificationStore, cacheNotifications } from './nostr/notifications';
 import { DirectMessageCore, DirectMessageStore } from './nostr/dm';
 import { NostrCore, EventCache } from './nostr/core';
-import { clearSession as clearBunkerSession } from './nostr/bunker';
+import { clearSession as clearBunkerSession, onSigningWait } from './nostr/bunker';
 import { UserProfile } from './types';
 import './index.css';
 import LoginPage from './components/LoginPage';
@@ -172,6 +172,11 @@ function App() {
   const [showBackToTop, setShowBackToTop] = useState(false);
   // Small screens collapse the destinations behind one button
   const [navOpen, setNavOpen] = useState(false);
+  // Signing through a remote signer takes as long as approving it does, and
+  // in the meantime a like otherwise looks like it did nothing
+  const [awaitingSignature, setAwaitingSignature] = useState(0);
+
+  useEffect(() => onSigningWait(setAwaitingSignature), []);
   const mainRef = useRef<HTMLElement>(null);
 
   const navigate = useNavigate();
@@ -543,6 +548,12 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+
+      {awaitingSignature > 0 && (
+        <div className="signing-banner">
+          ⏳ Waiting for Amber to approve{awaitingSignature > 1 ? ` ${awaitingSignature} requests` : ''}…
+        </div>
+      )}
 
       {showBackToTop && (
         <button

@@ -26,9 +26,9 @@ const SESSION_KEY = 'nostr_bunker_session';
 const PAIRING_KEY = 'nostr_bunker_pairing';
 const RPC_KIND = 24133;
 
-// The signer prompts a person on another device, so this has to allow for
-// them picking up the phone — but not hang forever if they don't.
-const REQUEST_TIMEOUT_MS = 90_000;
+// The signer prompts a person, who has to notice and approve — but a minute
+// is long enough to conclude it isn't coming.
+const REQUEST_TIMEOUT_MS = 60_000;
 
 interface BunkerSession {
   /** Ephemeral key this browser talks to the signer with — never the user's */
@@ -53,6 +53,25 @@ interface PendingCall {
 let connections: any[] = [];
 let subscriptions: any[] = [];
 const pending = new Map<string, PendingCall>();
+
+/**
+ * How many signing requests are waiting on the signer. Without this a like
+ * looks like it did nothing at all until the request times out a minute
+ * later — the app is waiting, but says so nowhere.
+ */
+let waitingCount = 0;
+const waitingListeners = new Set<(count: number) => void>();
+
+export const onSigningWait = (listener: (count: number) => void): (() => void) => {
+  waitingListeners.add(listener);
+  listener(waitingCount);
+  return () => waitingListeners.delete(listener);
+};
+
+const setWaiting = (delta: number): void => {
+  waitingCount = Math.max(0, waitingCount + delta);
+  waitingListeners.forEach(listener => listener(waitingCount));
+};
 
 export const readSession = (): BunkerSession | null => {
   try {
@@ -295,11 +314,18 @@ const call = async (session: BunkerSession, method: string, params: string[]): P
     const timer = setTimeout(() => {
       pending.delete(id);
       reject(new Error(
-        `The signer did not answer the ${method} request. Check Amber is still connected to this app.`
+        `Amber did not answer the ${method} request. Open Amber and check it is still connected to this app.`
       ));
     }, REQUEST_TIMEOUT_MS);
     pending.set(id, { resolve, reject, timer });
   });
+
+  // Only signing is worth announcing: get_public_key answers in a moment and
+  // has its own status line during pairing
+  if (method === 'sign_event') {
+    setWaiting(1);
+    answer.finally(() => setWaiting(-1)).catch(() => {});
+  }
 
   await sendWith('nip44');
 
