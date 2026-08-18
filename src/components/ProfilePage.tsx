@@ -497,6 +497,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                     <ZapButton
                       lud16={profile.lud16}
                       recipientPubkey={pubkey}
+                      recipientName={displayName}
+                      recipientPicture={profile.picture}
                       triggerClassName="btn btn-secondary btn-small btn-with-icon"
                     >
                       <ZapIcon /> Zap

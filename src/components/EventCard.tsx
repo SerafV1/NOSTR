@@ -767,6 +767,8 @@ const EventCard: React.FC<EventCardProps> = ({
         <ZapButton
           lud16={profile?.lud16}
           recipientPubkey={event.pubkey}
+          recipientName={displayName}
+          recipientPicture={profile?.picture}
           eventId={event.id}
           triggerClassName="action-btn"
           triggerTitle="Zap with lightning"

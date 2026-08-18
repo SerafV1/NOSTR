@@ -12,7 +12,17 @@ interface ZapButtonProps {
   /** What the zap is for: a note, or a live stream's address */
   eventId?: string;
   eventAddress?: string;
+  /** Shown in the menu, so it is clear who the sats are going to */
+  recipientName?: string;
+  recipientPicture?: string;
 }
+
+/**
+ * Every open picker, so opening one can close the rest. Two menus at once
+ * are not just untidy: both float over the page from a fixed position, and
+ * the amounts of one sit over the comment box of the other.
+ */
+const openPickers = new Set<() => void>();
 
 const PRESET_AMOUNTS = [21, 100, 500, 1000, 5000, 21000];
 
@@ -29,7 +39,9 @@ const ZapButton: React.FC<ZapButtonProps> = ({
   children,
   recipientPubkey,
   eventId,
-  eventAddress
+  eventAddress,
+  recipientName,
+  recipientPicture
 }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [customAmount, setCustomAmount] = useState('');
@@ -39,6 +51,7 @@ const ZapButton: React.FC<ZapButtonProps> = ({
   const [copied, setCopied] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({ visibility: 'hidden' });
 
   // The menu is fixed to the viewport rather than to the trigger, because in
@@ -71,16 +84,33 @@ const ZapButton: React.FC<ZapButtonProps> = ({
     setMenuStyle({ top: Math.max(margin, top), left, visibility: 'visible' });
   }, [showMenu, invoice, loading]);
 
-  // Anchored to a point in the viewport, the menu would otherwise hang there
-  // while the content it belongs to scrolls out from under it
+  // Everything that should dismiss the picker: scrolling (it is anchored to a
+  // point in the viewport, so it would hang there while the message it belongs
+  // to scrolls away), resizing, Escape, and a click anywhere outside it.
   useEffect(() => {
     if (!showMenu) return;
+
     const close = () => setShowMenu(false);
+    const closeOnOutside = (e: Event) => {
+      if (!containerRef.current?.contains(e.target as Node)) close();
+    };
+    const closeOnEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+
+    // Registered so that opening another picker closes this one
+    openPickers.add(close);
+
     window.addEventListener('scroll', close, true);
     window.addEventListener('resize', close);
+    document.addEventListener('pointerdown', closeOnOutside, true);
+    document.addEventListener('keydown', closeOnEscape);
     return () => {
+      openPickers.delete(close);
       window.removeEventListener('scroll', close, true);
       window.removeEventListener('resize', close);
+      document.removeEventListener('pointerdown', closeOnOutside, true);
+      document.removeEventListener('keydown', closeOnEscape);
     };
   }, [showMenu]);
 
@@ -132,12 +162,16 @@ const ZapButton: React.FC<ZapButtonProps> = ({
   };
 
   return (
-    <div className="zap-container" onClick={(e) => e.stopPropagation()}>
+    <div className="zap-container" ref={containerRef} onClick={(e) => e.stopPropagation()}>
       <button
         ref={triggerRef}
         type="button"
         className={triggerClassName}
-        onClick={() => setShowMenu(show => !show)}
+        onClick={() => setShowMenu(show => {
+          if (show) return false;
+          openPickers.forEach(close => close());
+          return true;
+        })}
         title={triggerTitle || 'Zap with lightning'}
       >
         {children}
@@ -176,6 +210,20 @@ const ZapButton: React.FC<ZapButtonProps> = ({
             <div className="zap-menu-empty">No lightning address set for this profile</div>
           ) : (
             <>
+              {/* Several of these can be on screen at once — in a chat, one per
+                  message — so the menu says whose it is */}
+              {(recipientName || recipientPicture) && (
+                <div className="zap-menu-recipient">
+                  {recipientPicture ? (
+                    <img src={recipientPicture} alt="" className="zap-menu-avatar" />
+                  ) : (
+                    <div className="zap-menu-avatar-placeholder">
+                      {(recipientName || '?').charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <span>Zap <strong>{recipientName || 'this user'}</strong></span>
+                </div>
+              )}
               <div className="zap-amounts">
                 {PRESET_AMOUNTS.map(amount => (
                   <button

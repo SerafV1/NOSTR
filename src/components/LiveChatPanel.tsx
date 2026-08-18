@@ -267,6 +267,8 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                     <ZapButton
                       lud16={profile.lud16}
                       recipientPubkey={author || undefined}
+                      recipientName={name}
+                      recipientPicture={profile.picture}
                       eventId={event.id}
                       eventAddress={address}
                       triggerClassName="live-chat-zap-btn"
