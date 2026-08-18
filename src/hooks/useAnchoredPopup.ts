@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, CSSProperties } from 'react';
 
 /**
  * Every open popup, so opening one closes the rest. Two of them at once
@@ -58,6 +58,28 @@ export function useAnchoredPopup(
   const [style, setStyle] = useState<CSSProperties>({ visibility: 'hidden' });
   const [measured, setMeasured] = useState(false);
 
+  /** Place it against the trigger, wherever the trigger is now */
+  const place = useCallback(() => {
+    const trigger = triggerRef.current;
+    const popup = popupRef.current;
+    if (!trigger || !popup) return;
+
+    const margin = 8;
+    const t = trigger.getBoundingClientRect();
+    const p = popup.getBoundingClientRect();
+
+    let top = t.top - p.height - margin;
+    if (top < margin) {
+      top = Math.min(t.bottom + margin, window.innerHeight - p.height - margin);
+    }
+    const left = Math.min(
+      Math.max(margin, t.left),
+      Math.max(margin, window.innerWidth - p.width - margin)
+    );
+
+    setStyle({ ...FREED_FROM_FLOW, top: Math.max(margin, top), left, visibility: 'visible' });
+  }, []);
+
   useLayoutEffect(() => {
     if (!open) {
       setStyle({ visibility: 'hidden' });
@@ -80,33 +102,27 @@ export function useAnchoredPopup(
       return;
     }
 
-    const trigger = triggerRef.current;
-    const popup = popupRef.current;
-    if (!trigger || !popup) return;
-
-    const margin = 8;
-    const t = trigger.getBoundingClientRect();
-    const p = popup.getBoundingClientRect();
-
-    let top = t.top - p.height - margin;
-    if (top < margin) {
-      top = Math.min(t.bottom + margin, window.innerHeight - p.height - margin);
-    }
-    const left = Math.min(
-      Math.max(margin, t.left),
-      Math.max(margin, window.innerWidth - p.width - margin)
-    );
-
-    setStyle({ ...FREED_FROM_FLOW, top: Math.max(margin, top), left, visibility: 'visible' });
+    place();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, measured, ...remeasure]);
+  }, [open, measured, place, ...remeasure]);
 
-  // Everything that should dismiss it: another popup opening, a click outside,
-  // Escape, and scrolling — anchored to a point in the viewport, it would
-  // otherwise hang there while the message it belongs to scrolls away.
+  // Another popup opening dismisses this one, as does a click outside or
+  // Escape. Scrolling only moves it: a live chat scrolls itself to the bottom
+  // on every new message, so closing on scroll meant the picker vanished the
+  // moment anyone said anything. It follows its trigger instead, and gives up
+  // only once the trigger has scrolled out of sight.
   useEffect(() => {
     if (!open) return;
 
+    const follow = () => {
+      const t = triggerRef.current?.getBoundingClientRect();
+      if (!t) return;
+      if (t.bottom < 0 || t.top > window.innerHeight) {
+        onClose();
+        return;
+      }
+      place();
+    };
     const closeOnOutside = (e: Event) => {
       if (!containerRef.current?.contains(e.target as Node)) onClose();
     };
@@ -115,19 +131,19 @@ export function useAnchoredPopup(
     };
 
     openPopups.add(onClose);
-    window.addEventListener('scroll', onClose, true);
-    window.addEventListener('resize', onClose);
+    window.addEventListener('scroll', follow, true);
+    window.addEventListener('resize', follow);
     document.addEventListener('pointerdown', closeOnOutside, true);
     document.addEventListener('keydown', closeOnEscape);
     return () => {
       openPopups.delete(onClose);
-      window.removeEventListener('scroll', onClose, true);
-      window.removeEventListener('resize', onClose);
+      window.removeEventListener('scroll', follow, true);
+      window.removeEventListener('resize', follow);
       document.removeEventListener('pointerdown', closeOnOutside, true);
       document.removeEventListener('keydown', closeOnEscape);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, place]);
 
   return {
     containerRef,

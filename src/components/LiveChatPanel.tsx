@@ -8,6 +8,19 @@ import EmojiPicker from './EmojiPicker';
 import ZapButton from './ZapButton';
 import { ZapIcon } from './Icons';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
+import LiveChatReactions, { ReactionTally } from './LiveChatReactions';
+
+/**
+ * NIP-25 reactions carry '+' for a like and '-' for a dislike rather than an
+ * emoji, and an empty content is treated as a like too. Anything else is
+ * shown as sent.
+ */
+const normalizeReaction = (content: string): string => {
+  const trimmed = content.trim();
+  if (trimmed === '' || trimmed === '+') return '👍';
+  if (trimmed === '-') return '👎';
+  return trimmed.slice(0, 12);
+};
 
 interface TimelineEntry {
   kind: 'message' | 'zap';
@@ -47,6 +60,7 @@ export interface PresentPerson {
 const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, onPeoplePresent }) => {
   const [messages, setMessages] = useState<NostrEventSigned[]>([]);
   const [zaps, setZaps] = useState<NostrEventSigned[]>([]);
+  const [reactions, setReactions] = useState<NostrEventSigned[]>([]);
   const [profiles, setProfiles] = useState<Map<string, UserProfile>>(new Map());
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -60,6 +74,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   // The panel clips anything that reaches outside it, and the picker is wider
   // than the button it hangs off — anchored in CSS it was cut to a strip
   const emoji = useAnchoredPopup(showEmojiPicker, () => setShowEmojiPicker(false));
+  const myPubkey = CredentialManager.getPublicKey();
 
   // Historical messages, then a live subscription for new ones — same
   // pattern as the home feed: a REQ with `since` replays what's stored and
@@ -124,6 +139,54 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, relaysConnected]);
+
+  // Reactions are tagged with the message they are about, not with the
+  // stream, so they need a subscription of their own. Re-subscribing every
+  // few messages keeps newly arrived ones covered without a fresh query per
+  // message; with no `since`, one subscription brings both the existing
+  // reactions and the ones that follow.
+  const reactionBatch = Math.ceil(messages.length / 5);
+  useEffect(() => {
+    if (!relaysConnected || messages.length === 0) return;
+
+    const ids = messages.slice(-60).map(m => m.id);
+    const subId = NostrCore.subscribeLive(
+      [{ kinds: [EVENT_KINDS.REACTION], '#e': ids }],
+      (event) => setReactions(prev => (prev.some(r => r.id === event.id) ? prev : [...prev, event]))
+    );
+    return () => NostrCore.unsubscribeLive(subId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address, relaysConnected, reactionBatch]);
+
+  // Grouped per message and per emoji, so a message can show "😂 3"
+  const talliesByMessage = new Map<string, ReactionTally[]>();
+  for (const reaction of reactions) {
+    // NIP-25: the last 'e' tag is the event being reacted to
+    const target = [...reaction.tags].reverse().find(t => t[0] === 'e')?.[1];
+    if (!target) continue;
+    const emojiUsed = normalizeReaction(reaction.content);
+    if (!emojiUsed) continue;
+
+    const tallies = talliesByMessage.get(target) || [];
+    const existing = tallies.find(t => t.emoji === emojiUsed);
+    if (existing) {
+      existing.count += 1;
+      existing.mine = existing.mine || reaction.pubkey === myPubkey;
+    } else {
+      tallies.push({ emoji: emojiUsed, count: 1, mine: reaction.pubkey === myPubkey });
+    }
+    talliesByMessage.set(target, tallies);
+  }
+
+  const react = async (messageId: string, authorPubkey: string, emojiUsed: string) => {
+    const sent = await NostrCore.addReaction(messageId, emojiUsed, authorPubkey);
+    if (sent) {
+      // Shown at once: the relays would echo it back, but not always quickly
+      setReactions(prev => (prev.some(r => r.id === sent.id) ? prev : [...prev, sent]));
+    } else {
+      alert('Reaction was not accepted by any relay');
+    }
+  };
 
   // Stick to the bottom as new messages come in
   useEffect(() => {
@@ -332,6 +395,11 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                     onNavigateToTopic={onNavigateToTopic}
                   />
                 </span>
+                <LiveChatReactions
+                  tallies={talliesByMessage.get(event.id) || []}
+                  canReact={isLoggedIn && !disabled}
+                  onReact={(chosen) => author && react(event.id, author, chosen)}
+                />
               </div>
             </div>
           );

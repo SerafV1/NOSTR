@@ -992,6 +992,22 @@ export class NostrCore {
    * bottom like a normal chat log.
    */
   /**
+   * Reactions (kind 7) to a batch of events — one query for a whole chat's
+   * worth of messages rather than one per message.
+   */
+  static async fetchReactionsTo(eventIds: string[]): Promise<NostrEventSigned[]> {
+    if (eventIds.length === 0) return [];
+    try {
+      return await getRelayPool().fetchEvents([
+        { kinds: [EVENT_KINDS.REACTION], '#e': eventIds, limit: 1000 }
+      ]);
+    } catch (error) {
+      console.error('Failed to fetch reactions:', error);
+      return [];
+    }
+  }
+
+  /**
    * Sign a NIP-57 zap request (kind 9734) to hand to the LNURL provider.
    * It is never published by us — the provider embeds it in the receipt it
    * publishes once the invoice is paid, which is what makes a zap public.
