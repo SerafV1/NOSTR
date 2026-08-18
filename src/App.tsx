@@ -233,6 +233,7 @@ function App() {
         }
       } catch (error) {
         console.error('Failed to publish the signed event:', error);
+        alert('Signed, but publishing failed — check your relay connections');
       }
     })();
   }, []);

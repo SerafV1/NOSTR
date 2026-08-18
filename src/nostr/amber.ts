@@ -1,4 +1,4 @@
-import { getEventHash, nip19 } from 'nostr-tools';
+import { getEventHash, nip19, verifySignature } from 'nostr-tools';
 import { NostrEvent, NostrEventSigned } from '../types';
 
 /**
@@ -56,10 +56,21 @@ const storePending = (request: PendingRequest): void => {
   }
 };
 
+// A request nobody completed is worse than none: the signer can be handed an
+// older intent by the system, and pairing that answer with a newer stored
+// request produces an event signed over content the user never approved.
+const PENDING_MAX_AGE_MS = 10 * 60 * 1000;
+
 const readPending = (): PendingRequest | null => {
   try {
     const raw = localStorage.getItem(PENDING_KEY);
-    return raw ? (JSON.parse(raw) as PendingRequest) : null;
+    if (!raw) return null;
+    const request = JSON.parse(raw) as PendingRequest;
+    if (Date.now() - (request.startedAt || 0) > PENDING_MAX_AGE_MS) {
+      localStorage.removeItem(PENDING_KEY);
+      return null;
+    }
+    return request;
   } catch {
     return null;
   }
@@ -75,6 +86,7 @@ export const clearPending = (): void => localStorage.removeItem(PENDING_KEY);
  * while Amber was in fact open in front of the user.
  */
 const handOff = (uri: string, request: PendingRequest): Promise<never> => {
+  clearPending(); // never let an abandoned request answer for this one
   storePending(request);
   return new Promise<never>((_, reject) => {
     let settled = false;
@@ -276,10 +288,24 @@ export const consumeCallback = (): AmberResult | null => {
   const signature = values.find(value => /^[0-9a-f]{128}$/i.test(value));
   if (signature && pending.event) {
     const template = pending.event as NostrEvent & { pubkey: string; created_at: number };
-    return {
-      type: 'sign_event',
-      event: { ...template, id: getEventHash(template as any), sig: signature } as NostrEventSigned
-    };
+    const rebuilt = {
+      ...template,
+      id: getEventHash(template as any),
+      sig: signature
+    } as NostrEventSigned;
+
+    // The signer may have been handed an older request by the system, in
+    // which case this signature belongs to different content. Publishing it
+    // would post something the user never approved — and the relays would
+    // reject it anyway, silently.
+    if (!verifySignature(rebuilt as any)) {
+      return {
+        type: 'error',
+        message: 'The signature does not match the post being sent — the signer may have shown you an ' +
+          'earlier request. Try again, and approve the one that matches what you wrote.'
+      };
+    }
+    return { type: 'sign_event', event: rebuilt };
   }
 
   return {
