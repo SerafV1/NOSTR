@@ -137,31 +137,28 @@ export const intentUri = (params: Record<string, string>, payload?: string): str
   return `intent://${data}#Intent;scheme=nostrsigner;${extras};end`;
 };
 
-/** The login request as an intent: URL, for the explicit retry */
-export const publicKeyIntentUri = (): string =>
-  intentUri({
-    compressionType: 'none',
-    returnType: 'signature',
-    type: 'get_public_key',
-    callbackUrl: callbackUrl('amberPubkey')
-  });
+const publicKeyParams = (): Record<string, string> => ({
+  compressionType: 'none',
+  returnType: 'signature',
+  type: 'get_public_key',
+  appName: 'NOSTR Web App',
+  permissions: JSON.stringify([{ type: 'sign_event' }]),
+  callbackUrl: callbackUrl('amberPubkey')
+});
+
+/**
+ * The login request in both shapes it can take. Which one a phone honours
+ * varies by browser and signer build, and there's no way to tell from in
+ * here — so both are offered rather than one being guessed at.
+ */
+export const publicKeySchemeUri = (): string =>
+  `nostrsigner:?${new URLSearchParams(publicKeyParams()).toString()}`;
+
+export const publicKeyIntentUri = (): string => intentUri(publicKeyParams());
 
 /** Ask the signer who the user is. Navigates away. */
-export const requestPublicKey = (): Promise<never> => {
-  const params = {
-    compressionType: 'none',
-    returnType: 'signature',
-    type: 'get_public_key',
-    appName: 'NOSTR Web App',
-    // Asked for at connection time so posting doesn't prompt separately
-    permissions: JSON.stringify([{ type: 'sign_event' }]),
-    callbackUrl: callbackUrl('amberPubkey')
-  };
-  return handOff(
-    `nostrsigner:?${new URLSearchParams(params).toString()}`,
-    { type: 'get_public_key', startedAt: Date.now() }
-  );
-};
+export const requestPublicKey = (): Promise<never> =>
+  handOff(publicKeySchemeUri(), { type: 'get_public_key', startedAt: Date.now() });
 
 /**
  * Ask the signer to sign an event. Navigates away; the signed event comes
