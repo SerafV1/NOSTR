@@ -33,6 +33,11 @@ const LiveChatPage: React.FC<LiveChatPageProps> = ({
   const transparent = new URLSearchParams(window.location.search).get('transparent') === '1';
   // In an overlay nobody can type, and the box would only take up room
   const readOnly = !CredentialManager.isLoggedIn();
+  // Only in the streamer's own window: an OBS source is signed out, and the
+  // button would end up on the stream itself
+  const obsLink = readOnly || transparent
+    ? undefined
+    : `${window.location.origin}${window.location.pathname}?transparent=1`;
 
   return (
   <div className={`live-chat-page ${transparent ? 'transparent' : ''}`}>
@@ -40,6 +45,7 @@ const LiveChatPage: React.FC<LiveChatPageProps> = ({
       address={liveEventAddress(kind, pubkey, identifier)}
       relaysConnected={relaysConnected}
       hideComposer={readOnly}
+      obsLink={obsLink}
       onNavigateToProfile={onNavigateToProfile}
       onNavigateToNote={onNavigateToNote}
       onNavigateToTopic={onNavigateToTopic}

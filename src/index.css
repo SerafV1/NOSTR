@@ -5586,6 +5586,7 @@ body:has(.live-chat-page.transparent) {
   padding: 0;
 }
 
+.live-chat-obs-btn,
 .live-chat-popout {
   padding: 0.25rem 0.6rem;
   border: 1px solid var(--border-color);
@@ -5596,9 +5597,15 @@ body:has(.live-chat-page.transparent) {
   cursor: pointer;
 }
 
+.live-chat-obs-btn:hover,
 .live-chat-popout:hover {
   color: var(--text-primary);
   border-color: var(--primary-color);
+}
+
+/* Sits beside the title, so the two controls share the row */
+.live-chat-obs-btn {
+  margin-left: auto;
 }
 
 /* On a phone the chat is a sheet, and a second window makes no sense */

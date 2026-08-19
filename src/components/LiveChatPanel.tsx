@@ -55,6 +55,8 @@ interface LiveChatPanelProps {
   onPopOut?: () => void;
   /** Drop the message box: nobody can type into a stream overlay */
   hideComposer?: boolean;
+  /** Offer this address for copying — the chat as an OBS browser source */
+  obsLink?: string;
   /**
    * Who is present, most recently heard from first. Nobody publishes a
    * viewer list — a live event carries one 'p' tag, the host — so the people
@@ -69,7 +71,7 @@ export interface PresentPerson {
   picture?: string;
 }
 
-const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, onPeoplePresent, hideComposer }) => {
+const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, onPeoplePresent, hideComposer, obsLink }) => {
   const [messages, setMessages] = useState<NostrEventSigned[]>([]);
   const [zaps, setZaps] = useState<NostrEventSigned[]>([]);
   const [reactions, setReactions] = useState<NostrEventSigned[]>([]);
@@ -77,6 +79,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [obsLinkCopied, setObsLinkCopied] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const profilesRef = useRef<Map<string, UserProfile>>(new Map());
@@ -316,6 +319,22 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     <div className="live-chat-panel">
       <div className="live-chat-header">
         <span>Stream Chat</span>
+        {/* The address for OBS is this window's own, plus the flag that
+            clears the background — nowhere else to read it off */}
+        {obsLink && (
+          <button
+            type="button"
+            className="live-chat-obs-btn"
+            title="Copy the address to paste into an OBS browser source"
+            onClick={async () => {
+              await navigator.clipboard.writeText(obsLink);
+              setObsLinkCopied(true);
+              setTimeout(() => setObsLinkCopied(false), 2000);
+            }}
+          >
+            {obsLinkCopied ? '✓ Copied' : '⧉ OBS link'}
+          </button>
+        )}
         {onPopOut && (
           <button
             type="button"
