@@ -30,9 +30,10 @@ const LiveChatPage: React.FC<LiveChatPageProps> = ({
   onNavigateToNote,
   onNavigateToTopic
 }) => {
-  const [transparent, setTransparent] = useState(
-    () => new URLSearchParams(window.location.search).get('transparent') === '1'
-  );
+  const params = new URLSearchParams(window.location.search);
+  const [transparent, setTransparent] = useState(() => params.get('transparent') === '1');
+  // Over a moving picture, heavier text carries better
+  const [bold, setBold] = useState(() => params.get('bold') === '1');
   // In an overlay nobody can type, and the box would only take up room
   const readOnly = !CredentialManager.isLoggedIn();
   // The window OBS itself loads: signed out and transparent. There the header
@@ -40,18 +41,24 @@ const LiveChatPage: React.FC<LiveChatPageProps> = ({
   const isOverlaySource = readOnly && transparent;
   // Whatever is on screen is what OBS will show, so the address handed over
   // carries the same choice
+  const search = (opts: { transparent: boolean; bold: boolean }) => {
+    const chosen = new URLSearchParams();
+    if (opts.transparent) chosen.set('transparent', '1');
+    if (opts.bold) chosen.set('bold', '1');
+    const query = chosen.toString();
+    return query ? `?${query}` : '';
+  };
+
   const obsLink = readOnly
     ? undefined
-    : `${window.location.origin}${window.location.pathname}${transparent ? '?transparent=1' : ''}`;
+    : `${window.location.origin}${window.location.pathname}${search({ transparent, bold })}`;
 
-  const chooseTransparent = (on: boolean) => {
-    setTransparent(on);
-    // Kept in the address so a reload — and the copied link — agree with it
-    window.history.replaceState(
-      {},
-      '',
-      window.location.pathname + (on ? '?transparent=1' : '')
-    );
+  // Kept in the address so a reload — and the copied link — agree with what
+  // is on screen
+  const choose = (opts: { transparent: boolean; bold: boolean }) => {
+    setTransparent(opts.transparent);
+    setBold(opts.bold);
+    window.history.replaceState({}, '', window.location.pathname + search(opts));
   };
 
   // The page sits on several painted layers — body, the app shell, the
@@ -65,14 +72,20 @@ const LiveChatPage: React.FC<LiveChatPageProps> = ({
   }, [transparent]);
 
   return (
-  <div className={`live-chat-page ${transparent ? 'transparent' : ''} ${isOverlaySource ? 'overlay-source' : ''}`}>
+  <div className={[
+    'live-chat-page',
+    transparent ? 'transparent' : '',
+    bold ? 'bold-text' : '',
+    isOverlaySource ? 'overlay-source' : ''
+  ].filter(Boolean).join(' ')}>
     <LiveChatPanel
       address={liveEventAddress(kind, pubkey, identifier)}
       relaysConnected={relaysConnected}
       hideComposer={readOnly}
       obsLink={obsLink}
       transparent={readOnly ? undefined : transparent}
-      onTransparentChange={readOnly ? undefined : chooseTransparent}
+      bold={readOnly ? undefined : bold}
+      onDisplayChange={readOnly ? undefined : choose}
       onNavigateToProfile={onNavigateToProfile}
       onNavigateToNote={onNavigateToNote}
       onNavigateToTopic={onNavigateToTopic}

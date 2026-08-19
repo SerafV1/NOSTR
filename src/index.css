@@ -5586,11 +5586,18 @@ a.capability-indicator.paid:hover {
   display: none;
 }
 
-.live-chat-transparent-toggle {
+/* How the chat should look once it is a stream overlay */
+.live-chat-display-toggles {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-left: auto;
+}
+
+.live-chat-display-toggles label {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-left: auto;
   font-size: 0.75rem;
   font-weight: 400;
   color: var(--text-secondary);
@@ -5598,14 +5605,26 @@ a.capability-indicator.paid:hover {
   white-space: nowrap;
 }
 
-.live-chat-transparent-toggle input {
+.live-chat-display-toggles input {
   cursor: pointer;
   margin: 0;
 }
 
-/* With the toggle taking the free space, the link button sits next to it */
-.live-chat-transparent-toggle ~ .live-chat-obs-btn {
+/* With the toggles taking the free space, the link button sits next to them */
+.live-chat-display-toggles ~ .live-chat-obs-btn {
   margin-left: 0;
+}
+
+/* The controls wrap rather than pushing the title out of a narrow window */
+.live-chat-header {
+  flex-wrap: wrap;
+  row-gap: var(--spacing-sm);
+}
+
+/* ?bold=1 — text set heavier, to hold up against whatever is behind it */
+.live-chat-page.bold-text .live-chat-text,
+.live-chat-page.bold-text .live-chat-zap-line {
+  font-weight: 700;
 }
 
 .live-chat-page .live-chat-panel {

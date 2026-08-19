@@ -59,7 +59,8 @@ interface LiveChatPanelProps {
   obsLink?: string;
   /** Overlay preview: given only where the choice is the viewer's to make */
   transparent?: boolean;
-  onTransparentChange?: (on: boolean) => void;
+  bold?: boolean;
+  onDisplayChange?: (opts: { transparent: boolean; bold: boolean }) => void;
   /**
    * Who is present, most recently heard from first. Nobody publishes a
    * viewer list — a live event carries one 'p' tag, the host — so the people
@@ -74,7 +75,7 @@ export interface PresentPerson {
   picture?: string;
 }
 
-const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, onPeoplePresent, hideComposer, obsLink, transparent, onTransparentChange }) => {
+const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, onPeoplePresent, hideComposer, obsLink, transparent, bold, onDisplayChange }) => {
   const [messages, setMessages] = useState<NostrEventSigned[]>([]);
   const [zaps, setZaps] = useState<NostrEventSigned[]>([]);
   const [reactions, setReactions] = useState<NostrEventSigned[]>([]);
@@ -324,15 +325,25 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
         <span>Stream Chat</span>
         {/* Shows what an OBS source would look like, and decides what the
             copied address says */}
-        {onTransparentChange && (
-          <label className="live-chat-transparent-toggle" title="Preview the chat with no background, for laying over the video">
-            <input
-              type="checkbox"
-              checked={!!transparent}
-              onChange={(e) => onTransparentChange(e.target.checked)}
-            />
-            Transparent
-          </label>
+        {onDisplayChange && (
+          <span className="live-chat-display-toggles">
+            <label title="Preview the chat with no background, for laying over the video">
+              <input
+                type="checkbox"
+                checked={!!transparent}
+                onChange={(e) => onDisplayChange({ transparent: e.target.checked, bold: !!bold })}
+              />
+              Transparent
+            </label>
+            <label title="Heavier text, which carries better over a picture">
+              <input
+                type="checkbox"
+                checked={!!bold}
+                onChange={(e) => onDisplayChange({ transparent: !!transparent, bold: e.target.checked })}
+              />
+              Bold
+            </label>
+          </span>
         )}
 
         {/* The address for OBS is this window's own, plus whichever
@@ -341,14 +352,14 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
           <button
             type="button"
             className="live-chat-obs-btn"
-            title="Copy the address to paste into an OBS browser source"
+            title="Copy this window's address — with the options chosen here — for an OBS browser source"
             onClick={async () => {
               await navigator.clipboard.writeText(obsLink);
               setObsLinkCopied(true);
               setTimeout(() => setObsLinkCopied(false), 2000);
             }}
           >
-            {obsLinkCopied ? '✓ Copied' : '⧉ OBS link'}
+            {obsLinkCopied ? '✓ Copied' : '🔗 Copy link'}
           </button>
         )}
         {onPopOut && (
