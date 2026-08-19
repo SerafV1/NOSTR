@@ -30,6 +30,7 @@ import ComposeModal from './components/ComposeModal';
 import LivePage from './components/LivePage';
 import LiveStreamPage from './components/LiveStreamPage';
 import LiveChatPage from './components/LiveChatPage';
+import LiveViewersPage from './components/LiveViewersPage';
 import { BellIcon, MessageIcon, SettingsIcon } from './components/Icons';
 import { decodeLiveNaddr } from './utils/liveStream';
 
@@ -167,6 +168,24 @@ function LiveChatRoute({ relaysConnected, onNavigateToProfile, onNavigateToNote,
   );
 }
 
+function LiveViewersRoute({ relaysConnected }: RouteCallbacks) {
+  const { naddr } = useParams();
+  const address = naddr ? decodeLiveNaddr(naddr) : null;
+
+  if (!address) {
+    return <div className="live-viewers-page"><div className="error">Invalid stream link</div></div>;
+  }
+
+  return (
+    <LiveViewersPage
+      kind={address.kind}
+      pubkey={address.pubkey}
+      identifier={address.identifier}
+      relaysConnected={relaysConnected}
+    />
+  );
+}
+
 function MessagesRoute({ relaysConnected, publicKey, onNavigateToProfile, onMarkMessagesRead }: RouteCallbacks) {
   const { npub } = useParams();
   const recipient = decodeNpubParam(npub);
@@ -205,9 +224,10 @@ function App() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // The popped-out chat is a window of its own: the app's chrome would only
-  // take up room it doesn't have
-  const poppedOutChat = /^\/live\/[^/]+\/chat$/.test(location.pathname);
+  // The chat and the viewer count each open as a window of their own — an
+  // OBS browser source, or something to keep beside the video. The app's
+  // chrome would only take up room they don't have.
+  const poppedOutChat = /^\/live\/[^/]+\/(chat|viewers)$/.test(location.pathname);
 
   // Watching a stream and reading its chat needs no account, and demanding
   // one made the popped-out chat useless as an OBS browser source: OBS opens
@@ -581,6 +601,7 @@ function App() {
           <Route path="/live" element={<LivePage relaysConnected={relaysConnected} />} />
           <Route path="/live/:naddr" element={<LiveStreamRoute {...callbacks} />} />
           <Route path="/live/:naddr/chat" element={<LiveChatRoute {...callbacks} />} />
+          <Route path="/live/:naddr/viewers" element={<LiveViewersRoute {...callbacks} />} />
           <Route
             path="/notifications"
             element={

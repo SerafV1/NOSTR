@@ -207,15 +207,16 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                   </div>
                 )}
 
-                {/* Beside the viewers, since it is the address you hand to
-                    someone so they become one */}
+                {/* The count on its own, as a browser source for OBS */}
                 <button
                   type="button"
                   className="btn btn-secondary btn-small live-stream-copy-link"
-                  title="Copy the address of this stream, to share with viewers"
-                  onClick={() => copyLink(`${window.location.origin}/live/${naddrParam}`)}
+                  title="Copy the viewer count on its own — paste into an OBS browser source"
+                  onClick={() => copyLink(
+                    `${window.location.origin}/live/${naddrParam}/viewers?transparent=1`
+                  )}
                 >
-                  {copied ? '✓ Copied' : '🔗 Copy stream link'}
+                  {copied ? '✓ Copied' : '🔗 Viewers overlay'}
                 </button>
               </div>
             )}

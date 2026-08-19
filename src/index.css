@@ -5621,6 +5621,67 @@ a.capability-indicator.paid:hover {
   row-gap: var(--spacing-sm);
 }
 
+/* The viewer count on its own, as an OBS browser source */
+.live-viewers-page {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-lg);
+}
+
+.live-viewers-count {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 3rem;
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.live-viewers-page.bold-text .live-viewers-count {
+  font-weight: 700;
+}
+
+/* Over a picture the number needs its own edge */
+.live-viewers-page.transparent .live-viewers-count {
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+}
+
+.live-viewers-eye {
+  font-size: 2.2rem;
+}
+
+.live-viewers-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.live-viewers-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.live-viewers-note {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-align: center;
+  max-width: 320px;
+}
+
+/* Cleared for the overlay, same as the chat */
+.chat-overlay .live-viewers-page {
+  background: transparent;
+}
+
 /* ?bold=1 — text set heavier, to hold up against whatever is behind it */
 .live-chat-page.bold-text .live-chat-text,
 .live-chat-page.bold-text .live-chat-zap-line {
