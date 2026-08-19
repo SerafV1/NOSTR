@@ -1,5 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type Hls from 'hls.js';
+import {
+  PlayIcon, PauseIcon, VolumeIcon, MutedIcon, GearIcon,
+  FullscreenIcon, ExitFullscreenIcon, PipIcon
+} from './Icons';
 
 interface QualityLevel {
   /** Index into hls.js's own level list */
@@ -32,6 +36,18 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
   const [levels, setLevels] = useState<QualityLevel[]>([]);
   const [currentLevel, setCurrentLevel] = useState(-1);
   const hlsRef = useRef<Hls | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // The browser's own controls are switched off below, because its menu —
+  // the one holding playback speed — is drawn in a closed shadow tree that a
+  // page cannot add to. Quality would have had to sit somewhere else on the
+  // picture. Everything is drawn here instead, so it is all one menu.
+  const [playing, setPlaying] = useState(false);
+  const [muted, setMuted] = useState(true);
+  const [volume, setVolume] = useState(1);
+  const [speed, setSpeed] = useState(1);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [menu, setMenu] = useState<'closed' | 'quality' | 'speed'>('closed');
 
   useEffect(() => {
     const video = videoRef.current;
@@ -162,6 +178,74 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
     };
   }, [src, reinitKey]);
 
+  // Fullscreen can also be left with Escape or the browser's own gesture, so
+  // the button follows the document rather than its own last click
+  useEffect(() => {
+    const onChange = () => setFullscreen(document.fullscreenElement === wrapperRef.current);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  const togglePlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) video.play().catch(() => undefined);
+    else video.pause();
+  };
+
+  const toggleMute = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = !video.muted;
+    setMuted(video.muted);
+  };
+
+  const changeVolume = (value: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.volume = value;
+    // Dragging the slider up is also how someone unmutes
+    if (value > 0 && video.muted) {
+      video.muted = false;
+      setMuted(false);
+    }
+    setVolume(value);
+  };
+
+  const chooseSpeed = (value: number) => {
+    const video = videoRef.current;
+    if (video) video.playbackRate = value;
+    setSpeed(value);
+    setMenu('closed');
+  };
+
+  const chooseQuality = (index: number) => {
+    setCurrentLevel(index);
+    if (hlsRef.current) hlsRef.current.currentLevel = index;
+    setMenu('closed');
+  };
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else wrapperRef.current?.requestFullscreen().catch(() => undefined);
+  };
+
+  const togglePip = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    try {
+      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      else await video.requestPictureInPicture();
+    } catch {
+      // Refused (unsupported, or the video has no picture yet) — nothing to
+      // recover from, the button simply does nothing
+    }
+  };
+
+  const qualityLabel = currentLevel === -1
+    ? 'Auto'
+    : levels.find(l => l.index === currentLevel)?.label ?? 'Auto';
+
   if (!src) {
     return <div className="video-unsupported-note">⚠️ This stream has no playback URL</div>;
   }
@@ -171,42 +255,150 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
   }
 
   return (
-    <div className="live-video-wrapper">
+    <div className={`live-video-wrapper ${menu !== 'closed' ? 'menu-open' : ''}`} ref={wrapperRef}>
       {buffering && (
         <div className="live-video-buffering">
           Connecting to stream…
           {slow && <span className="live-video-buffering-hint"> This is taking a while — the broadcaster may not actually be live.</span>}
         </div>
       )}
-      {/* Only worth showing when the stream actually offers a choice */}
-      {levels.length > 1 && (
-        <select
-          className="live-video-quality"
-          value={currentLevel}
-          title="Picture quality"
-          onChange={(e) => {
-            const chosen = Number(e.target.value);
-            setCurrentLevel(chosen);
-            if (hlsRef.current) hlsRef.current.currentLevel = chosen;
-          }}
-        >
-          <option value={-1}>Auto</option>
-          {levels.map(level => (
-            <option key={level.index} value={level.index}>{level.label}</option>
-          ))}
-        </select>
-      )}
       <video
         key={reinitKey}
         ref={videoRef}
         className={className}
-        controls
         autoPlay
         muted
         playsInline
+        onClick={togglePlay}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onVolumeChange={(e) => {
+          const video = e.currentTarget;
+          setMuted(video.muted);
+          setVolume(video.volume);
+        }}
         onPlaying={() => setBuffering(false)}
         onWaiting={() => setBuffering(true)}
       />
+
+      <div className="live-video-controls">
+        <button type="button" className="live-video-btn" onClick={togglePlay} title={playing ? 'Pause' : 'Play'}>
+          {playing ? <PauseIcon /> : <PlayIcon />}
+        </button>
+
+        <div className="live-video-volume">
+          <button type="button" className="live-video-btn" onClick={toggleMute} title={muted ? 'Unmute' : 'Mute'}>
+            {muted || volume === 0 ? <MutedIcon /> : <VolumeIcon />}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={muted ? 0 : volume}
+            onChange={(e) => changeVolume(Number(e.target.value))}
+            title="Volume"
+          />
+        </div>
+
+        {/* A live stream has no position to show, only whether you are at the
+            edge of it — which is where this player always is */}
+        <span className="live-video-live">● LIVE</span>
+
+        <span className="live-video-spacer" />
+
+        <div className="live-video-menu-wrapper">
+          <button
+            type="button"
+            className={`live-video-btn ${menu !== 'closed' ? 'active' : ''}`}
+            onClick={() => setMenu(open => (open === 'closed' ? 'quality' : 'closed'))}
+            title="Settings"
+          >
+            <GearIcon />
+          </button>
+
+          {menu !== 'closed' && (
+            <div className="live-video-menu">
+              <div className="live-video-menu-tabs">
+                <button
+                  type="button"
+                  className={menu === 'quality' ? 'active' : ''}
+                  onClick={() => setMenu('quality')}
+                >
+                  Quality
+                </button>
+                <button
+                  type="button"
+                  className={menu === 'speed' ? 'active' : ''}
+                  onClick={() => setMenu('speed')}
+                >
+                  Speed
+                </button>
+              </div>
+
+              {menu === 'quality' ? (
+                <div className="live-video-menu-list">
+                  {levels.length > 1 ? (
+                    <>
+                      <button
+                        type="button"
+                        className={currentLevel === -1 ? 'chosen' : ''}
+                        onClick={() => chooseQuality(-1)}
+                      >
+                        Auto
+                      </button>
+                      {[...levels].reverse().map(level => (
+                        <button
+                          key={level.index}
+                          type="button"
+                          className={currentLevel === level.index ? 'chosen' : ''}
+                          onClick={() => chooseQuality(level.index)}
+                        >
+                          {level.label}
+                        </button>
+                      ))}
+                    </>
+                  ) : (
+                    <span className="live-video-menu-empty">
+                      This stream is sent at one quality only
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="live-video-menu-list">
+                  {[0.5, 0.75, 1, 1.25, 1.5, 2].map(rate => (
+                    <button
+                      key={rate}
+                      type="button"
+                      className={speed === rate ? 'chosen' : ''}
+                      onClick={() => chooseSpeed(rate)}
+                    >
+                      {rate === 1 ? 'Normal' : `${rate}×`}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <span className="live-video-quality-label">{qualityLabel}</span>
+
+        {document.pictureInPictureEnabled && (
+          <button type="button" className="live-video-btn" onClick={togglePip} title="Picture in picture">
+            <PipIcon />
+          </button>
+        )}
+
+        <button
+          type="button"
+          className="live-video-btn"
+          onClick={toggleFullscreen}
+          title={fullscreen ? 'Leave fullscreen' : 'Fullscreen'}
+        >
+          {fullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
+        </button>
+      </div>
     </div>
   );
 };

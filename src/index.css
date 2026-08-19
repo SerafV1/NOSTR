@@ -5134,43 +5134,173 @@ a.capability-indicator.paid:hover {
   display: block;
 }
 
-/* Sits in the control row, at the end past the fullscreen button. The
-   browser draws that row itself and it cannot be added to, so this is drawn
-   over it — low enough to read as part of it.
-   width is set because a bare `select` is full-width in this stylesheet,
-   which stretched this one clear across the picture. */
-.live-video-quality {
+/* The player's own controls. The browser's are switched off because its
+   overflow menu — where playback speed lives — is a closed shadow tree a
+   page cannot add to, so quality had to sit somewhere else on the picture.
+   Drawn here, both are one menu. */
+.live-video-controls {
   position: absolute;
-  /* In the control row itself, left of the cluster the browser puts at its
-     right end (mute, fullscreen, the overflow menu) so nothing is covered */
-  bottom: 34px;
-  right: 150px;
-  width: auto;
-  min-width: 0;
-  z-index: 2;
-  padding: 1px 4px;
-  line-height: 1.5;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: var(--border-radius);
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  font-size: 0.75rem;
-  font-family: inherit;
-  cursor: pointer;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0));
   opacity: 0;
   transition: opacity 0.15s ease;
 }
 
-/* Shown when the player is under the pointer, like the rest of its controls */
-.live-video-wrapper:hover .live-video-quality,
-.live-video-quality:focus {
+/* Shown while the pointer is on the player, or the menu is open — otherwise
+   choosing a quality would hide the menu you are choosing from */
+.live-video-wrapper:hover .live-video-controls,
+.live-video-wrapper.menu-open .live-video-controls,
+.live-video-controls:focus-within {
   opacity: 1;
 }
 
 @media (hover: none) {
-  .live-video-quality {
+  .live-video-controls {
     opacity: 1;
   }
+}
+
+.live-video-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: var(--border-radius);
+  background: none;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.live-video-btn:hover,
+.live-video-btn.active {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.live-video-volume {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+/* The slider stays out of the way until the volume area is reached for */
+.live-video-volume input {
+  width: 0;
+  opacity: 0;
+  accent-color: #fff;
+  transition: width 0.15s ease, opacity 0.15s ease;
+}
+
+.live-video-volume:hover input,
+.live-video-volume input:focus {
+  width: 72px;
+  opacity: 1;
+}
+
+.live-video-live {
+  color: #ff4d4f;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.live-video-spacer {
+  flex: 1;
+}
+
+.live-video-quality-label {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.7rem;
+  min-width: 34px;
+  text-align: right;
+}
+
+.live-video-menu-wrapper {
+  position: relative;
+}
+
+/* Opens upward, over the picture rather than out of the player — which in
+   fullscreen is the only place it could go anyway */
+.live-video-menu {
+  position: absolute;
+  bottom: calc(100% + var(--spacing-sm));
+  right: 0;
+  width: 150px;
+  background: rgba(15, 15, 30, 0.96);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+.live-video-menu-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.live-video-menu-tabs button {
+  flex: 1;
+  padding: var(--spacing-sm);
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.live-video-menu-tabs button.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.live-video-menu-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+.live-video-menu-list button {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.live-video-menu-list button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* The one in use is marked rather than merely highlighted, so it reads
+   without colour */
+.live-video-menu-list button.chosen::before {
+  content: '✓ ';
+  color: var(--primary-color);
+}
+
+.live-video-menu-list button:not(.chosen)::before {
+  content: '';
+  padding-left: 1.05em;
+}
+
+.live-video-menu-empty {
+  padding: var(--spacing-md);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
 }
 
 .live-video-buffering {
