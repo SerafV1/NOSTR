@@ -2,7 +2,9 @@ import { NostrEventSigned, NostrFilter, EVENT_KINDS } from '../types';
 import { getRelayPool } from './relay';
 import { PersistentCache } from './core';
 
-export type NotificationType = 'reply' | 'mention' | 'reaction' | 'repost' | 'zap';
+export type NotificationType =
+  | 'reply' | 'mention' | 'reaction' | 'repost' | 'zap' | 'livechat'
+  | 'follow' | 'unfollow';
 
 export interface NostrNotification {
   id: string;
@@ -12,6 +14,30 @@ export interface NostrNotification {
 
 // Enough history to scroll back through without letting the list grow forever
 const NOTIFICATION_CACHE_LIMIT = 200;
+
+/**
+ * Who is known to follow you, so a contact list that arrives can be told
+ * apart: a name that was not there before is a new follower, and one that
+ * disappears from a list that used to carry you is someone leaving. Nostr
+ * announces neither — a follow is just a replaceable list being rewritten,
+ * so the only way to notice is to remember what it said last time.
+ */
+const knownFollowersKey = (pubkey: string): string => `known_followers_${pubkey}`;
+/** When this browser started watching — anything older than it is history */
+const followersSinceKey = (pubkey: string): string => `known_followers_since_${pubkey}`;
+
+/** null when this browser has never looked — which is not the same as none */
+function readKnownFollowers(pubkey: string): string[] | null {
+  return PersistentCache.get<string[]>(knownFollowersKey(pubkey));
+}
+
+function writeKnownFollowers(pubkey: string, followers: string[]): void {
+  PersistentCache.set(knownFollowersKey(pubkey), Array.from(new Set(followers)));
+}
+
+function watchingSince(pubkey: string): number {
+  return PersistentCache.get<number>(followersSinceKey(pubkey)) || 0;
+}
 
 const notificationsCacheKey = (pubkey: string): string => `notifications_${pubkey}`;
 
@@ -73,8 +99,10 @@ export function cacheTargets(
 
 /**
  * Notifications = events that reference (`#p`) the logged-in user:
- * replies/mentions (kind 1), reposts (kind 6), reactions (kind 7) and
- * zap receipts (kind 9735).
+ * replies/mentions (kind 1), reposts (kind 6), reactions (kind 7),
+ * zap receipts (kind 9735) and being named in a live stream's chat
+ * (kind 1311) — which otherwise passed unnoticed unless you happened to be
+ * watching that stream at that moment.
  */
 export class NotificationCore {
   /**
@@ -83,6 +111,8 @@ export class NotificationCore {
    */
   static classify(event: NostrEventSigned): NotificationType {
     switch (event.kind) {
+      case EVENT_KINDS.LIVE_CHAT_MESSAGE:
+        return 'livechat';
       case EVENT_KINDS.REACTION:
         return 'reaction';
       case EVENT_KINDS.REPOST:
@@ -105,8 +135,16 @@ export class NotificationCore {
           EVENT_KINDS.TEXT_NOTE,
           EVENT_KINDS.REPOST,
           EVENT_KINDS.REACTION,
-          EVENT_KINDS.ZAP_RECEIPT
+          EVENT_KINDS.ZAP_RECEIPT,
+          EVENT_KINDS.LIVE_CHAT_MESSAGE
         ],
+        '#p': [pubkey],
+        limit,
+        ...(since !== undefined ? { since } : {})
+      },
+      // Contact lists naming you: whoever publishes one follows you
+      {
+        kinds: [EVENT_KINDS.CONTACTS],
         '#p': [pubkey],
         limit,
         ...(since !== undefined ? { since } : {})
@@ -126,14 +164,93 @@ export class NotificationCore {
       // Drop future-dated spam (clock skew / bad actors) and your own
       // actions (you get #p'd on your own replies-to-self, reactions, etc.)
       const maxTimestamp = Math.floor(Date.now() / 1000) + 300;
-      return events
+      const usable = events
         .filter(e => (e.created_at || 0) <= maxTimestamp)
-        .filter(e => e.pubkey !== pubkey)
-        .map(e => ({ id: e.id, type: this.classify(e), event: e }))
+        .filter(e => e.pubkey !== pubkey);
+
+      // A contact list is rewritten every time its owner follows anyone, so
+      // only the first sight of someone counts as them following you
+      const stored = readKnownFollowers(pubkey);
+      // Nothing recorded yet means this browser is seeing the followers for
+      // the first time — they are people who followed at some point in the
+      // past, not now, so they are remembered quietly. Announcing them would
+      // greet the first visit with every follower ever.
+      const firstLook = stored === null;
+      const known = new Set(stored || []);
+      // Relays answer partially, so a follower the first look missed turns up
+      // on a later one and would read as brand new. Only a list published
+      // after this browser started watching can be news.
+      const since = firstLook ? Math.floor(Date.now() / 1000) : watchingSince(pubkey);
+      const follows: NostrNotification[] = [];
+      for (const event of usable) {
+        if (event.kind !== EVENT_KINDS.CONTACTS) continue;
+        if (known.has(event.pubkey)) continue;
+        known.add(event.pubkey);
+        if (!firstLook && (event.created_at || 0) > since) {
+          follows.push({ id: `follow-${event.pubkey}`, type: 'follow', event });
+        }
+      }
+      if (firstLook) PersistentCache.set(followersSinceKey(pubkey), since);
+      if (firstLook || follows.length || usable.some(e => e.kind === EVENT_KINDS.CONTACTS)) {
+        writeKnownFollowers(pubkey, Array.from(known));
+      }
+
+      const rest = usable
+        .filter(e => e.kind !== EVENT_KINDS.CONTACTS)
+        .map(e => ({ id: e.id, type: this.classify(e), event: e }));
+
+      return [...rest, ...follows]
         .sort((a, b) => (b.event.created_at || 0) - (a.event.created_at || 0))
         .slice(0, limit);
     } catch (error) {
       console.error('Failed to fetch notifications:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Who stopped following you. There is no filter for this: an unfollow is a
+   * contact list that no longer names you, and a relay cannot be asked for
+   * events by what they *lack*. So the lists of everyone known to follow you
+   * are fetched and checked, and anyone whose newest list has dropped you is
+   * reported once, then forgotten until they follow again.
+   */
+  static async fetchUnfollows(pubkey: string): Promise<NostrNotification[]> {
+    const known = readKnownFollowers(pubkey);
+    if (!known || known.length === 0) return [];
+
+    try {
+      const events = await getRelayPool().fetchEvents([
+        { kinds: [EVENT_KINDS.CONTACTS], authors: known, limit: known.length * 2 }
+      ]);
+
+      // Only the newest list from each of them says anything current
+      const newest = new Map<string, NostrEventSigned>();
+      for (const event of events) {
+        const held = newest.get(event.pubkey);
+        if (!held || (event.created_at || 0) > (held.created_at || 0)) {
+          newest.set(event.pubkey, event);
+        }
+      }
+
+      const gone: NostrNotification[] = [];
+      const stillFollowing = new Set(known);
+      const since = watchingSince(pubkey);
+      for (const [author, event] of newest) {
+        const followsMe = event.tags.some(t => t[0] === 'p' && t[1] === pubkey);
+        if (followsMe) continue;
+        // A list older than when we started watching proves nothing: it may
+        // simply be a stale copy from before they followed, which some relay
+        // still holds
+        if ((event.created_at || 0) <= since) continue;
+        stillFollowing.delete(author);
+        gone.push({ id: `unfollow-${author}-${event.created_at}`, type: 'unfollow', event });
+      }
+
+      if (gone.length) writeKnownFollowers(pubkey, Array.from(stillFollowing));
+      return gone;
+    } catch (error) {
+      console.error('Failed to check for unfollows:', error);
       return [];
     }
   }

@@ -20,6 +20,8 @@ interface NotificationsPageProps {
   relaysConnected: boolean;
   onNavigateToProfile: (pubkey: string) => void;
   onNavigateToNote: (noteId: string) => void;
+  /** Live chat mentions belong to a stream, not to a note */
+  onNavigateToStream?: (kind: number, pubkey: string, identifier: string) => void;
   onMarkRead?: () => void;
 }
 
@@ -28,7 +30,10 @@ const TYPE_META: Record<NotificationType, { icon: string; verb: string }> = {
   mention: { icon: '📣', verb: 'mentioned you' },
   reaction: { icon: '❤️', verb: 'reacted to your note' },
   repost: { icon: '🔄', verb: 'reposted your note' },
-  zap: { icon: '⚡', verb: 'zapped you' }
+  zap: { icon: '⚡', verb: 'zapped you' },
+  livechat: { icon: '📺', verb: 'tagged you in a stream chat' },
+  follow: { icon: '👤', verb: 'started following you' },
+  unfollow: { icon: '👋', verb: 'stopped following you' }
 };
 
 // NIP-25: reaction content is '+' or empty for a plain "like" (shown as a
@@ -45,6 +50,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
   relaysConnected,
   onNavigateToProfile,
   onNavigateToNote,
+  onNavigateToStream,
   onMarkRead
 }) => {
   const [notifications, setNotifications] = useState<NostrNotification[]>([]);
@@ -68,7 +74,14 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
     }
 
     try {
-      const fetched = await NotificationCore.fetchNotifications(pubkey, 100);
+      // Unfollows are a separate question — no filter can ask a relay for
+      // lists that no longer name you, so they are worked out by checking
+      // the lists of everyone known to follow you
+      const [fetched, unfollows] = await Promise.all([
+        NotificationCore.fetchNotifications(pubkey, 100),
+        NotificationCore.fetchUnfollows(pubkey)
+      ]);
+      fetched.push(...unfollows);
 
       const actorProfiles = await NostrCore.fetchProfiles(fetched.map(n => n.event.pubkey));
       setProfiles(prev => ({ ...prev, ...Object.fromEntries(actorProfiles) }));
@@ -126,6 +139,19 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
   }, [notifications, pubkey]);
 
   const handleClick = (notification: NostrNotification) => {
+    if (notification.type === 'follow' || notification.type === 'unfollow') {
+      onNavigateToProfile(notification.event.pubkey);
+      return;
+    }
+    if (notification.type === 'livechat') {
+      // A chat message belongs to its stream, not to a note page
+      const address = notification.event.tags.find(t => t[0] === 'a')?.[1];
+      const [kind, pubkey, identifier] = (address || '').split(':');
+      if (kind && pubkey) {
+        onNavigateToStream?.(Number(kind), pubkey, identifier || '');
+      }
+      return;
+    }
     if (notification.type === 'reply' || notification.type === 'mention') {
       onNavigateToNote(notification.event.id);
       return;
@@ -142,7 +168,11 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
     let rawContent: string | undefined;
     // Whichever event the text comes from also carries its emoji definitions
     let sourceTags: string[][] | undefined;
-    if (notification.type === 'reply' || notification.type === 'mention') {
+    if (
+      notification.type === 'reply'
+      || notification.type === 'mention'
+      || notification.type === 'livechat'
+    ) {
       rawContent = notification.event.content;
       sourceTags = notification.event.tags;
     } else {

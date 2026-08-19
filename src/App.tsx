@@ -32,7 +32,7 @@ import LiveStreamPage from './components/LiveStreamPage';
 import LiveChatPage from './components/LiveChatPage';
 import LiveViewersPage from './components/LiveViewersPage';
 import { BellIcon, MessageIcon, SettingsIcon } from './components/Icons';
-import { decodeLiveNaddr } from './utils/liveStream';
+import { decodeLiveNaddr, encodeLiveNaddr } from './utils/liveStream';
 
 // URL-safe encode/decode for note ids and pubkeys — bech32 (note1.../npub1...)
 // with a raw-hex fallback so malformed or hand-typed links still resolve
@@ -606,6 +606,8 @@ function App() {
             path="/notifications"
             element={
               <NotificationsPage
+                onNavigateToStream={(kind, pubkey, identifier) =>
+                  navigate(`/live/${encodeLiveNaddr(kind, pubkey, identifier)}`)}
                 pubkey={publicKey}
                 relaysConnected={relaysConnected}
                 onNavigateToProfile={navigateToProfile}
