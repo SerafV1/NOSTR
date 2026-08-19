@@ -8,7 +8,7 @@ import LiveChatPanel, { PresentPerson } from './LiveChatPanel';
 import ZapButton from './ZapButton';
 import RichText from './RichText';
 import EmojiText from './EmojiText';
-import { ZapIcon, PopOutIcon } from './Icons';
+import { ZapIcon, PopOutIcon, CopyIcon, CheckIcon } from './Icons';
 
 interface LiveStreamPageProps {
   kind: number;
@@ -28,6 +28,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   // it is about. Opening it over the page keeps the stream in view while
   // reading along, the way stream sites do it.
   const [chatOpen, setChatOpen] = useState(false);
+  const [shared, setShared] = useState(false);
   const [present, setPresent] = useState<PresentPerson[]>([]);
   const [stream, setStream] = useState<LiveStreamInfo | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -106,6 +107,18 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
 
   const address = liveEventAddress(kind, stream.pubkey, stream.dTag);
   const naddrParam = encodeLiveNaddr(kind, stream.pubkey, stream.dTag);
+
+  const shareStream = async () => {
+    const url = `${window.location.origin}/live/${naddrParam}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setShared(true);
+      setTimeout(() => setShared(false), 2000);
+    } catch {
+      // Denied clipboard permission — show it instead of failing silently
+      prompt('Copy this address:', url);
+    }
+  };
 
 
   return (
@@ -225,6 +238,21 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                 />
               </p>
             )}
+
+            {/* The address to hand to whoever should watch — under the
+                description, where someone looks for what a stream is and how
+                to pass it on */}
+            <div className="live-stream-share">
+              <button
+                type="button"
+                className="live-stream-share-btn"
+                title="Copy this stream's address"
+                onClick={shareStream}
+              >
+                {shared ? <CheckIcon /> : <CopyIcon />}
+                {shared ? 'Link copied' : 'Share stream link'}
+              </button>
+            </div>
 
             {stream.hashtags.length > 0 && (
               <div className="event-hashtags">
