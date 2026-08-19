@@ -22,6 +22,7 @@ import LinkPreviewCard from './LinkPreviewCard';
 import EmojiPicker from './EmojiPicker';
 import ZapButton from './ZapButton';
 import EmojiText from './EmojiText';
+import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 import { customEmojiMap, splitCustomEmoji } from '../utils/customEmoji';
 import { ReplyIcon, RepostIcon, HeartIcon, ZapIcon, PersonIcon } from './Icons';
 
@@ -51,6 +52,11 @@ const EventCard: React.FC<EventCardProps> = ({
   const [reposting, setReposting] = useState(false);
   const [reactionEmoji, setReactionEmoji] = useState('');
   const [showReactions, setShowReactions] = useState(false);
+  // Closes on a click anywhere outside it, on Escape, and when another one
+  // opens — a picker that only the same icon could dismiss stayed up while
+  // you read the rest of the feed
+  const reactionPicker = useAnchoredPopup(showReactions, () => setShowReactions(false));
+  const repostMenu = useAnchoredPopup(showRepostOptions, () => setShowRepostOptions(false));
   const [mentionedProfiles, setMentionedProfiles] = useState<Record<string, UserProfile>>({});
   const [enlargedIndex, setEnlargedIndex] = useState<number | null>(null);
   const [quotedNote, setQuotedNote] = useState<NostrEventSigned | null>(null);
@@ -764,10 +770,18 @@ const EventCard: React.FC<EventCardProps> = ({
           <span className="action-count">{replyCount}</span>
         </button>
 
-        <div className="reaction-container">
+        <div className="reaction-container repost-container" ref={repostMenu.containerRef}>
           <button
+            ref={repostMenu.triggerRef}
             className={`action-btn ${reposted ? 'reposted' : ''}`}
-            onClick={() => setShowRepostOptions(!showRepostOptions)}
+            onClick={() => {
+              if (showRepostOptions) {
+                setShowRepostOptions(false);
+                return;
+              }
+              repostMenu.openPopup();
+              setShowRepostOptions(true);
+            }}
             disabled={reposting}
             title={reposted ? 'You reposted this' : 'Repost or quote'}
           >
@@ -775,7 +789,7 @@ const EventCard: React.FC<EventCardProps> = ({
             <span className="action-count">{repostCount}</span>
           </button>
           {showRepostOptions && (
-            <div className="reply-options-menu">
+            <div className="reply-options-menu" ref={repostMenu.popupRef} style={repostMenu.style}>
               <button
                 className="reply-option"
                 onClick={handleRepost}
@@ -792,10 +806,18 @@ const EventCard: React.FC<EventCardProps> = ({
           )}
         </div>
 
-        <div className="reaction-container">
+        <div className="reaction-container" ref={reactionPicker.containerRef}>
           <button
+            ref={reactionPicker.triggerRef}
             className={`action-btn ${reactionEmoji ? 'liked' : ''}`}
-            onClick={() => setShowReactions(!showReactions)}
+            onClick={() => {
+              if (showReactions) {
+                setShowReactions(false);
+                return;
+              }
+              reactionPicker.openPopup();
+              setShowReactions(true);
+            }}
             title={reactionEmoji ? `You reacted with ${reactionEmoji}` : 'React'}
           >
             {reactionEmoji ? (
@@ -806,7 +828,7 @@ const EventCard: React.FC<EventCardProps> = ({
             <span className="action-count">{likeCount}</span>
           </button>
           {showReactions && (
-            <div className="reactions-menu">
+            <div className="reactions-menu" ref={reactionPicker.popupRef} style={reactionPicker.style}>
               <EmojiPicker onSelect={(emoji) => { handleReaction(emoji); setShowReactions(false); }} />
             </div>
           )}

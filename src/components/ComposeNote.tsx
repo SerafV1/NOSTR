@@ -18,6 +18,7 @@ import MediaEmbed from './MediaEmbed';
 import LinkPreviewCard from './LinkPreviewCard';
 import VideoPlayer from './VideoPlayer';
 import EmojiPicker from './EmojiPicker';
+import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 import { PollIcon, PersonIcon, ZapIcon, ImageIcon } from './Icons';
 
 const MAX_POLL_OPTIONS = 4;
@@ -38,6 +39,7 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [publishing, setPublishing] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const emojiPicker = useAnchoredPopup(showEmojiPicker, () => setShowEmojiPicker(false));
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [showPoll, setShowPoll] = useState(false);
@@ -695,17 +697,25 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
               <PollIcon />
             </button>
           )}
-          <div className="compose-emoji-wrapper">
+          <div className="compose-emoji-wrapper" ref={emojiPicker.containerRef}>
             <button
+              ref={emojiPicker.triggerRef}
               type="button"
               className="compose-emoji-btn"
-              onClick={() => setShowEmojiPicker(show => !show)}
+              onClick={() => {
+                if (showEmojiPicker) {
+                  setShowEmojiPicker(false);
+                  return;
+                }
+                emojiPicker.openPopup();
+                setShowEmojiPicker(true);
+              }}
               title="Add emoji"
             >
               😊
             </button>
             {showEmojiPicker && (
-              <div className="compose-emoji-popup">
+              <div className="compose-emoji-popup" ref={emojiPicker.popupRef} style={emojiPicker.style}>
                 <EmojiPicker onSelect={insertEmoji} />
               </div>
             )}
