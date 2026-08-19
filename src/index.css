@@ -4571,6 +4571,16 @@ a.capability-indicator.paid:hover {
   align-items: flex-start;
 }
 
+/* A NIP-30 emoji is a picture standing in for a word, so it sits on the text
+   baseline at roughly the height of the surrounding letters */
+.custom-emoji {
+  height: 1.2em;
+  width: auto;
+  vertical-align: -0.2em;
+  display: inline-block;
+  object-fit: contain;
+}
+
 /* Reactions sit under the message they belong to, small enough not to
    compete with the talk itself */
 .live-chat-reactions {

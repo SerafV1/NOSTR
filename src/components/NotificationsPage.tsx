@@ -140,8 +140,11 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
 
   const renderPreview = (notification: NostrNotification): React.ReactNode => {
     let rawContent: string | undefined;
+    // Whichever event the text comes from also carries its emoji definitions
+    let sourceTags: string[][] | undefined;
     if (notification.type === 'reply' || notification.type === 'mention') {
       rawContent = notification.event.content;
+      sourceTags = notification.event.tags;
     } else {
       const targetId = notification.event.tags.find(t => t[0] === 'e')?.[1];
       // The note this is about is often already in memory — from the feed,
@@ -149,6 +152,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
       // showing an empty preview until the network answers
       const target = targetId ? (targetNotes[targetId] || EventCache.getEvent(targetId)) : undefined;
       rawContent = target?.content;
+      sourceTags = target?.tags;
     }
     if (!rawContent) return null;
 
@@ -163,6 +167,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
     return (
       <RichText
         content={stripped}
+        eventTags={sourceTags}
         onNavigateToProfile={onNavigateToProfile}
         onNavigateToNote={onNavigateToNote}
       />

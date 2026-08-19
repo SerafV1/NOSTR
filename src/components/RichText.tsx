@@ -4,6 +4,7 @@ import { UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { formatAddress } from '../utils/helpers';
 import { splitContentTokens, extractImageUrls } from '../utils/media';
+import { customEmojiMap, splitCustomEmoji } from '../utils/customEmoji';
 
 interface RichTextProps {
   content: string;
@@ -12,6 +13,8 @@ interface RichTextProps {
   onNavigateToTopic?: (topic: string) => void;
   /** Draw picture links as pictures — chat messages are mostly images */
   inlineImages?: boolean;
+  /** The event's tags, for the NIP-30 emoji its text may refer to */
+  eventTags?: string[][];
   className?: string;
 }
 
@@ -58,6 +61,7 @@ const RichText: React.FC<RichTextProps> = ({
   onNavigateToNote,
   onNavigateToTopic,
   inlineImages = false,
+  eventTags,
   className
 }) => {
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
@@ -95,6 +99,20 @@ const RichText: React.FC<RichTextProps> = ({
 
   const parts: React.ReactNode[] = [];
   let key = 0;
+  const emojis = customEmojiMap(eventTags);
+
+  /** Plain text, with any :shortcode: the event defines drawn as a picture */
+  const pushText = (text: string) => {
+    for (const piece of splitCustomEmoji(text, emojis)) {
+      if (piece.type === 'emoji') {
+        parts.push(
+          <img key={key++} src={piece.url} alt={`:${piece.value}:`} className="custom-emoji" />
+        );
+      } else {
+        parts.push(piece.value);
+      }
+    }
+  };
 
   // Links come first, and references are only looked for in what is left
   // over. A bech32 reference can sit inside a URL's path — a link to a live
@@ -163,7 +181,7 @@ const RichText: React.FC<RichTextProps> = ({
     const regex = new RegExp(REF_REGEX);
 
     while ((match = regex.exec(text)) !== null) {
-      if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
+      if (match.index > lastIndex) pushText(text.slice(lastIndex, match.index));
 
       const ref = match[0];
       const lower = bareRef(ref).toLowerCase();
@@ -201,7 +219,7 @@ const RichText: React.FC<RichTextProps> = ({
       lastIndex = match.index + ref.length;
     }
 
-    if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+    if (lastIndex < text.length) pushText(text.slice(lastIndex));
   }
 
   pushLinksAndHashtags(content);

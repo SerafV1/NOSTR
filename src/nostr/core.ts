@@ -11,6 +11,7 @@ import { NostrCrypto, CredentialManager, ExtensionManager } from './crypto';
 import { getRelayPool } from './relay';
 import { bunkerSignEvent } from './bunker';
 import { isEffectivelyLive } from '../utils/liveStream';
+import { customEmojiMap } from '../utils/customEmoji';
 
 /**
  * Core NOSTR protocol operations
@@ -243,8 +244,12 @@ export class NostrCore {
   private static mergeMetadataEvents(pubkey: string, events: NostrEventSigned[]): UserProfile {
     const sorted = [...events].sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
     const merged: Record<string, unknown> = {};
+    // A name may be written as :shortcode:, with the picture named in the
+    // metadata event's own tags (NIP-30)
+    let emojis: Record<string, string> = {};
 
     for (const event of sorted) {
+      emojis = { ...emojis, ...customEmojiMap(event.tags) };
       try {
         const data = JSON.parse(event.content) as Record<string, unknown>;
         for (const [key, value] of Object.entries(data)) {
@@ -257,7 +262,7 @@ export class NostrCore {
       }
     }
 
-    return { ...merged, pubkey } as UserProfile;
+    return { ...merged, pubkey, emojis } as UserProfile;
   }
 
   /**

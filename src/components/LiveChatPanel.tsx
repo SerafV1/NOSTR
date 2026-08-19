@@ -9,6 +9,7 @@ import ZapButton from './ZapButton';
 import { ZapIcon } from './Icons';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 import LiveChatReactions, { ReactionTally } from './LiveChatReactions';
+import EmojiText from './EmojiText';
 
 /**
  * NIP-25 reactions carry '+' for a like and '-' for a dislike rather than an
@@ -351,7 +352,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                 <div className="live-chat-message-body">
                   <span className="live-chat-zap-line">
                     <button className="live-chat-author" onClick={() => author && onNavigateToProfile(author)}>
-                      {name}
+                      <EmojiText text={name} emojis={profile?.emojis} />
                     </button>
                     {' zapped '}
                     {/* Not always the streamer — anyone in the chat can be
@@ -359,7 +360,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                     {recipient && recipient !== author && (
                       <>
                         <button className="live-chat-author" onClick={() => onNavigateToProfile(recipient)}>
-                          {recipientName}
+                          <EmojiText text={recipientName} emojis={recipientProfile?.emojis} />
                         </button>
                         {' '}
                       </>
@@ -388,7 +389,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
               <div className="live-chat-message-body">
                 <span className="live-chat-message-head">
                   <button className="live-chat-author" onClick={() => author && onNavigateToProfile(author)}>
-                    {name}
+                    <EmojiText text={name} emojis={profile?.emojis} />
                   </button>
                   {/* Tipping whoever said something, not just the host.
                       Only offered when they publish a Lightning address. */}
@@ -397,6 +398,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                       lud16={profile.lud16}
                       recipientPubkey={author || undefined}
                       recipientName={name}
+                      recipientEmojis={profile.emojis}
                       recipientPicture={profile.picture}
                       eventId={event.id}
                       eventAddress={address}
@@ -411,6 +413,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                   <RichText
                     inlineImages
                     content={event.content}
+                    eventTags={event.tags}
                     onNavigateToProfile={onNavigateToProfile}
                     onNavigateToNote={onNavigateToNote}
                     onNavigateToTopic={onNavigateToTopic}

@@ -45,6 +45,8 @@ export interface UserProfile {
   banner?: string;
   display_name?: string;
   lud16?: string;
+  /** NIP-30 shortcode → picture, from the metadata event's `emoji` tags */
+  emojis?: Record<string, string>;
 }
 
 export interface EventWithMetadata extends NostrEventSigned {

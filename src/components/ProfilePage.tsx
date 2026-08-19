@@ -9,6 +9,7 @@ import EventCard from './EventCard';
 import QuotedNoteCard from './QuotedNoteCard';
 import EditProfileForm from './EditProfileForm';
 import ZapButton from './ZapButton';
+import EmojiText from './EmojiText';
 import { ZapIcon, MessageIcon, CopyIcon, CheckIcon } from './Icons';
 
 interface MediaThumbnail {
@@ -498,6 +499,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                       lud16={profile.lud16}
                       recipientPubkey={pubkey}
                       recipientName={displayName}
+                      recipientEmojis={profile.emojis}
                       recipientPicture={profile.picture}
                       triggerClassName="btn btn-secondary btn-small btn-with-icon"
                     >
@@ -517,7 +519,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
             </div>
 
             <div className="profile-info">
-              <h1 className="profile-name">{displayName}</h1>
+              <h1 className="profile-name">
+                <EmojiText text={displayName} emojis={profile.emojis} />
+              </h1>
               {profile.nip05 && <p className="profile-nip05">{profile.nip05}</p>}
               <p className="profile-handle">
                 {formatAddress(npubHandle)}

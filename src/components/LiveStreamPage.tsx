@@ -7,6 +7,7 @@ import LiveVideoPlayer from './LiveVideoPlayer';
 import LiveChatPanel, { PresentPerson } from './LiveChatPanel';
 import ZapButton from './ZapButton';
 import RichText from './RichText';
+import EmojiText from './EmojiText';
 import { ZapIcon } from './Icons';
 
 interface LiveStreamPageProps {
@@ -133,7 +134,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                 ) : (
                   <div className="live-stream-host-avatar-placeholder">{hostName.charAt(0).toUpperCase()}</div>
                 )}
-                <span>{hostName}</span>
+                <span><EmojiText text={hostName} emojis={profile?.emojis} /></span>
               </button>
 
               {/* Zapping the host is the usual way to tip a stream. Only
@@ -144,6 +145,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                   lud16={profile.lud16}
                   recipientPubkey={stream.hostPubkey}
                   recipientName={hostName}
+                  recipientEmojis={profile.emojis}
                   recipientPicture={profile.picture}
                   eventAddress={address}
                   triggerClassName="btn btn-secondary btn-small btn-with-icon"

@@ -20,6 +20,8 @@ import QuotedNoteCard from './QuotedNoteCard';
 import LinkPreviewCard from './LinkPreviewCard';
 import EmojiPicker from './EmojiPicker';
 import ZapButton from './ZapButton';
+import EmojiText from './EmojiText';
+import { customEmojiMap, splitCustomEmoji } from '../utils/customEmoji';
 import { ReplyIcon, RepostIcon, HeartIcon, ZapIcon, PersonIcon } from './Icons';
 
 interface EventCardProps {
@@ -270,6 +272,15 @@ const EventCard: React.FC<EventCardProps> = ({
   };
 
   const renderContentWithMentions = (content: string) => {
+    // The note may define its own emoji (NIP-30), written as :shortcode:
+    const emojis = customEmojiMap(event.tags);
+    const asEmojiParts = (text: string, keyBase: string): React.ReactNode[] =>
+      splitCustomEmoji(text, emojis).map((piece, index) => (
+        piece.type === 'emoji'
+          ? <img key={`${keyBase}-${index}`} src={piece.url} alt={`:${piece.value}:`} className="custom-emoji" />
+          : <React.Fragment key={`${keyBase}-${index}`}>{piece.value}</React.Fragment>
+      ));
+
     const parts: (string | React.ReactNode)[] = [];
     let lastIndex = 0;
     let keyIndex = 0;
@@ -345,7 +356,7 @@ const EventCard: React.FC<EventCardProps> = ({
       }
       splitContentTokens(part).forEach((piece, pieceIndex) => {
         if (piece.type === 'text') {
-          withLinks.push(piece.value);
+          withLinks.push(...asEmojiParts(piece.value, `text-${partIndex}-${pieceIndex}`));
         } else if (piece.type === 'hashtag') {
           withLinks.push(
             <button
@@ -492,7 +503,7 @@ const EventCard: React.FC<EventCardProps> = ({
                 className="author-name"
                 onClick={() => onNavigateToProfile(event.pubkey)}
               >
-                {displayName}
+                <EmojiText text={displayName} emojis={profile?.emojis} />
               </button>
             </ProfileHoverCard>
             <div className="author-handle">
@@ -768,6 +779,7 @@ const EventCard: React.FC<EventCardProps> = ({
           lud16={profile?.lud16}
           recipientPubkey={event.pubkey}
           recipientName={displayName}
+          recipientEmojis={profile?.emojis}
           recipientPicture={profile?.picture}
           eventId={event.id}
           triggerClassName="action-btn"

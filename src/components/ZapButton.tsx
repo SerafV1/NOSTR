@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { resolveLnurlInvoice, payWithWebln } from '../utils/zap';
 import { NostrCore } from '../nostr/core';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
+import EmojiText from './EmojiText';
 
 interface ZapButtonProps {
   lud16?: string;
@@ -16,6 +17,8 @@ interface ZapButtonProps {
   /** Shown in the menu, so it is clear who the sats are going to */
   recipientName?: string;
   recipientPicture?: string;
+  /** Their name may be written with NIP-30 emoji */
+  recipientEmojis?: Record<string, string>;
 }
 
 
@@ -36,7 +39,8 @@ const ZapButton: React.FC<ZapButtonProps> = ({
   eventId,
   eventAddress,
   recipientName,
-  recipientPicture
+  recipientPicture,
+  recipientEmojis
 }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [customAmount, setCustomAmount] = useState('');
@@ -157,7 +161,12 @@ const ZapButton: React.FC<ZapButtonProps> = ({
                       {(recipientName || '?').charAt(0).toUpperCase()}
                     </div>
                   )}
-                  <span>Zap <strong>{recipientName || 'this user'}</strong></span>
+                  <span>
+                    Zap{' '}
+                    <strong>
+                      <EmojiText text={recipientName || 'this user'} emojis={recipientEmojis} />
+                    </strong>
+                  </span>
                 </div>
               )}
               <div className="zap-amounts">
