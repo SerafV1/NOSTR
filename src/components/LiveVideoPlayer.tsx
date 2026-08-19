@@ -1,6 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type Hls from 'hls.js';
 
+interface QualityLevel {
+  /** Index into hls.js's own level list */
+  index: number;
+  label: string;
+}
+
 interface LiveVideoPlayerProps {
   src: string;
   className?: string;
@@ -20,6 +26,12 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
   // Bumping this remounts a brand-new <video> DOM node (via the key prop
   // below), used only as a last resort once hls.js's own recovery gives up.
   const [reinitKey, setReinitKey] = useState(0);
+  // What the stream offers, and which one is being watched. -1 is hls.js's
+  // own "auto": it picks by measured bandwidth, which is right until someone
+  // wants to force a quality.
+  const [levels, setLevels] = useState<QualityLevel[]>([]);
+  const [currentLevel, setCurrentLevel] = useState(-1);
+  const hlsRef = useRef<Hls | null>(null);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -73,7 +85,17 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
       });
       hls.loadSource(src);
       hls.attachMedia(video);
+      hlsRef.current = hls;
       hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+        // Named by height where the stream says one — "720p" is what people
+        // look for — and by bitrate for the audio-only or unlabelled rungs
+        setLevels(data.levels.map((level, index) => ({
+          index,
+          label: level.height
+            ? `${level.height}p`
+            : `${Math.round((level.bitrate || 0) / 1000)}kbps`
+        })));
+        setCurrentLevel(hls?.currentLevel ?? -1);
         console.log('[LiveVideoPlayer] Codecs reported by manifest:', data.levels.map(l => ({
           videoCodec: l.videoCodec,
           audioCodec: l.audioCodec,
@@ -134,6 +156,8 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
     return () => {
       cancelled = true;
       clearTimeout(slowTimer);
+      hlsRef.current = null;
+      setLevels([]);
       hls?.destroy();
     };
   }, [src, reinitKey]);
@@ -153,6 +177,24 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
           Connecting to stream…
           {slow && <span className="live-video-buffering-hint"> This is taking a while — the broadcaster may not actually be live.</span>}
         </div>
+      )}
+      {/* Only worth showing when the stream actually offers a choice */}
+      {levels.length > 1 && (
+        <select
+          className="live-video-quality"
+          value={currentLevel}
+          title="Picture quality"
+          onChange={(e) => {
+            const chosen = Number(e.target.value);
+            setCurrentLevel(chosen);
+            if (hlsRef.current) hlsRef.current.currentLevel = chosen;
+          }}
+        >
+          <option value={-1}>Auto</option>
+          {levels.map(level => (
+            <option key={level.index} value={level.index}>{level.label}</option>
+          ))}
+        </select>
       )}
       <video
         key={reinitKey}

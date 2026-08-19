@@ -19,6 +19,7 @@ import LinkPreviewCard from './LinkPreviewCard';
 import VideoPlayer from './VideoPlayer';
 import EmojiPicker from './EmojiPicker';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
+import { detectMentionTrigger } from '../utils/mentions';
 import { PollIcon, PersonIcon, ZapIcon, ImageIcon } from './Icons';
 
 const MAX_POLL_OPTIONS = 4;
@@ -97,18 +98,6 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
   };
 
   // Look backward from the cursor for an active "@query" being typed —
-  // it must start at the beginning of the text or right after whitespace,
-  // and contain no whitespace itself, otherwise we're not mentioning anyone
-  const detectMentionTrigger = (text: string, cursor: number) => {
-    const uptoCursor = text.slice(0, cursor);
-    const at = uptoCursor.lastIndexOf('@');
-    if (at === -1) return null;
-    if (at > 0 && !/\s/.test(uptoCursor[at - 1])) return null;
-    const query = uptoCursor.slice(at + 1);
-    if (/\s/.test(query)) return null;
-    return { start: at, query };
-  };
-
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newContent = e.target.value;
     updateContent(newContent);

@@ -4,7 +4,8 @@ import { NostrCore } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
 import RichText from './RichText';
 import { formatAddress } from '../utils/helpers';
-import { resolveMentionHandles, handleFromName } from '../utils/mentions';
+import { resolveMentionHandles, handleFromName, detectMentionTrigger } from '../utils/mentions';
+import { EventCache } from '../nostr/core';
 import EmojiPicker from './EmojiPicker';
 import ZapButton from './ZapButton';
 import { ZapIcon } from './Icons';
@@ -89,6 +90,10 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   // sent, the same way the compose box does it — the chat shows "@Name",
   // the published message carries the reference
   const mentions = useRef<Map<string, string>>(new Map());
+  // Typing "@" offers people to tag, the same as the compose box
+  const [mentionStart, setMentionStart] = useState<number | null>(null);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<UserProfile[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const profilesRef = useRef<Map<string, UserProfile>>(new Map());
@@ -255,6 +260,60 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     });
   };
 
+  // Whoever is in this chat first — they are who you are most likely
+  // answering — then anyone else the client knows, then the relays
+  useEffect(() => {
+    if (mentionStart === null) return;
+
+    const query = mentionQuery.toLowerCase();
+    const matches = (profile: UserProfile) =>
+      [profile.name, profile.display_name, profile.nip05]
+        .filter(Boolean).join(' ').toLowerCase().includes(query);
+
+    const here = Array.from(profiles.values()).filter(matches);
+    const known = EventCache.getAllProfiles().filter(
+      p => matches(p) && !here.some(inChat => inChat.pubkey === p.pubkey)
+    );
+    setSuggestions([...here, ...known].slice(0, 5));
+
+    if (!mentionQuery.trim()) return;
+    const timer = setTimeout(async () => {
+      try {
+        const results = await NostrCore.searchProfiles(mentionQuery.trim(), 5);
+        if (results.length) setSuggestions(current => (current.length ? current : results));
+      } catch (error) {
+        console.error('Failed to load mention suggestions:', error);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mentionQuery, mentionStart]);
+
+  const closeSuggestions = () => {
+    setMentionStart(null);
+    setMentionQuery('');
+    setSuggestions([]);
+  };
+
+  const chooseSuggestion = (profile: UserProfile) => {
+    if (mentionStart === null) return;
+    const cursor = inputRef.current?.selectionStart ?? input.length;
+    const handle = handleFromName(
+      profile.name || profile.display_name || profile.nip05 || '',
+      formatAddress(profile.pubkey)
+    );
+    const text = `@${handle} `;
+    setInput(input.slice(0, mentionStart) + text + input.slice(cursor));
+    mentions.current.set(handle, profile.pubkey);
+    closeSuggestions();
+
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      const at = mentionStart + text.length;
+      inputRef.current?.setSelectionRange(at, at);
+    });
+  };
+
   const tagAuthor = (author: string, name: string) => {
     const handle = handleFromName(name, formatAddress(author));
     mentions.current.set(handle, author);
@@ -278,6 +337,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
       if (sent) {
         setInput('');
         mentions.current.clear();
+        closeSuggestions();
         setMessages(prev => (prev.some(m => m.id === sent.id) ? prev : [...prev, sent]));
       } else {
         alert('Message was not accepted by any relay — check your connection');
@@ -512,6 +572,33 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
         })}
       </div>
 
+      {mentionStart !== null && suggestions.length > 0 && (
+        <div className="live-chat-suggestions">
+          {suggestions.map(profile => (
+            <button
+              key={profile.pubkey}
+              type="button"
+              className="suggestion-item"
+              onClick={() => chooseSuggestion(profile)}
+            >
+              {profile.picture ? (
+                <img src={profile.picture} alt="" className="suggestion-avatar" />
+              ) : (
+                <span className="suggestion-avatar-placeholder">
+                  {(profile.display_name || profile.name || '?').charAt(0).toUpperCase()}
+                </span>
+              )}
+              <span>
+                <EmojiText
+                  text={profile.display_name || profile.name || formatAddress(profile.pubkey)}
+                  emojis={profile.emojis}
+                />
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {!hideComposer && <form className="live-chat-input-row" onSubmit={handleSend}>
         <div className="live-chat-emoji-wrapper" ref={emoji.containerRef}>
           <button
@@ -543,7 +630,18 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
           className="live-chat-input"
           placeholder={isLoggedIn ? 'Send a message…' : 'Log in to chat'}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value;
+            setInput(value);
+            const trigger = detectMentionTrigger(value, e.target.selectionStart ?? value.length);
+            if (trigger) {
+              setMentionStart(trigger.start);
+              setMentionQuery(trigger.query);
+            } else {
+              closeSuggestions();
+            }
+          }}
+          onKeyDown={(e) => { if (e.key === 'Escape') closeSuggestions(); }}
           onFocus={() => setShowEmojiPicker(false)}
           disabled={!isLoggedIn || disabled || sending}
           maxLength={500}

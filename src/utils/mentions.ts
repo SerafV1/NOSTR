@@ -35,6 +35,26 @@ export function resolveMentionHandles(
 }
 
 /**
+ * Where an "@query" being typed starts, and what has been typed so far.
+ *
+ * It counts only at the start of the text or right after whitespace, and may
+ * not contain whitespace itself — otherwise an email address, or a sentence
+ * that happens to contain an @, would open the suggestion list.
+ */
+export function detectMentionTrigger(
+  text: string,
+  cursor: number
+): { start: number; query: string } | null {
+  const uptoCursor = text.slice(0, cursor);
+  const at = uptoCursor.lastIndexOf('@');
+  if (at === -1) return null;
+  if (at > 0 && !/\s/.test(uptoCursor[at - 1])) return null;
+  const query = uptoCursor.slice(at + 1);
+  if (/\s/.test(query)) return null;
+  return { start: at, query };
+}
+
+/**
  * The handle to show for a name: its first word, stripped of anything that
  * would not survive being read back out of the text.
  */
