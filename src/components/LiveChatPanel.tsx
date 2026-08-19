@@ -53,6 +53,8 @@ interface LiveChatPanelProps {
   relaysConnected?: boolean;
   /** Given only where a second window makes sense — not in that window itself */
   onPopOut?: () => void;
+  /** Drop the message box: nobody can type into a stream overlay */
+  hideComposer?: boolean;
   /**
    * Who is present, most recently heard from first. Nobody publishes a
    * viewer list — a live event carries one 'p' tag, the host — so the people
@@ -67,7 +69,7 @@ export interface PresentPerson {
   picture?: string;
 }
 
-const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, onPeoplePresent }) => {
+const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, onPeoplePresent, hideComposer }) => {
   const [messages, setMessages] = useState<NostrEventSigned[]>([]);
   const [zaps, setZaps] = useState<NostrEventSigned[]>([]);
   const [reactions, setReactions] = useState<NostrEventSigned[]>([]);
@@ -127,6 +129,10 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
           // A zap receipt is signed by the wallet, so the person to name
           // and to look up is the one inside the zap request it carries
           const isZap = event.kind === EVENT_KINDS.ZAP_RECEIPT;
+          // A receipt with no invoice and no request behind it has nothing
+          // to say — see NostrCore.zapIsShowable
+          if (isZap && !NostrCore.zapIsShowable(event)) return;
+
           const author = isZap ? NostrCore.zapSenderPubkey(event) : event.pubkey;
           const recipient = isZap ? NostrCore.zapRecipientPubkey(event) : null;
 
@@ -430,7 +436,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
         })}
       </div>
 
-      <form className="live-chat-input-row" onSubmit={handleSend}>
+      {!hideComposer && <form className="live-chat-input-row" onSubmit={handleSend}>
         <div className="live-chat-emoji-wrapper" ref={emoji.containerRef}>
           <button
             ref={emoji.triggerRef}
@@ -473,7 +479,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
         >
           Send
         </button>
-      </form>
+      </form>}
     </div>
   );
 };

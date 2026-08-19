@@ -209,6 +209,14 @@ function App() {
   // take up room it doesn't have
   const poppedOutChat = /^\/live\/[^/]+\/chat$/.test(location.pathname);
 
+  // Watching a stream and reading its chat needs no account, and demanding
+  // one made the popped-out chat useless as an OBS browser source: OBS opens
+  // the page in a browser of its own, with none of this browser's storage, so
+  // it only ever saw the login screen. Writing still asks for a login, in the
+  // chat box itself.
+  const publicPage = /^\/live(\/|$)/.test(location.pathname);
+  const browsingAnonymously = !isLoggedIn && publicPage;
+
   // Show a "back to top" button once the page content is scrolled down a
   // bit — .app-main is the actual scrolling element (the window itself
   // never scrolls, .app is pinned to 100vh), so the listener has to live
@@ -281,8 +289,10 @@ function App() {
       console.log(`[App] Relay initialization complete: ${actualConnected}/${allRelayUrls.length} connected`);
     };
 
-    if (isLoggedIn) {
-      console.log('[App] User logged in, initializing relays');
+    // Anonymous visitors need the relays too — that is where the stream and
+    // its chat come from
+    if (isLoggedIn || browsingAnonymously) {
+      console.log('[App] Initializing relays');
       initializeRelays();
     }
 
@@ -290,7 +300,7 @@ function App() {
       // Cleanup on unmount
       // getRelayPool().closeAll();
     };
-  }, [isLoggedIn]);
+  }, [isLoggedIn, browsingAnonymously]);
 
   // Background tabs get their relay WebSockets closed/throttled by the
   // browser. Without this, returning to the tab shows a stale "N new
@@ -450,7 +460,7 @@ function App() {
     navigate(recipient ? `/messages/${encodeNpubParam(recipient)}` : '/messages');
   };
 
-  if (!isLoggedIn) {
+  if (!isLoggedIn && !publicPage) {
     return <LoginPage onLogin={handleLogin} />;
   }
 
@@ -485,12 +495,17 @@ function App() {
             )}
           </button>
           <nav className={`header-nav ${navOpen ? 'open' : ''}`}>
-            <Link to="/" className={`nav-btn ${location.pathname === '/' ? 'active' : ''}`}>
-              Home
-            </Link>
+            {/* Everything but Live wants an account, so without one they are
+                links to the login screen and nothing more */}
+            {!browsingAnonymously && (
+              <Link to="/" className={`nav-btn ${location.pathname === '/' ? 'active' : ''}`}>
+                Home
+              </Link>
+            )}
             <Link to="/live" className={`nav-btn ${location.pathname.startsWith('/live') ? 'active' : ''}`}>
               Live
             </Link>
+            {!browsingAnonymously && <>
             <Link to="/search" className={`nav-btn ${location.pathname === '/search' ? 'active' : ''}`}>
               Search
             </Link>
@@ -518,24 +533,31 @@ function App() {
             >
               <SettingsIcon /> Settings
             </Link>
+            </>}
           </nav>
           <div className="header-right">
-            <Link
-              to={`/p/${encodeNpubParam(publicKey)}`}
-              className={`header-avatar-link ${location.pathname.startsWith('/p/') ? 'active' : ''}`}
-              title="Your profile"
-            >
-              {ownProfile?.picture ? (
-                <img src={ownProfile.picture} alt="" className="header-avatar" />
-              ) : (
-                <div className="header-avatar-placeholder">
-                  {(ownProfile?.display_name || ownProfile?.name || '?').charAt(0).toUpperCase()}
-                </div>
-              )}
-            </Link>
-            <button className="logout-btn" onClick={handleLogout}>
-              Logout
-            </button>
+            {browsingAnonymously ? (
+              <Link to="/" className="btn btn-primary btn-small">Log in</Link>
+            ) : (
+              <>
+                <Link
+                  to={`/p/${encodeNpubParam(publicKey)}`}
+                  className={`header-avatar-link ${location.pathname.startsWith('/p/') ? 'active' : ''}`}
+                  title="Your profile"
+                >
+                  {ownProfile?.picture ? (
+                    <img src={ownProfile.picture} alt="" className="header-avatar" />
+                  ) : (
+                    <div className="header-avatar-placeholder">
+                      {(ownProfile?.display_name || ownProfile?.name || '?').charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                </Link>
+                <button className="logout-btn" onClick={handleLogout}>
+                  Logout
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>}

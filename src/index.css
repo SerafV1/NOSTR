@@ -5554,6 +5554,26 @@ a.capability-indicator.paid:hover {
   padding: 0;
 }
 
+/* ?transparent=1 — for laying the chat over the video in a stream overlay.
+   OBS composites whatever the page leaves transparent, so the background has
+   to be cleared all the way up: the panel, the page and the body behind it. */
+.live-chat-page.transparent,
+.live-chat-page.transparent .live-chat-panel,
+body:has(.live-chat-page.transparent) {
+  background: transparent;
+  border: none;
+}
+
+/* Text over a moving picture needs its own contrast */
+.live-chat-page.transparent .live-chat-message,
+.live-chat-page.transparent .live-chat-zap {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.live-chat-page.transparent .live-chat-header {
+  display: none;
+}
+
 .live-chat-page .live-chat-panel {
   width: 100%;
   height: 100vh;
