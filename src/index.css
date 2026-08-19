@@ -3611,6 +3611,13 @@ button.poll-option-vote:disabled {
   background: var(--primary-color);
 }
 
+/* Same for the stub between a post and the reply below it: it belongs to
+   both ends, so either one being hovered lights it */
+.note-parent-context .event-card:hover + .note-parent-connector,
+.note-thread:has(.thread-focus .event-card:hover) .note-parent-context > .note-parent-connector:last-child {
+  background: var(--primary-color);
+}
+
 /* A thread is three things at once: what came before, the note that was
    opened, and what came after. Flat and identical, they read as one list of
    unrelated posts — so the context above is set smaller and dimmer, the note
