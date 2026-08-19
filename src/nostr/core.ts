@@ -1143,7 +1143,9 @@ export class NostrCore {
   static async publishLiveChatMessage(
     address: string,
     relayHint: string | undefined,
-    content: string
+    content: string,
+    /** Anyone tagged in the message — without a 'p' tag they never hear of it */
+    mentioned: string[] = []
   ): Promise<NostrEventSigned | null> {
     if (!CredentialManager.canSign()) {
       console.error('No signing method available');
@@ -1153,7 +1155,10 @@ export class NostrCore {
     const event: NostrEvent = {
       kind: EVENT_KINDS.LIVE_CHAT_MESSAGE,
       content,
-      tags: [['a', address, relayHint || '', 'root']]
+      tags: [
+        ['a', address, relayHint || '', 'root'],
+        ...Array.from(new Set(mentioned)).map(pubkey => ['p', pubkey])
+      ]
     };
 
     try {

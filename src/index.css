@@ -4843,6 +4843,34 @@ a.capability-indicator.paid:hover {
   gap: var(--spacing-xs);
 }
 
+.live-chat-tag-btn {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.live-chat-message:hover .live-chat-tag-btn,
+.live-chat-tag-btn:focus-visible {
+  opacity: 1;
+}
+
+.live-chat-tag-btn:hover {
+  color: var(--primary-color);
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .live-chat-tag-btn {
+    opacity: 0.7;
+  }
+}
+
 .live-chat-zap-btn {
   background: none;
   border: none;
@@ -4871,7 +4899,35 @@ a.capability-indicator.paid:hover {
 
 /* No hover on a touchscreen, so it simply stays visible there */
 @media (hover: none) {
-  .live-chat-zap-btn {
+  .live-chat-tag-btn {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.live-chat-message:hover .live-chat-tag-btn,
+.live-chat-tag-btn:focus-visible {
+  opacity: 1;
+}
+
+.live-chat-tag-btn:hover {
+  color: var(--primary-color);
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .live-chat-tag-btn {
+    opacity: 0.7;
+  }
+}
+
+.live-chat-zap-btn {
     opacity: 0.7;
   }
 }

@@ -4,6 +4,7 @@ import { NostrCore } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
 import RichText from './RichText';
 import { formatAddress } from '../utils/helpers';
+import { resolveMentionHandles, handleFromName } from '../utils/mentions';
 import EmojiPicker from './EmojiPicker';
 import ZapButton from './ZapButton';
 import { ZapIcon } from './Icons';
@@ -84,6 +85,10 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   const [sending, setSending] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [obsLinkCopied, setObsLinkCopied] = useState(false);
+  // Handles typed into the box stand in for pubkeys until the message is
+  // sent, the same way the compose box does it — the chat shows "@Name",
+  // the published message carries the reference
+  const mentions = useRef<Map<string, string>>(new Map());
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const profilesRef = useRef<Map<string, UserProfile>>(new Map());
@@ -250,6 +255,17 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     });
   };
 
+  const tagAuthor = (author: string, name: string) => {
+    const handle = handleFromName(name, formatAddress(author));
+    mentions.current.set(handle, author);
+    setInput(current => {
+      const spaced = current && !current.endsWith(' ') ? `${current} ` : current;
+      return `${spaced}@${handle} `;
+    });
+    inputRef.current?.focus();
+  };
+
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     const content = input.trim();
@@ -257,9 +273,11 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
 
     setSending(true);
     try {
-      const sent = await NostrCore.publishLiveChatMessage(address, relayHint, content);
+      const { content: resolved, mentioned } = resolveMentionHandles(content, mentions.current);
+      const sent = await NostrCore.publishLiveChatMessage(address, relayHint, resolved, mentioned);
       if (sent) {
         setInput('');
+        mentions.current.clear();
         setMessages(prev => (prev.some(m => m.id === sent.id) ? prev : [...prev, sent]));
       } else {
         alert('Message was not accepted by any relay — check your connection');
@@ -443,6 +461,18 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                   <button className="live-chat-author" onClick={() => author && onNavigateToProfile(author)}>
                     <EmojiText text={name} emojis={profile?.emojis} />
                   </button>
+                  {/* Answering someone by name, without hunting for it */}
+                  {isLoggedIn && !disabled && author && (
+                    <button
+                      type="button"
+                      className="live-chat-tag-btn"
+                      title={`Tag ${name}`}
+                      onClick={() => tagAuthor(author, name)}
+                    >
+                      @
+                    </button>
+                  )}
+
                   {/* Tipping whoever said something, not just the host.
                       Only offered when they publish a Lightning address. */}
                   {profile?.lud16 && (
