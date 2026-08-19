@@ -57,6 +57,9 @@ interface LiveChatPanelProps {
   hideComposer?: boolean;
   /** Offer this address for copying — the chat as an OBS browser source */
   obsLink?: string;
+  /** Overlay preview: given only where the choice is the viewer's to make */
+  transparent?: boolean;
+  onTransparentChange?: (on: boolean) => void;
   /**
    * Who is present, most recently heard from first. Nobody publishes a
    * viewer list — a live event carries one 'p' tag, the host — so the people
@@ -71,7 +74,7 @@ export interface PresentPerson {
   picture?: string;
 }
 
-const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, onPeoplePresent, hideComposer, obsLink }) => {
+const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, onPeoplePresent, hideComposer, obsLink, transparent, onTransparentChange }) => {
   const [messages, setMessages] = useState<NostrEventSigned[]>([]);
   const [zaps, setZaps] = useState<NostrEventSigned[]>([]);
   const [reactions, setReactions] = useState<NostrEventSigned[]>([]);
@@ -319,8 +322,21 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     <div className="live-chat-panel">
       <div className="live-chat-header">
         <span>Stream Chat</span>
-        {/* The address for OBS is this window's own, plus the flag that
-            clears the background — nowhere else to read it off */}
+        {/* Shows what an OBS source would look like, and decides what the
+            copied address says */}
+        {onTransparentChange && (
+          <label className="live-chat-transparent-toggle" title="Preview the chat with no background, for laying over the video">
+            <input
+              type="checkbox"
+              checked={!!transparent}
+              onChange={(e) => onTransparentChange(e.target.checked)}
+            />
+            Transparent
+          </label>
+        )}
+
+        {/* The address for OBS is this window's own, plus whichever
+            background was chosen — nowhere else to read it off */}
         {obsLink && (
           <button
             type="button"

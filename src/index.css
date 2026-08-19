@@ -5555,11 +5555,16 @@ a.capability-indicator.paid:hover {
 }
 
 /* ?transparent=1 — for laying the chat over the video in a stream overlay.
-   OBS composites whatever the page leaves transparent, so the background has
-   to be cleared all the way up: the panel, the page and the body behind it. */
-.live-chat-page.transparent,
-.live-chat-page.transparent .live-chat-panel,
-body:has(.live-chat-page.transparent) {
+   OBS composites whatever the page leaves transparent, and the page paints on
+   several layers, so all of them have to be cleared: it is the opaque one
+   nobody thought about that shows up as a rectangle on the stream. */
+.chat-overlay,
+.chat-overlay body,
+.chat-overlay #root,
+.chat-overlay .app,
+.chat-overlay .app-main,
+.chat-overlay .live-chat-page,
+.chat-overlay .live-chat-panel {
   background: transparent;
   border: none;
 }
@@ -5570,8 +5575,32 @@ body:has(.live-chat-page.transparent) {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 
-.live-chat-page.transparent .live-chat-header {
+/* Only in the window OBS loads: in the streamer's own window the header
+   carries the controls, so it stays even with the background cleared */
+.live-chat-page.overlay-source .live-chat-header {
   display: none;
+}
+
+.live-chat-transparent-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.live-chat-transparent-toggle input {
+  cursor: pointer;
+  margin: 0;
+}
+
+/* With the toggle taking the free space, the link button sits next to it */
+.live-chat-transparent-toggle ~ .live-chat-obs-btn {
+  margin-left: 0;
 }
 
 .live-chat-page .live-chat-panel {
