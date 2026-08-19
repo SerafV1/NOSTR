@@ -3589,6 +3589,81 @@ button.poll-option-vote:disabled {
   border-bottom: 1px solid var(--border-color);
 }
 
+/* A thread is three things at once: what came before, the note that was
+   opened, and what came after. Flat and identical, they read as one list of
+   unrelated posts — so the context above is set smaller and dimmer, the note
+   itself keeps full size, and the replies below are indented under it. */
+.note-parent-context .event-card {
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--dark-bg);
+}
+
+.note-parent-context .event-content,
+.note-parent-context .author-name {
+  font-size: 0.9rem;
+}
+
+.note-parent-context .author-avatar,
+.note-parent-context .author-avatar-placeholder {
+  width: 36px;
+  height: 36px;
+}
+
+.thread-focus .event-card {
+  background: var(--light-bg);
+  border-left: 3px solid var(--primary-color);
+}
+
+/* Indented, with the line that ties them to the note they answer */
+.thread-reply {
+  position: relative;
+  padding-left: var(--spacing-lg);
+  background: var(--light-bg);
+}
+
+.thread-reply::before {
+  content: '';
+  position: absolute;
+  left: var(--spacing-md);
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border-color);
+}
+
+.thread-reply .event-card {
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.thread-reply .event-content,
+.thread-reply .author-name {
+  font-size: 0.92rem;
+}
+
+.thread-reply .author-avatar,
+.thread-reply .author-avatar-placeholder {
+  width: 38px;
+  height: 38px;
+}
+
+/* The rounded corner belongs to the thread, not to the card inside it */
+.note-thread > .thread-reply:last-child .event-card {
+  border-bottom: none;
+  border-bottom-left-radius: var(--border-radius);
+  border-bottom-right-radius: var(--border-radius);
+}
+
+/* On a phone the indent has to give way to the text */
+@media (max-width: 768px) {
+  .thread-reply {
+    padding-left: var(--spacing-sm);
+  }
+
+  .thread-reply::before {
+    left: 2px;
+  }
+}
+
 /* Settings Page */
 .settings-page {
   width: 100%;

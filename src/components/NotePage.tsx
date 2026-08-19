@@ -183,25 +183,30 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
                 ))}
               </div>
             )}
-            <EventCard
-              event={note}
-              onNavigateToProfile={onNavigateToProfile}
-              onNavigateToNote={onNavigateToNote}
-              onNavigateToTopic={onNavigateToTopic}
-              onRefresh={() => loadNote(true)}
-            />
+            {/* The one that was opened — the rest of the thread is context
+                around it, so it is the only part shown at full size */}
+            <div className="thread-focus">
+              <EventCard
+                event={note}
+                onNavigateToProfile={onNavigateToProfile}
+                onNavigateToNote={onNavigateToNote}
+                onNavigateToTopic={onNavigateToTopic}
+                onRefresh={() => loadNote(true)}
+              />
+            </div>
 
             {directReplies.length > 0 && (
               <>
                 <div className="thread-divider">Replies</div>
                 {directReplies.map(reply => (
-                  <EventCard
-                    key={reply.id}
-                    event={reply}
-                    onNavigateToProfile={onNavigateToProfile}
-                    onNavigateToNote={onNavigateToNote}
-                    onNavigateToTopic={onNavigateToTopic}
-                  />
+                  <div className="thread-reply" key={reply.id}>
+                    <EventCard
+                      event={reply}
+                      onNavigateToProfile={onNavigateToProfile}
+                      onNavigateToNote={onNavigateToNote}
+                      onNavigateToTopic={onNavigateToTopic}
+                    />
+                  </div>
                 ))}
               </>
             )}
