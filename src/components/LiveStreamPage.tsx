@@ -212,10 +212,10 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                 <button
                   type="button"
                   className="btn btn-secondary btn-small live-stream-copy-link"
-                  title="Copy the address of this stream"
+                  title="Copy the address of this stream, to share with viewers"
                   onClick={() => copyLink(`${window.location.origin}/live/${naddrParam}`)}
                 >
-                  {copied ? '✓ Copied' : '🔗 Copy link'}
+                  {copied ? '✓ Copied' : '🔗 Copy stream link'}
                 </button>
               </div>
             )}
