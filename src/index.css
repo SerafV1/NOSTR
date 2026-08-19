@@ -3517,22 +3517,47 @@ button.poll-option-vote:disabled {
   max-width: 600px;
 }
 
+/* A pill rather than bare text: it is the only control on the page above the
+   thread, and as plain blue words it read as part of the post's own links */
 .back-btn {
-  background: none;
-  border: none;
-  color: var(--primary-color);
-  cursor: pointer;
-  font-size: 1rem;
-  padding: var(--spacing-md);
-  margin-bottom: var(--spacing-lg);
-  transition: color var(--transition);
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: var(--spacing-sm);
+  padding: 0.4rem 0.9rem 0.4rem 0.7rem;
+  margin-bottom: var(--spacing-lg);
+  background: var(--light-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
 }
 
 .back-btn:hover {
-  color: var(--secondary-color);
+  color: var(--text-primary);
+  border-color: var(--primary-color);
+  background: var(--dark-bg);
+}
+
+/* The arrow leads the eye out of the page, so it moves that way on hover */
+.back-btn-arrow {
+  display: inline-flex;
+  transition: transform 0.15s ease;
+}
+
+.back-btn:hover .back-btn-arrow {
+  transform: translateX(-2px);
+}
+
+.back-btn:active {
+  transform: scale(0.97);
+}
+
+.back-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 /* Thread — the post and its replies joined into one continuous block,
@@ -4250,16 +4275,33 @@ a.capability-indicator.paid:hover {
 }
 
 .thread-back-btn {
-  background: transparent;
-  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  background: var(--light-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 0.95rem;
-  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.3rem 0.75rem 0.3rem 0.6rem;
+  flex-shrink: 0;
+  transition: var(--transition);
 }
 
 .thread-back-btn:hover {
   color: var(--text-primary);
+  border-color: var(--primary-color);
+  background: var(--dark-bg);
+}
+
+.thread-back-btn:hover .back-btn-arrow {
+  transform: translateX(-2px);
+}
+
+.thread-back-btn:active {
+  transform: scale(0.97);
 }
 
 .thread-contact {

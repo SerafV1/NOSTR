@@ -147,11 +147,9 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
   return (
     <div className="note-page">
       <div className="note-container">
-        <button
-          className="back-btn"
-          onClick={onBack}
-        >
-          ← Back
+        <button className="back-btn" onClick={onBack}>
+          <span className="back-btn-arrow" aria-hidden="true">←</span>
+          Back
         </button>
 
         {(loading || (!relaysConnected && !note)) && (

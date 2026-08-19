@@ -135,7 +135,8 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
       <div className="messages-page">
         <div className="thread-header">
           <button className="thread-back-btn" onClick={() => setSelectedPubkey(null)}>
-            ← Back
+            <span className="back-btn-arrow" aria-hidden="true">←</span>
+            Back
           </button>
           <button className="thread-contact" onClick={() => onNavigateToProfile(selectedPubkey)}>
             {profile?.picture ? (
