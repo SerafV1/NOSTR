@@ -16,6 +16,7 @@ import { DirectMessageCore, DirectMessageStore } from './nostr/dm';
 import { NostrCore, EventCache } from './nostr/core';
 import { clearSession as clearBunkerSession, onSigningWait } from './nostr/bunker';
 import { UserProfile } from './types';
+import './fonts.css';
 import './index.css';
 import LoginPage from './components/LoginPage';
 import HomePage from './components/HomePage';

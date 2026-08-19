@@ -38,9 +38,13 @@ html, body, #root {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  /* Carlito for everyone, shipped with the app: metrically identical to
+     Calibri and open licensed, so every machine gets the same text rather
+     than Calibri on Windows and something else elsewhere. The rest of the
+     stack only matters while the font loads, or if it fails to. */
+  font-family: 'Carlito', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans',
+    'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: var(--dark-bg);
