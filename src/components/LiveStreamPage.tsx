@@ -8,7 +8,7 @@ import LiveChatPanel, { PresentPerson } from './LiveChatPanel';
 import ZapButton from './ZapButton';
 import RichText from './RichText';
 import EmojiText from './EmojiText';
-import { ZapIcon, PopOutIcon, CopyIcon, CheckIcon } from './Icons';
+import { ZapIcon, PopOutIcon } from './Icons';
 
 interface LiveStreamPageProps {
   kind: number;
@@ -28,7 +28,6 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   // it is about. Opening it over the page keeps the stream in view while
   // reading along, the way stream sites do it.
   const [chatOpen, setChatOpen] = useState(false);
-  const [shared, setShared] = useState(false);
   /** When the copy on screen was published, so an older one cannot replace it */
   const latestAt = useRef(0);
   const [present, setPresent] = useState<PresentPerson[]>([]);
@@ -55,6 +54,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
       const known = EventCache.getAddressable(kind, pubkey, identifier);
       if (known) {
         const parsedKnown = parseLiveEvent(known);
+        latestAt.current = known.created_at || 0;
         setStream(parsedKnown);
         setProfile(EventCache.getProfile(parsedKnown.hostPubkey));
         setLoading(false);
@@ -70,8 +70,14 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
           if (!known) setNotFound(true);
           return;
         }
+        // Recorded so an older copy still held by some relay cannot arrive
+        // afterwards and replace what was just read — it would put an out of
+        // date viewer count on screen and hold it there
+        if ((event.created_at || 0) >= latestAt.current) {
+          latestAt.current = event.created_at || 0;
+          setStream(parseLiveEvent(event));
+        }
         const parsed = parseLiveEvent(event);
-        setStream(parsed);
         // The zap and the host line follow whoever is presenting, which on
         // a platform-published stream is not the account that signed the
         // event — that one has no Lightning address, so the zap button
@@ -148,17 +154,6 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   const address = liveEventAddress(kind, stream.pubkey, stream.dTag);
   const naddrParam = encodeLiveNaddr(kind, stream.pubkey, stream.dTag);
 
-  const shareStream = async () => {
-    const url = `${window.location.origin}/live/${naddrParam}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      setShared(true);
-      setTimeout(() => setShared(false), 2000);
-    } catch {
-      // Denied clipboard permission — show it instead of failing silently
-      prompt('Copy this address:', url);
-    }
-  };
 
 
   return (
@@ -214,14 +209,19 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
             {(stream.currentParticipants !== undefined || present.length > 0) && (
               <div className="live-stream-presence">
                 {stream.currentParticipants !== undefined && (
-                  <span className="live-stream-viewers-count">
+                  <span
+                    className="live-stream-viewers-count"
+                    title="The number the broadcaster's own software publishes — nostr has no other source for it"
+                  >
                     👁 {stream.currentParticipants} viewers
                   </span>
                 )}
 
-                {/* Nobody publishes a viewer list — a live event names only its
-                    host — so these are the people talking in the chat, which is
-                    the only presence a client can actually know about. */}
+                {/* Nobody publishes a viewer list — a live event names only
+                    its host — so these are the people talking in the chat.
+                    Said plainly, because eight faces beside "29 viewers" reads
+                    as a contradiction otherwise: they are two different
+                    counts, of two different things. */}
                 {present.length > 0 && (
                   <div className="live-stream-faces" title="Talking in the chat">
                     {present.slice(0, VISIBLE_FACES).map(person => (
@@ -241,11 +241,10 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                         )}
                       </button>
                     ))}
-                    {present.length > VISIBLE_FACES && (
-                      <span className="live-stream-face-more">
-                        +{present.length - VISIBLE_FACES}
-                      </span>
-                    )}
+                    <span className="live-stream-face-more">
+                      {present.length > VISIBLE_FACES && `+${present.length - VISIBLE_FACES} `}
+                      💬 {present.length} in chat
+                    </span>
                   </div>
                 )}
 
@@ -278,21 +277,6 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                 />
               </p>
             )}
-
-            {/* The address to hand to whoever should watch — under the
-                description, where someone looks for what a stream is and how
-                to pass it on */}
-            <div className="live-stream-share">
-              <button
-                type="button"
-                className="live-stream-share-btn"
-                title="Copy this stream's address"
-                onClick={shareStream}
-              >
-                {shared ? <CheckIcon /> : <CopyIcon />}
-                {shared ? 'Link copied' : 'Share stream link'}
-              </button>
-            </div>
 
             {stream.hashtags.length > 0 && (
               <div className="event-hashtags">

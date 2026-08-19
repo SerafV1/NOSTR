@@ -5477,29 +5477,6 @@ a.capability-indicator.paid:hover {
   font-size: 0.8rem;
 }
 
-/* Under the description, in the same quiet style as the viewers link */
-.live-stream-share {
-  margin-top: var(--spacing-sm);
-}
-
-.live-stream-share-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  padding: 2px 6px;
-  border: none;
-  background: none;
-  color: var(--text-secondary);
-  font-size: 0.8rem;
-  font-family: inherit;
-  cursor: pointer;
-  transition: color var(--transition);
-}
-
-.live-stream-share-btn:hover {
-  color: var(--primary-color);
-}
-
 .live-stream-summary {
   color: var(--text-primary);
   line-height: 1.5;
