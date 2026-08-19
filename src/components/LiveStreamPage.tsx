@@ -29,7 +29,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   // reading along, the way stream sites do it.
   const [chatOpen, setChatOpen] = useState(false);
   const [present, setPresent] = useState<PresentPerson[]>([]);
-  const [copied, setCopied] = useState<'watch' | 'chat' | null>(null);
+  const [copied, setCopied] = useState(false);
   const [stream, setStream] = useState<LiveStreamInfo | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -108,11 +108,11 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   const address = liveEventAddress(kind, stream.pubkey, stream.dTag);
   const naddrParam = encodeLiveNaddr(kind, stream.pubkey, stream.dTag);
 
-  const copyLink = async (which: 'watch' | 'chat', url: string) => {
+  const copyLink = async (url: string) => {
     try {
       await navigator.clipboard.writeText(url);
-      setCopied(which);
-      setTimeout(() => setCopied(null), 2000);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch {
       // Denied clipboard permission — show it instead of failing silently
       prompt('Copy this address:', url);
@@ -167,34 +167,13 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                 </ZapButton>
               )}
 
-              {/* Addresses worth handing to someone else: the stream itself,
-                  and the chat on its own for an OBS browser source. Copying
-                  them here saves opening the chat window just to read one. */}
-              <div className="live-stream-links">
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-small"
-                  title="Copy the address of this stream"
-                  onClick={() => copyLink('watch', `${window.location.origin}/live/${naddrParam}`)}
-                >
-                  {copied === 'watch' ? '✓ Copied' : '🔗 Watch link'}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-small"
-                  title="Copy the chat on its own — paste into an OBS browser source"
-                  onClick={() => copyLink('chat', `${window.location.origin}/live/${naddrParam}/chat?transparent=1`)}
-                >
-                  {copied === 'chat' ? '✓ Copied' : '💬 Chat link'}
-                </button>
-              </div>
             </div>
 
             {(stream.currentParticipants !== undefined || present.length > 0) && (
               <div className="live-stream-presence">
                 {stream.currentParticipants !== undefined && (
                   <span className="live-stream-viewers-count">
-                    👁 {stream.currentParticipants} watching
+                    👁 {stream.currentParticipants} viewers
                   </span>
                 )}
 
@@ -227,6 +206,17 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                     )}
                   </div>
                 )}
+
+                {/* Beside the viewers, since it is the address you hand to
+                    someone so they become one */}
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-small live-stream-copy-link"
+                  title="Copy the address of this stream"
+                  onClick={() => copyLink(`${window.location.origin}/live/${naddrParam}`)}
+                >
+                  {copied ? '✓ Copied' : '🔗 Copy link'}
+                </button>
               </div>
             )}
 
