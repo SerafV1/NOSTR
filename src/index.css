@@ -3589,6 +3589,28 @@ button.poll-option-vote:disabled {
   border-bottom: 1px solid var(--border-color);
 }
 
+/* Inside a thread the cards keep only their bottom border, so they read as
+   one block — which left hovering lighting up a single line. An outline drawn
+   inside the card's own edges shows the whole of what is under the pointer
+   without a border appearing and shifting everything by a pixel. */
+.note-thread .event-card:hover {
+  outline: 1px solid var(--primary-color);
+  outline-offset: -1px;
+  border-color: var(--primary-color);
+}
+
+/* A card containing another one must not light up for it — the same reason
+   the feed cancels its own hover in that case */
+.note-thread .event-card:has(.event-card:hover),
+.note-thread .event-card:has(.quoted-note-card:hover) {
+  outline: none;
+}
+
+/* The line tying a reply to what it answers lights up with it */
+.thread-reply:hover::before {
+  background: var(--primary-color);
+}
+
 /* A thread is three things at once: what came before, the note that was
    opened, and what came after. Flat and identical, they read as one list of
    unrelated posts — so the context above is set smaller and dimmer, the note
