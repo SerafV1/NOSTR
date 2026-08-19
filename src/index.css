@@ -5134,13 +5134,22 @@ a.capability-indicator.paid:hover {
   display: block;
 }
 
-/* Over the picture, out of the way of the controls along the bottom */
+/* Sits in the control row, at the end past the fullscreen button. The
+   browser draws that row itself and it cannot be added to, so this is drawn
+   over it — low enough to read as part of it.
+   width is set because a bare `select` is full-width in this stylesheet,
+   which stretched this one clear across the picture. */
 .live-video-quality {
   position: absolute;
-  top: var(--spacing-sm);
-  right: var(--spacing-sm);
+  /* In the control row itself, left of the cluster the browser puts at its
+     right end (mute, fullscreen, the overflow menu) so nothing is covered */
+  bottom: 34px;
+  right: 150px;
+  width: auto;
+  min-width: 0;
   z-index: 2;
-  padding: 2px 6px;
+  padding: 1px 4px;
+  line-height: 1.5;
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: var(--border-radius);
   background: rgba(0, 0, 0, 0.6);
