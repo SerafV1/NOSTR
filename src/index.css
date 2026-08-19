@@ -5148,6 +5148,13 @@ a.capability-indicator.paid:hover {
 
 /* Named apart from .live-stream-viewers, which is the badge on a live card
    and is absolutely positioned — reusing it dragged this row to the corner */
+/* Wraps onto its own line on a phone rather than squeezing the host's name */
+.live-stream-links {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
 .live-stream-presence {
   display: flex;
   align-items: center;
