@@ -46,6 +46,11 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
     let cancelled = false;
 
     const readCount = (event: Parameters<typeof parseLiveEvent>[0]) => {
+      // Same guard as the stream page: a broadcaster may run several streams,
+      // and a relay that ignores the 'd' filter would answer with the wrong one
+      if (event.pubkey !== pubkey) return;
+      if (event.tags.find(t => t[0] === 'd')?.[1] !== identifier) return;
+
       const parsed = parseLiveEvent(event);
       if (!cancelled && parsed.currentParticipants !== undefined) {
         setPublished(parsed.currentParticipants);

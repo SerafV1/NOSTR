@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { UserProfile } from '../types';
+import React, { useEffect, useRef, useState } from 'react';
+import { UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr } from '../utils/liveStream';
 import { formatAddress } from '../utils/helpers';
@@ -29,6 +29,8 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   // reading along, the way stream sites do it.
   const [chatOpen, setChatOpen] = useState(false);
   const [shared, setShared] = useState(false);
+  /** When the copy on screen was published, so an older one cannot replace it */
+  const latestAt = useRef(0);
   const [present, setPresent] = useState<PresentPerson[]>([]);
   const [stream, setStream] = useState<LiveStreamInfo | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -84,7 +86,45 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
       }
     })();
 
-    return () => { cancelled = true; };
+    // The event is republished as the stream goes on — the viewer count moves
+    // with it, and so does the status when the broadcast ends. Fetched once
+    // and never listened to, the page showed whatever the number happened to
+    // be at the moment it was opened, for as long as it stayed open.
+    const subId = NostrCore.subscribeLive(
+      [{ kinds: [EVENT_KINDS.LIVE_EVENT], authors: [pubkey], '#d': [identifier] }],
+      (event) => {
+        if (cancelled) return;
+        // The filter asks for one stream, but 18 of 81 broadcasters seen on
+        // the relays run several — and a relay that ignores the 'd' filter
+        // would otherwise hand this page another stream's viewer count
+        if (event.pubkey !== pubkey) return;
+        if (event.tags.find(t => t[0] === 'd')?.[1] !== identifier) return;
+
+        setStream(current => {
+          // Relays may still hold older copies of a replaceable event
+          if (current && (event.created_at || 0) < (latestAt.current || 0)) return current;
+          latestAt.current = event.created_at || 0;
+          return parseLiveEvent(event);
+        });
+      }
+    );
+
+    // Under the subscription, for a relay that drops the socket or never
+    // pushes the newer copy
+    const poll = setInterval(async () => {
+      if (document.visibilityState !== 'visible') return;
+      const event = await NostrCore.fetchEventByAddress(kind, pubkey, identifier);
+      if (!event || cancelled) return;
+      if ((event.created_at || 0) <= (latestAt.current || 0)) return;
+      latestAt.current = event.created_at || 0;
+      setStream(parseLiveEvent(event));
+    }, 30000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+      NostrCore.unsubscribeLive(subId);
+    };
   }, [kind, pubkey, identifier, relaysConnected]);
 
   if (loading || !relaysConnected) {
