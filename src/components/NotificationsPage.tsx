@@ -83,7 +83,17 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
       ]);
       fetched.push(...unfollows);
 
-      const actorProfiles = await NostrCore.fetchProfiles(fetched.map(n => n.event.pubkey));
+      // Merged, not replaced: a partial answer from the relays must not
+      // take away notifications that were already on screen
+      const shown = cacheNotifications(pubkey, fetched);
+      setNotifications(shown);
+
+      // Every name on the page, not only the ones this fetch returned. A
+      // follow is announced once — by whichever poll saw it first, often the
+      // background one — and never appears in a later fetch, so asking only
+      // about `fetched` left those rows showing a shortened key and a blank
+      // avatar until something else happened to load that profile.
+      const actorProfiles = await NostrCore.fetchProfiles(shown.map(n => n.event.pubkey));
       setProfiles(prev => ({ ...prev, ...Object.fromEntries(actorProfiles) }));
 
       const targetIds = fetched
@@ -95,9 +105,6 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
         setTargetNotes(cacheTargets(pubkey, Object.fromEntries(targets)));
       }
 
-      // Merged, not replaced: a partial answer from the relays must not
-      // take away notifications that were already on screen
-      setNotifications(cacheNotifications(pubkey, fetched));
     } catch (error) {
       console.error('Failed to load notifications:', error);
     } finally {
