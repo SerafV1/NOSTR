@@ -1,8 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NostrCore } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
 import { parseLiveEvent } from '../utils/liveStream';
 import { EVENT_KINDS } from '../types';
+
+/** How long after speaking someone still counts as being in the chat */
+const PRESENT_FOR_MS = 10 * 60 * 1000;
 
 interface LiveViewersPageProps {
   kind: number;
@@ -28,7 +31,11 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
   const params = new URLSearchParams(window.location.search);
   const [transparent, setTransparent] = useState(() => params.get('transparent') === '1');
   const [bold, setBold] = useState(() => params.get('bold') === '1');
-  const [viewers, setViewers] = useState<number | null>(null);
+  const [published, setPublished] = useState<number | null>(null);
+  // Everyone heard from in the chat lately — a number that moves on its own,
+  // for streams whose broadcaster publishes no count
+  const [inChat, setInChat] = useState(0);
+  const chatSeen = useRef<Map<string, number>>(new Map());
   const [copied, setCopied] = useState(false);
   // The window OBS loads is signed out; the controls belong in the
   // streamer's own window, or they would be captured with the number
@@ -41,27 +48,74 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
     const readCount = (event: Parameters<typeof parseLiveEvent>[0]) => {
       const parsed = parseLiveEvent(event);
       if (!cancelled && parsed.currentParticipants !== undefined) {
-        setViewers(parsed.currentParticipants);
+        setPublished(parsed.currentParticipants);
       }
     };
 
-    (async () => {
+    const refetch = async () => {
       const event = await NostrCore.fetchEventByAddress(kind, pubkey, identifier);
       if (event) readCount(event);
-    })();
+    };
+    refetch();
 
-    // A live event is replaceable and gets republished as the count moves,
-    // so the newest one that arrives is the current number
+    // A live event is replaceable and gets republished as the count moves —
+    // about once a minute on the broadcasters that publish one at all — so
+    // the newest one to arrive is the current number.
     const subId = NostrCore.subscribeLive(
       [{ kinds: [EVENT_KINDS.LIVE_EVENT], authors: [pubkey], '#d': [identifier] }],
       readCount
     );
 
+    // A safety net under the subscription: a relay that drops the socket, or
+    // never pushes the newer version of a replaceable event, would otherwise
+    // freeze the number for the rest of the stream
+    const poll = setInterval(() => {
+      if (document.visibilityState === 'visible') refetch();
+    }, 30000);
+
+    // Anyone talking counts as present, which is a number that moves between
+    // those republishes — and the only one at all for a stream that
+    // publishes none
+    const countPresent = () => {
+      const cutoff = Date.now() - PRESENT_FOR_MS;
+      for (const [author, at] of chatSeen.current) {
+        if (at < cutoff) chatSeen.current.delete(author);
+      }
+      setInChat(chatSeen.current.size);
+    };
+
+    const chatSub = NostrCore.subscribeLive(
+      [{
+        kinds: [EVENT_KINDS.LIVE_CHAT_MESSAGE],
+        '#a': [`${kind}:${pubkey}:${identifier}`],
+        // Only the window that counts as present — a subscription without
+        // this replays the whole chat, and everyone who ever spoke would be
+        // counted as here now
+        since: Math.floor((Date.now() - PRESENT_FOR_MS) / 1000)
+      }],
+      (event) => {
+        // Stamped with when it was said, not when it reached us, or replayed
+        // history would all look like it just arrived
+        chatSeen.current.set(event.pubkey, (event.created_at || 0) * 1000);
+        countPresent();
+      }
+    );
+
+    // Presence goes stale: someone who spoke ten minutes ago has moved on
+    const prune = setInterval(countPresent, 15000);
+
     return () => {
       cancelled = true;
+      clearInterval(poll);
+      clearInterval(prune);
       NostrCore.unsubscribeLive(subId);
+      NostrCore.unsubscribeLive(chatSub);
     };
   }, [kind, pubkey, identifier, relaysConnected]);
+
+  // What to show: the broadcaster's own number when there is one, since it
+  // counts everyone watching rather than only those who say something
+  const viewers = published ?? (inChat || null);
 
   useEffect(() => {
     if (!transparent) return;
@@ -133,9 +187,13 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
         </div>
       )}
 
-      {viewers === null && !readOnly && (
+      {!readOnly && (
         <p className="live-viewers-note">
-          This stream doesn't publish a viewer count — not every broadcaster does.
+          {published !== null
+            ? 'The broadcaster publishes this number, and republishes it about once a minute — it follows here as soon as it changes.'
+            : viewers !== null
+              ? 'This broadcaster publishes no viewer count, so this is how many people have spoken in the chat in the last ten minutes.'
+              : 'Waiting for a number: this broadcaster publishes no viewer count, and nobody has spoken in the chat yet.'}
         </p>
       )}
     </div>
