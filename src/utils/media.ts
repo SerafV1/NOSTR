@@ -4,8 +4,17 @@ const IMAGE_URL_SOURCE = 'https?:\\/\\/[^\\s]+\\.(?:jpg|jpeg|png|gif|webp|bmp|sv
 const VIDEO_URL_SOURCE = 'https?:\\/\\/[^\\s]+\\.(?:mp4|webm|mov|m4v|ogv)(?:\\?[^\\s]*)?';
 const ANY_URL_SOURCE = 'https?:\\/\\/[^\\s]+';
 // A quoted note reference (NIP-19 note/nevent/naddr) — rendered as an
-// embedded quote card, so the raw nostr: URI is hidden from the visible text
-const QUOTE_REF_SOURCE = 'nostr:(?:note1|nevent1|naddr1)[a-z0-9]+';
+// embedded quote card, so the raw reference is hidden from the visible text.
+//
+// The `nostr:` prefix is optional because plenty of clients publish a bare
+// "nevent1…", and requiring it left those as a wall of bech32 in the middle
+// of a post. What must not match is a reference inside a URL — a link to
+// njump.me/nevent1… is a link, not a quote — hence the guard on what may
+// come before it.
+const QUOTE_REF_SOURCE = '(?<![\\w/.:])(?:nostr:)?(?:note1|nevent1|naddr1)[a-z0-9]{20,}';
+
+/** Shared so the quote card, the stripper and the resolver agree on one shape */
+export const quoteRefRegex = (flags = 'gi'): RegExp => new RegExp(QUOTE_REF_SOURCE, flags);
 
 const trimTrailingPunctuation = (url: string): string => url.replace(/[.,;:!?)]+$/, '');
 

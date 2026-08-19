@@ -10,7 +10,8 @@ import {
   extractEmbeds,
   extractPreviewLinkUrl,
   stripMediaUrls,
-  splitContentTokens
+  splitContentTokens,
+  quoteRefRegex
 } from '../utils/media';
 import ComposeModal from './ComposeModal';
 import MediaEmbed from './MediaEmbed';
@@ -204,7 +205,7 @@ const EventCard: React.FC<EventCardProps> = ({
   };
 
   const loadQuotedNote = async () => {
-    if (!/nostr:(?:note1|nevent1|naddr1)[a-z0-9]+/i.test(event.content)) {
+    if (!quoteRefRegex('i').test(event.content)) {
       setQuotedNoteStatus('none');
       return;
     }
@@ -261,6 +262,18 @@ const EventCard: React.FC<EventCardProps> = ({
     return Array.from(mentions);
   };
 
+  const decodeNoteRef = (link: string): string | null => {
+    try {
+      const decoded = nip19.decode(link.replace(/^nostr:/i, ''));
+      if (decoded.type === 'note' && typeof decoded.data === 'string') return decoded.data;
+      if (decoded.type === 'nevent') return (decoded.data as { id: string }).id;
+      return null;
+    } catch {
+      // Malformed bech32 — leave it as text
+      return null;
+    }
+  };
+
   const decodeNprofile = (nprofileLink: string): string | null => {
     try {
       const decoded = nip19.decode(nprofileLink.replace(/^@/, '').replace(/^nostr:/i, ''));
@@ -285,12 +298,15 @@ const EventCard: React.FC<EventCardProps> = ({
     let lastIndex = 0;
     let keyIndex = 0;
 
-    // Combine nprofile, npub and raw hex pubkey mention patterns
-    const combinedRegex = /(?:(@?(?:nostr:)?nprofile1[a-z0-9]{20,})|(@?(?:nostr:)?npub1[a-z0-9]{20,})|([a-fA-F0-9]{64}))/gi;
+    // nprofile, npub, raw hex pubkey — and note/nevent references, which
+    // stayed as a wall of bech32 whenever they were not the one lifted out
+    // into the quote card
+    const combinedRegex = /(?:(@?(?:nostr:)?nprofile1[a-z0-9]{20,})|(@?(?:nostr:)?npub1[a-z0-9]{20,})|([a-fA-F0-9]{64})|((?:nostr:)?(?:note1|nevent1)[a-z0-9]{20,}))/gi;
     let match;
 
     while ((match = combinedRegex.exec(content)) !== null) {
       let pubkey: string | null = null;
+      let noteId: string | null = null;
 
       if (match[1]) {
         // This is an nprofile link
@@ -301,6 +317,27 @@ const EventCard: React.FC<EventCardProps> = ({
       } else if (match[3]) {
         // This is a raw hex pubkey
         pubkey = match[3].toLowerCase();
+      } else if (match[4]) {
+        noteId = decodeNoteRef(match[4]);
+      }
+
+      if (noteId) {
+        if (match.index > lastIndex) {
+          parts.push(...asEmojiParts(content.substring(lastIndex, match.index), `pre-${keyIndex}`));
+        }
+        parts.push(
+          <button
+            key={`note-${keyIndex}-${noteId}`}
+            onClick={(e) => { e.stopPropagation(); onNavigateToNote?.(noteId!); }}
+            className="mention-link"
+            title="Open the note this points at"
+          >
+            📝 View note
+          </button>
+        );
+        lastIndex = match.index + match[0].length;
+        keyIndex++;
+        continue;
       }
 
       if (!pubkey) continue;

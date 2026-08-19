@@ -11,6 +11,7 @@ import { NostrCrypto, CredentialManager, ExtensionManager } from './crypto';
 import { getRelayPool } from './relay';
 import { bunkerSignEvent } from './bunker';
 import { isEffectivelyLive } from '../utils/liveStream';
+import { quoteRefRegex } from '../utils/media';
 import { customEmojiMap } from '../utils/customEmoji';
 
 /**
@@ -844,7 +845,7 @@ export class NostrCore {
    * previews so both use the exact same resolution logic.
    */
   static async resolveQuoteReference(content: string): Promise<{ note: NostrEventSigned; repostedBy?: string } | null> {
-    const matches = content.match(/nostr:(?:note1|nevent1|naddr1)[a-z0-9]+/gi);
+    const matches = content.match(quoteRefRegex());
     if (!matches || matches.length === 0) return null;
 
     const link = matches[0];
