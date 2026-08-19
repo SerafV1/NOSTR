@@ -5148,9 +5148,24 @@ a.capability-indicator.paid:hover {
 
 /* Named apart from .live-stream-viewers, which is the badge on a live card
    and is absolutely positioned — reusing it dragged this row to the corner */
-/* Sits at the end of the viewers line, away from the count and the faces */
+/* Next to the faces, not pushed to the far end: it belongs to that line.
+   Same shape as the copy-npub control on a profile. */
 .live-stream-copy-link {
-  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+
+.live-stream-copy-link:hover {
+  color: var(--primary-color);
 }
 
 .live-stream-presence {

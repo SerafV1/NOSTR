@@ -8,7 +8,7 @@ import LiveChatPanel, { PresentPerson } from './LiveChatPanel';
 import ZapButton from './ZapButton';
 import RichText from './RichText';
 import EmojiText from './EmojiText';
-import { ZapIcon } from './Icons';
+import { ZapIcon, CopyIcon, CheckIcon } from './Icons';
 
 interface LiveStreamPageProps {
   kind: number;
@@ -210,13 +210,14 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                 {/* The count on its own, as a browser source for OBS */}
                 <button
                   type="button"
-                  className="btn btn-secondary btn-small live-stream-copy-link"
+                  className="live-stream-copy-link"
                   title="Copy the viewer count on its own — paste into an OBS browser source"
                   onClick={() => copyLink(
                     `${window.location.origin}/live/${naddrParam}/viewers?transparent=1`
                   )}
                 >
-                  {copied ? '✓ Copied' : '🔗 Viewers overlay'}
+                  {copied ? <CheckIcon /> : <CopyIcon />}
+                  {copied ? 'Copied' : 'Viewers link'}
                 </button>
               </div>
             )}
