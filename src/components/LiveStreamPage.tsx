@@ -8,7 +8,7 @@ import LiveChatPanel, { PresentPerson } from './LiveChatPanel';
 import ZapButton from './ZapButton';
 import RichText from './RichText';
 import EmojiText from './EmojiText';
-import { ZapIcon, CopyIcon, CheckIcon } from './Icons';
+import { ZapIcon, PopOutIcon } from './Icons';
 
 interface LiveStreamPageProps {
   kind: number;
@@ -29,7 +29,6 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   // reading along, the way stream sites do it.
   const [chatOpen, setChatOpen] = useState(false);
   const [present, setPresent] = useState<PresentPerson[]>([]);
-  const [copied, setCopied] = useState(false);
   const [stream, setStream] = useState<LiveStreamInfo | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -108,16 +107,6 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   const address = liveEventAddress(kind, stream.pubkey, stream.dTag);
   const naddrParam = encodeLiveNaddr(kind, stream.pubkey, stream.dTag);
 
-  const copyLink = async (url: string) => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Denied clipboard permission — show it instead of failing silently
-      prompt('Copy this address:', url);
-    }
-  };
 
   return (
     <div className="live-stream-page">
@@ -208,16 +197,20 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                 )}
 
                 {/* The count on its own, as a browser source for OBS */}
+                {/* Opens the count on its own, where the background and
+                    weight are chosen and the address for OBS is handed out */}
                 <button
                   type="button"
                   className="live-stream-copy-link"
-                  title="Copy the viewer count on its own — paste into an OBS browser source"
-                  onClick={() => copyLink(
-                    `${window.location.origin}/live/${naddrParam}/viewers?transparent=1`
+                  title="Open the viewer count on its own, to set up as an OBS browser source"
+                  onClick={() => window.open(
+                    `${window.location.origin}/live/${naddrParam}/viewers`,
+                    `viewers-${naddrParam}`,
+                    'width=420,height=320,menubar=no,toolbar=no'
                   )}
                 >
-                  {copied ? <CheckIcon /> : <CopyIcon />}
-                  {copied ? 'Copied' : 'Viewers link'}
+                  <PopOutIcon />
+                  Viewers link
                 </button>
               </div>
             )}
