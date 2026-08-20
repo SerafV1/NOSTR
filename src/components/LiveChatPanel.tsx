@@ -102,6 +102,13 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   // thrown out — for the second or two the read takes — and then take them
   // back off screen. Better to hold the messages for that moment.
   const [muteListRead, setMuteListRead] = useState(false);
+  /**
+   * What this window has just decided, until the relays agree. Publishing a
+   * change takes seconds, and in the meantime the subscription delivers the
+   * previous version of the list — which would undo on screen what was just
+   * asked for.
+   */
+  const pendingMute = useRef<Map<string, boolean>>(new Map());
   /** Shown after muting: what just happened, and the way to take it back */
   const [justMuted, setJustMuted] = useState<
     { pubkey: string; name: string; forEveryone: boolean } | null
@@ -211,7 +218,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
 
     NostrCore.fetchStreamMuteList(owners, identifier).then(list => {
       if (cancelled) return;
-      setStreamMuted(list);
+      setStreamMuted(applyPending(list));
       setMuteListRead(true);
     });
 
@@ -239,9 +246,9 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
           at: event.created_at || 0,
           muted: event.tags.filter(t => t[0] === 'p' && t[1]).map(t => t[1])
         });
-        if (!cancelled) {
-          setStreamMuted(new Set([...byOwner.values()].flatMap(entry => entry.muted)));
-        }
+        if (!cancelled) setStreamMuted(applyPending(
+          new Set([...byOwner.values()].flatMap(entry => entry.muted))
+        ));
       }
     );
 
@@ -293,6 +300,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   const unmuteForEveryone = async (target: string) => {
     if (!identifier) return;
     // Back on screen at once, for the same reason
+    pendingMute.current.set(target, false);
     setStreamMuted(current => {
       const without = new Set(current);
       without.delete(target);
@@ -300,11 +308,22 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     });
     try {
       const updated = await NostrCore.setStreamMuted(address, identifier, target, false);
+      pendingMute.current.delete(target);
       setStreamMuted(updated);
     } catch (error) {
+      pendingMute.current.delete(target);
       setStreamMuted(current => new Set(current).add(target));
       alert(error instanceof Error ? error.message : 'Could not update the stream mute list');
     }
+  };
+
+  /** Whatever the relays said, with this window's own decision on top */
+  const applyPending = (list: Set<string>): Set<string> => {
+    const result = new Set(list);
+    for (const [pubkey, muted] of pendingMute.current) {
+      if (muted) result.add(pubkey); else result.delete(pubkey);
+    }
+    return result;
   };
 
   const setMutedForEveryone = async (author: string, name: string) => {
@@ -313,11 +332,14 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     // Off screen at once. Publishing the list means reading the current one
     // back first, signing and waiting for a relay — some eight seconds in
     // which the person you just threw out was still talking.
+    pendingMute.current.set(author, true);
     setStreamMuted(current => new Set(current).add(author));
     try {
       const updated = await NostrCore.setStreamMuted(address, identifier, author, true);
+      pendingMute.current.delete(author);
       setStreamMuted(updated);
     } catch (error) {
+      pendingMute.current.delete(author);
       // Put them back rather than leave the screen disagreeing with the list
       setStreamMuted(current => {
         const reverted = new Set(current);
@@ -652,8 +674,19 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                   extraAction={{ label: 'Unmute in this chat', onClick: () => unmuteForEveryone(target) }}
                   onNavigateToProfile={onNavigateToProfile}
                 >
-                  <button type="button" className="live-chat-author">
-                    <EmojiText text={label} emojis={profile?.emojis} />
+                  {/* Face and name, the way the list in settings reads —
+                      a row of bare names did not look like anything to open */}
+                  <button type="button" className="live-chat-muted-person">
+                    {profile?.picture ? (
+                      <img src={profile.picture} alt="" className="live-chat-muted-avatar" />
+                    ) : (
+                      <span className="live-chat-muted-avatar-placeholder">
+                        {label.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                    <span className="live-chat-author">
+                      <EmojiText text={label} emojis={profile?.emojis} />
+                    </span>
                   </button>
                 </ProfileHoverCard>
                 {/* The card carries the same action, but a list of names is

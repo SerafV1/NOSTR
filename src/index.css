@@ -5049,6 +5049,41 @@ a.capability-indicator.paid:hover {
   white-space: pre-wrap;
 }
 
+.live-chat-muted-person {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.live-chat-muted-avatar,
+.live-chat-muted-avatar-placeholder {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.live-chat-muted-avatar {
+  object-fit: cover;
+}
+
+.live-chat-muted-avatar-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
 /* Said once, right after muting, and gone on its own: muting takes someone
    off screen, which also takes away the name you would click to undo it */
 .live-chat-undo {
