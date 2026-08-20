@@ -217,11 +217,10 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                   </span>
                 )}
 
-                {/* Nobody publishes a viewer list — a live event names only
-                    its host — so these are the people talking in the chat.
-                    Said plainly, because eight faces beside "29 viewers" reads
-                    as a contradiction otherwise: they are two different
-                    counts, of two different things. */}
+                {/* Faces beside the count. Nobody publishes a viewer list —
+                    a live event names only its host — so these are whoever
+                    has spoken in the chat, which is the only presence a
+                    client can know about; the row says so on hover. */}
                 {present.length > 0 && (
                   <div className="live-stream-faces" title="Talking in the chat">
                     {present.slice(0, VISIBLE_FACES).map(person => (
@@ -241,10 +240,11 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                         )}
                       </button>
                     ))}
-                    <span className="live-stream-face-more">
-                      {present.length > VISIBLE_FACES && `+${present.length - VISIBLE_FACES} `}
-                      💬 {present.length} in chat
-                    </span>
+                    {present.length > VISIBLE_FACES && (
+                      <span className="live-stream-face-more">
+                        +{present.length - VISIBLE_FACES}
+                      </span>
+                    )}
                   </div>
                 )}
 
