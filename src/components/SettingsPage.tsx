@@ -2,10 +2,18 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import RelaySettings from './RelaySettings';
 import MediaServerSettings from './MediaServerSettings';
+import MutedSettings from './MutedSettings';
 
-const SettingsPage: React.FC = () => {
+interface SettingsPageProps {
+  relaysConnected: boolean;
+  onNavigateToProfile?: (pubkey: string) => void;
+}
+
+const SettingsPage: React.FC<SettingsPageProps> = ({ relaysConnected, onNavigateToProfile }) => {
   const location = useLocation();
-  const section = location.pathname.endsWith('/media') ? 'media' : 'relays';
+  const section = location.pathname.endsWith('/media')
+    ? 'media'
+    : location.pathname.endsWith('/muted') ? 'muted' : 'relays';
 
   return (
     <div className="settings-page">
@@ -25,9 +33,17 @@ const SettingsPage: React.FC = () => {
           >
             Media Servers
           </Link>
+          <Link
+            to="/settings/muted"
+            className={`settings-tab ${section === 'muted' ? 'active' : ''}`}
+          >
+            Muted
+          </Link>
         </div>
 
-        {section === 'relays' ? <RelaySettings /> : <MediaServerSettings />}
+        {section === 'relays' && <RelaySettings />}
+        {section === 'media' && <MediaServerSettings />}
+        {section === 'muted' && <MutedSettings relaysConnected={relaysConnected} onNavigateToProfile={onNavigateToProfile} />}
       </div>
     </div>
   );
