@@ -98,6 +98,10 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   // Whoever the stream's owner has thrown out — hidden for everyone watching
   // through this client, not only for whoever muted them
   const [streamMuted, setStreamMuted] = useState<Set<string>>(new Set());
+  // Until the list has been read, showing the chat would show whoever was
+  // thrown out — for the second or two the read takes — and then take them
+  // back off screen. Better to hold the messages for that moment.
+  const [muteListRead, setMuteListRead] = useState(false);
   // The owner's own view of that list: muting someone hides their messages,
   // which is also the only place their name was to click on
   const [showStreamMuted, setShowStreamMuted] = useState(false);
@@ -191,12 +195,27 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   }, [address, relaysConnected]);
 
   useEffect(() => {
-    if (!relaysConnected || !identifier || owners.length === 0) return;
+    // Nothing to wait for only when there is no list to read. Before the
+    // relays are up there is nothing to show either, so the flag stays down
+    // rather than letting the first messages through unchecked.
+    if (!identifier || owners.length === 0) {
+      setMuteListRead(true);
+      return;
+    }
+    if (!relaysConnected) return;
     let cancelled = false;
 
     NostrCore.fetchStreamMuteList(owners, identifier).then(list => {
-      if (!cancelled) setStreamMuted(list);
+      if (cancelled) return;
+      setStreamMuted(list);
+      setMuteListRead(true);
     });
+
+    // A relay that never answers must not hold the chat back for longer than
+    // it takes to notice something is wrong
+    const giveUp = setTimeout(() => {
+      if (!cancelled) setMuteListRead(true);
+    }, 4000);
 
     // Read once, the list was whatever it said when this window opened: a
     // host muting someone from the stream page never reached the popped-out
@@ -224,6 +243,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
 
     return () => {
       cancelled = true;
+      clearTimeout(giveUp);
       NostrCore.unsubscribeLive(subId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -478,7 +498,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
 
   // Messages and zaps are two separate subscriptions but one conversation,
   // so they are interleaved by time the way the room actually experienced them
-  const timeline: TimelineEntry[] = [
+  const timeline: TimelineEntry[] = !muteListRead ? [] : [
     ...messages.map((event): TimelineEntry => ({
       kind: 'message',
       event,
@@ -600,7 +620,9 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
 
       <div className="live-chat-messages" ref={listRef}>
         {timeline.length === 0 && (
-          <div className="live-chat-empty">No messages yet — say hello!</div>
+          <div className="live-chat-empty">
+            {muteListRead ? 'No messages yet — say hello!' : 'Loading the chat…'}
+          </div>
         )}
         {timeline.map(entry => {
           const event = entry.event;
