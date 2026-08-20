@@ -12,6 +12,18 @@ interface ProfileHoverCardProps {
   onNavigateToProfile: (pubkey: string) => void;
   /** Called after a block, so the surrounding feed can drop the author */
   onBlocked?: (pubkey: string) => void;
+  /**
+   * Open on click as well as on hover. For places where the name is there to
+   * be acted on rather than read past — and where hovering may not be
+   * available at all.
+   */
+  openOnClick?: boolean;
+  /**
+   * Draw the card fixed to the viewport instead of inside the flow. For
+   * places that clip their overflow — the chat panel cuts anything reaching
+   * past its edge, card included.
+   */
+  escapesClipping?: boolean;
   children: React.ReactNode;
 }
 
@@ -31,6 +43,8 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
   profile: knownProfile,
   onNavigateToProfile,
   onBlocked,
+  openOnClick,
+  escapesClipping,
   children
 }) => {
   const [open, setOpen] = useState(false);
@@ -40,6 +54,7 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
   const [busy, setBusy] = useState<'follow' | 'block' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [placeAbove, setPlaceAbove] = useState(false);
+  const [fixedStyle, setFixedStyle] = useState<React.CSSProperties | undefined>(undefined);
 
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -76,6 +91,32 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, pubkey]);
 
+  /** Where the card goes when it has to escape a clipping container */
+  const placeFixed = (rect: DOMRect) => {
+    const width = 280;
+    const margin = 8;
+    const below = window.innerHeight - rect.bottom >= 320;
+    setFixedStyle({
+      position: 'fixed',
+      width,
+      left: Math.min(Math.max(margin, rect.left), window.innerWidth - width - margin),
+      top: below ? rect.bottom + margin : undefined,
+      bottom: below ? undefined : window.innerHeight - rect.top + margin
+    });
+  };
+
+  /** Straight away, skipping the delay meant for a pointer passing by */
+  const openNow = () => {
+    if (openTimer.current) clearTimeout(openTimer.current);
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    if (rect) {
+      setPlaceAbove(window.innerHeight - rect.bottom < 320);
+      if (escapesClipping) placeFixed(rect);
+    }
+    setOpen(current => !current);
+  };
+
   const scheduleOpen = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
     if (open) return;
@@ -83,7 +124,10 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
       // Near the bottom of the viewport the card would hang off-screen —
       // flip it above the name instead
       const rect = wrapperRef.current?.getBoundingClientRect();
-      if (rect) setPlaceAbove(window.innerHeight - rect.bottom < 320);
+      if (rect) {
+        setPlaceAbove(window.innerHeight - rect.bottom < 320);
+        if (escapesClipping) placeFixed(rect);
+      }
       setOpen(true);
     }, OPEN_DELAY_MS);
   };
@@ -154,12 +198,14 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
       ref={wrapperRef}
       onMouseEnter={scheduleOpen}
       onMouseLeave={scheduleClose}
+      onClick={openOnClick ? (e) => { e.stopPropagation(); openNow(); } : undefined}
     >
       {children}
 
       {open && (
         <div
           className={`profile-hover-card ${placeAbove ? 'above' : ''}`}
+          style={fixedStyle}
           onClick={(e) => e.stopPropagation()}
         >
           <button

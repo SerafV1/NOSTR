@@ -12,6 +12,7 @@ import { ZapIcon } from './Icons';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 import LiveChatReactions, { ReactionTally } from './LiveChatReactions';
 import EmojiText from './EmojiText';
+import ProfileHoverCard from './ProfileHoverCard';
 
 /**
  * NIP-25 reactions carry '+' for a like and '-' for a dislike rather than an
@@ -539,13 +540,19 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
             const label = profile?.display_name || profile?.name || formatAddress(target);
             return (
               <div key={target} className="live-chat-muted-row">
-                <button
-                  type="button"
-                  className="live-chat-author"
-                  onClick={() => onNavigateToProfile(target)}
+                {/* The same card as on a name in the feed — who they are and
+                    what can be done about them, without leaving the stream */}
+                <ProfileHoverCard
+                  pubkey={target}
+                  profile={profile}
+                  openOnClick
+                  escapesClipping
+                  onNavigateToProfile={onNavigateToProfile}
                 >
-                  <EmojiText text={label} emojis={profile?.emojis} />
-                </button>
+                  <button type="button" className="live-chat-author">
+                    <EmojiText text={label} emojis={profile?.emojis} />
+                  </button>
+                </ProfileHoverCard>
                 <button
                   type="button"
                   className="btn btn-secondary btn-small"
