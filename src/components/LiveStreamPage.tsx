@@ -307,7 +307,10 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                     has spoken in the chat, which is the only presence a
                     client can know about; the row says so on hover. */}
                 {present.length > 0 && (
-                  <div className="live-stream-faces" title="Talking in the chat">
+                  <div
+                    className="live-stream-faces"
+                    title="Whoever can be seen: viewers whose client announces them, and people talking in the chat. Most clients announce nobody, so this is usually fewer than the count."
+                  >
                     {present.slice(0, VISIBLE_FACES).map(person => (
                       <button
                         key={person.pubkey}
