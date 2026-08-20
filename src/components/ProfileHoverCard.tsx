@@ -24,6 +24,11 @@ interface ProfileHoverCardProps {
    * past its edge, card included.
    */
   escapesClipping?: boolean;
+  /**
+   * One more action for the card, for a mute that is not the account's own
+   * list — a stream's list, say, which only its owner can undo.
+   */
+  extraAction?: { label: string; onClick: () => void | Promise<void> };
   children: React.ReactNode;
 }
 
@@ -45,6 +50,7 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
   onBlocked,
   openOnClick,
   escapesClipping,
+  extraAction,
   children
 }) => {
   const [open, setOpen] = useState(false);
@@ -244,6 +250,16 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
               >
                 {busy === 'block' ? '...' : blocked ? 'Unblock' : 'Block'}
               </button>
+              {extraAction && (
+                <button
+                  type="button"
+                  className="hover-card-btn secondary"
+                  onClick={() => extraAction.onClick()}
+                  disabled={busy !== null}
+                >
+                  {extraAction.label}
+                </button>
+              )}
             </div>
           )}
 

@@ -547,6 +547,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                   profile={profile}
                   openOnClick
                   escapesClipping
+                  extraAction={{ label: 'Unmute', onClick: () => unmuteForEveryone(target) }}
                   onNavigateToProfile={onNavigateToProfile}
                 >
                   <button type="button" className="live-chat-author">
@@ -596,17 +597,31 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                 {avatar}
                 <div className="live-chat-message-body">
                   <span className="live-chat-zap-line">
-                    <button className="live-chat-author" onClick={() => author && onNavigateToProfile(author)}>
-                      <EmojiText text={name} emojis={profile?.emojis} />
-                    </button>
+                    <ProfileHoverCard
+                      pubkey={author || ''}
+                      profile={profile}
+                      escapesClipping
+                      onNavigateToProfile={onNavigateToProfile}
+                    >
+                      <button className="live-chat-author" onClick={() => author && onNavigateToProfile(author)}>
+                        <EmojiText text={name} emojis={profile?.emojis} />
+                      </button>
+                    </ProfileHoverCard>
                     {' zapped '}
                     {/* Not always the streamer — anyone in the chat can be
                         zapped, so say who was actually paid */}
                     {recipient && recipient !== author && (
                       <>
-                        <button className="live-chat-author" onClick={() => onNavigateToProfile(recipient)}>
-                          <EmojiText text={recipientName} emojis={recipientProfile?.emojis} />
-                        </button>
+                        <ProfileHoverCard
+                          pubkey={recipient}
+                          profile={recipientProfile}
+                          escapesClipping
+                          onNavigateToProfile={onNavigateToProfile}
+                        >
+                          <button className="live-chat-author" onClick={() => onNavigateToProfile(recipient)}>
+                            <EmojiText text={recipientName} emojis={recipientProfile?.emojis} />
+                          </button>
+                        </ProfileHoverCard>
                         {' '}
                       </>
                     )}
@@ -633,9 +648,18 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
               {avatar}
               <div className="live-chat-message-body">
                 <span className="live-chat-message-head">
-                  <button className="live-chat-author" onClick={() => author && onNavigateToProfile(author)}>
-                    <EmojiText text={name} emojis={profile?.emojis} />
-                  </button>
+                  {/* The same card as on a name in the feed: who they are,
+                      and follow or block, without leaving the stream */}
+                  <ProfileHoverCard
+                    pubkey={author || ''}
+                    profile={profile}
+                    escapesClipping
+                    onNavigateToProfile={onNavigateToProfile}
+                  >
+                    <button className="live-chat-author" onClick={() => author && onNavigateToProfile(author)}>
+                      <EmojiText text={name} emojis={profile?.emojis} />
+                    </button>
+                  </ProfileHoverCard>
                   {/* The stream's own list, offered only to whoever runs it */}
                   {iRunThisStream && author && author !== myPubkey && (
                     <button
