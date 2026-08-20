@@ -998,6 +998,82 @@ export class NostrCore {
    * bottom like a normal chat log.
    */
   /**
+   * A stream's own mute list, kept by whoever runs the stream.
+   *
+   * Nostr has no way to take a message back or to make another client hide
+   * it — chat messages are public events, and each client decides what to
+   * show. What a host *can* do is publish who they have thrown out, and
+   * clients that care can honour it. Measured before building this: of 154
+   * live events on the relays, not one named a moderator, and no report or
+   * label pointed at a stream — so there was no convention to follow.
+   *
+   * Kept as a NIP-51 people set (kind 30000) whose `d` names the stream, so
+   * it is addressable, replaceable, and readable by anyone.
+   */
+  private static streamMuteIdentifier(identifier: string): string {
+    return `livechat-mute:${identifier}`;
+  }
+
+  static async fetchStreamMuteList(owners: string[], identifier: string): Promise<Set<string>> {
+    const muted = new Set<string>();
+    if (owners.length === 0) return muted;
+
+    try {
+      const events = await getRelayPool().fetchEvents([{
+        kinds: [EVENT_KINDS.PEOPLE_SET],
+        authors: owners,
+        '#d': [this.streamMuteIdentifier(identifier)]
+      }]);
+
+      // Replaceable per author: only their newest list counts
+      const newest = new Map<string, NostrEventSigned>();
+      for (const event of events) {
+        const held = newest.get(event.pubkey);
+        if (!held || (event.created_at || 0) > (held.created_at || 0)) newest.set(event.pubkey, event);
+      }
+      for (const event of newest.values()) {
+        for (const tag of event.tags) {
+          if (tag[0] === 'p' && tag[1]) muted.add(tag[1]);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch the stream mute list:', error);
+    }
+    return muted;
+  }
+
+  /** Add or remove someone from the stream's list. Only its owner can. */
+  static async setStreamMuted(
+    address: string,
+    identifier: string,
+    target: string,
+    muted: boolean
+  ): Promise<Set<string>> {
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey) throw new Error('Public key not found');
+
+    const current = await this.fetchStreamMuteList([ownPubkey], identifier);
+    if (muted) current.add(target); else current.delete(target);
+
+    const signed = await this.signAnyMode({
+      kind: EVENT_KINDS.PEOPLE_SET,
+      content: '',
+      tags: [
+        ['d', this.streamMuteIdentifier(identifier)],
+        // What the list is about, so it can be found from the stream itself
+        ['a', address],
+        ...[...current].map(pubkey => ['p', pubkey])
+      ]
+    });
+
+    const results = await getRelayPool().publishEvent(signed);
+    if (!Array.from(results.values()).some(Boolean)) {
+      throw new Error('No relay accepted the change');
+    }
+    return current;
+  }
+
+  /**
    * Announce that this account is watching a live stream (NIP-53 room
    * presence, kind 10312). Being replaceable, each viewer has one current
    * event; it is republished while they stay, and simply goes stale once

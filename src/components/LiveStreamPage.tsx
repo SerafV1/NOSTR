@@ -4,7 +4,7 @@ import { NostrCore, EventCache } from '../nostr/core';
 import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr } from '../utils/liveStream';
 import { formatAddress } from '../utils/helpers';
 import LiveVideoPlayer from './LiveVideoPlayer';
-import LiveChatPanel from './LiveChatPanel';
+import LiveChatPanel, { PresentPerson } from './LiveChatPanel';
 import ZapButton from './ZapButton';
 import RichText from './RichText';
 import EmojiText from './EmojiText';
@@ -22,11 +22,15 @@ interface LiveStreamPageProps {
 
 /** Beyond this the row of faces starts crowding the line it sits on */
 
+/** Faces shown before the rest fold into a "+N" */
+const VISIBLE_FACES = 8;
+
 const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifier, relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
   // On a phone the chat sits below the video and the details, far from what
   // it is about. Opening it over the page keeps the stream in view while
   // reading along, the way stream sites do it.
   const [chatOpen, setChatOpen] = useState(false);
+  const [present, setPresent] = useState<PresentPerson[]>([]);
   /** When the copy on screen was published, so an older one cannot replace it */
   const latestAt = useRef(0);
   const [stream, setStream] = useState<LiveStreamInfo | null>(null);
@@ -205,7 +209,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
 
             </div>
 
-            {stream.currentParticipants !== undefined && (
+            {(stream.currentParticipants !== undefined || present.length > 0) && (
               <div className="live-stream-presence">
                 {stream.currentParticipants !== undefined && (
                   <span
@@ -216,6 +220,38 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                   </span>
                 )}
 
+                {/* Faces beside the count. Nobody publishes a viewer list —
+                    a live event names only its host — so these are whoever
+                    has spoken in the chat, which is the only presence a
+                    client can know about; the row says so on hover. */}
+                {present.length > 0 && (
+                  <div className="live-stream-faces" title="Talking in the chat">
+                    {present.slice(0, VISIBLE_FACES).map(person => (
+                      <button
+                        key={person.pubkey}
+                        type="button"
+                        className="live-stream-face"
+                        title={person.name}
+                        onClick={() => onNavigateToProfile(person.pubkey)}
+                      >
+                        {person.picture ? (
+                          <img src={person.picture} alt={person.name} />
+                        ) : (
+                          <span className="live-stream-face-initial">
+                            {person.name.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                    {present.length > VISIBLE_FACES && (
+                      <span className="live-stream-face-more">
+                        +{present.length - VISIBLE_FACES}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* The count on its own, as a browser source for OBS */}
                 {/* Opens the count on its own, where the background and
                     weight are chosen and the address for OBS is handed out */}
                 <button
@@ -283,6 +319,11 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
             )}
             relaysConnected={relaysConnected}
             disabled={stream.status !== 'live'}
+            onPeoplePresent={setPresent}
+            // Either account behind the stream may moderate it: on a
+            // platform-published stream the presenter is not the signer
+            owners={[stream.pubkey, stream.hostPubkey]}
+            identifier={stream.dTag}
             onNavigateToProfile={onNavigateToProfile}
             onNavigateToNote={onNavigateToNote}
             onNavigateToTopic={onNavigateToTopic}

@@ -34,6 +34,12 @@ const customEmojiUrl = (reaction: NostrEventSigned, shortcode: string): string |
   return reaction.tags.find(t => t[0] === 'emoji' && t[1] === name)?.[2];
 };
 
+export interface PresentPerson {
+  pubkey: string;
+  name: string;
+  picture?: string;
+}
+
 interface TimelineEntry {
   kind: 'message' | 'zap';
   event: NostrEventSigned;
@@ -55,17 +61,27 @@ interface LiveChatPanelProps {
   relaysConnected?: boolean;
   /** Given only where a second window makes sense — not in that window itself */
   onPopOut?: () => void;
+  /** Who runs this stream: they can mute someone for everyone watching here */
+  owners?: string[];
+  /** The stream's `d` tag, which names its mute list */
+  identifier?: string;
   /** Drop the message box: nobody can type into a stream overlay */
   hideComposer?: boolean;
   /** Offer this address for copying — the chat as an OBS browser source */
   obsLink?: string;
+  /**
+   * Who is present, most recently heard from first. Nobody publishes a
+   * viewer list — a live event carries one 'p' tag, the host — so the people
+   * in the chat are the only ones a client can actually show.
+   */
+  onPeoplePresent?: (people: PresentPerson[]) => void;
   /** Overlay preview: given only where the choice is the viewer's to make */
   transparent?: boolean;
   bold?: boolean;
   onDisplayChange?: (opts: { transparent: boolean; bold: boolean }) => void;
 }
 
-const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, hideComposer, obsLink, transparent, bold, onDisplayChange }) => {
+const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, onPeoplePresent, hideComposer, obsLink, owners = [], identifier, transparent, bold, onDisplayChange }) => {
   const [messages, setMessages] = useState<NostrEventSigned[]>([]);
   const [zaps, setZaps] = useState<NostrEventSigned[]>([]);
   const [reactions, setReactions] = useState<NostrEventSigned[]>([]);
@@ -78,6 +94,9 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   // the one place that ignored — someone muted everywhere else went on
   // talking here
   const [muted, setMuted] = useState<Set<string>>(() => new Set(NostrCore.getBlockedPubkeys()));
+  // Whoever the stream's owner has thrown out — hidden for everyone watching
+  // through this client, not only for whoever muted them
+  const [streamMuted, setStreamMuted] = useState<Set<string>>(new Set());
   // Handles typed into the box stand in for pubkeys until the message is
   // sent, the same way the compose box does it — the chat shows "@Name",
   // the published message carries the reference
@@ -96,6 +115,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   // than the button it hangs off — anchored in CSS it was cut to a strip
   const emoji = useAnchoredPopup(showEmojiPicker, () => setShowEmojiPicker(false));
   const myPubkey = CredentialManager.getPublicKey();
+  const iRunThisStream = !!myPubkey && owners.includes(myPubkey);
 
   // Historical messages, then a live subscription for new ones — same
   // pattern as the home feed: a REQ with `since` replays what's stored and
@@ -164,6 +184,27 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, relaysConnected]);
+
+  useEffect(() => {
+    if (!relaysConnected || !identifier || owners.length === 0) return;
+    let cancelled = false;
+    NostrCore.fetchStreamMuteList(owners, identifier).then(list => {
+      if (!cancelled) setStreamMuted(list);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [relaysConnected, identifier, owners.join(',')]);
+
+  const setMutedForEveryone = async (author: string, name: string) => {
+    if (!identifier) return;
+    if (!window.confirm(`Mute ${name} for everyone watching this stream here?`)) return;
+    try {
+      const updated = await NostrCore.setStreamMuted(address, identifier, author, true);
+      setStreamMuted(updated);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Could not update the stream mute list');
+    }
+  };
 
   // Reactions are tagged with the message they are about, not with the
   // stream, so they need a subscription of their own. Re-subscribing every
@@ -353,6 +394,34 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   };
 
 
+  // Anyone who has spoken or zapped, newest first — the panel already holds
+  // both, so presence costs nothing extra to work out
+  const present: PresentPerson[] = (() => {
+    const seen = new Map<string, PresentPerson>();
+    const speakers = [
+      ...messages.map(m => m.pubkey),
+      ...zaps.map(z => NostrCore.zapSenderPubkey(z))
+    ];
+    for (const pubkey of [...messages].reverse().map(m => m.pubkey).concat(
+      speakers.filter((p): p is string => !!p)
+    )) {
+      if (!pubkey || seen.has(pubkey)) continue;
+      const profile = profiles.get(pubkey);
+      seen.set(pubkey, {
+        pubkey,
+        name: profile?.display_name || profile?.name || formatAddress(pubkey),
+        picture: profile?.picture
+      });
+    }
+    return [...seen.values()];
+  })();
+
+  const presenceKey = present.map(p => p.pubkey).join(',');
+  useEffect(() => {
+    onPeoplePresent?.(present);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presenceKey, profiles]);
+
   // Messages and zaps are two separate subscriptions but one conversation,
   // so they are interleaved by time the way the room actually experienced them
   const timeline: TimelineEntry[] = [
@@ -371,7 +440,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
       sats: NostrCore.parseZapAmountSats(event)
     }))
   ]
-    .filter(entry => !entry.author || !muted.has(entry.author))
+    .filter(entry => !entry.author || (!muted.has(entry.author) && !streamMuted.has(entry.author)))
     .sort((a, b) => (a.event.created_at || 0) - (b.event.created_at || 0));
 
   return (
@@ -498,6 +567,18 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                   <button className="live-chat-author" onClick={() => author && onNavigateToProfile(author)}>
                     <EmojiText text={name} emojis={profile?.emojis} />
                   </button>
+                  {/* The stream's own list, offered only to whoever runs it */}
+                  {iRunThisStream && author && author !== myPubkey && (
+                    <button
+                      type="button"
+                      className="live-chat-mute-btn"
+                      title={`Mute ${name} for everyone watching here`}
+                      onClick={() => setMutedForEveryone(author, name)}
+                    >
+                      🚫
+                    </button>
+                  )}
+
                   {/* Muting from here, since this is where you meet someone
                       worth muting */}
                   {isLoggedIn && author && author !== myPubkey && (

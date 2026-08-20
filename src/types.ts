@@ -85,7 +85,9 @@ export const EVENT_KINDS = {
   LIVE_EVENT: 30311,
   LIVE_CHAT_MESSAGE: 1311,
   /** NIP-53 room presence: "I am watching this right now" */
-  LIVE_PRESENCE: 10312
+  LIVE_PRESENCE: 10312,
+  /** NIP-51 people set — used here for a stream's own list of muted accounts */
+  PEOPLE_SET: 30000
 };
 
 // Common hashtags
