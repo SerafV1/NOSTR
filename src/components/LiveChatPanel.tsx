@@ -74,6 +74,10 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   const [sending, setSending] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [obsLinkCopied, setObsLinkCopied] = useState(false);
+  // The mute list this account already keeps (NIP-51), which the chat was
+  // the one place that ignored — someone muted everywhere else went on
+  // talking here
+  const [muted, setMuted] = useState<Set<string>>(() => new Set(NostrCore.getBlockedPubkeys()));
   // Handles typed into the box stand in for pubkeys until the message is
   // sent, the same way the compose box does it — the chat shows "@Name",
   // the published message carries the reference
@@ -302,6 +306,16 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     });
   };
 
+  const mute = async (author: string, name: string) => {
+    if (!window.confirm(`Mute ${name}? Their messages disappear from the chat, here and in your feed.`)) return;
+    try {
+      await NostrCore.blockUser(author);
+      setMuted(current => new Set(current).add(author));
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Could not mute this account');
+    }
+  };
+
   const tagAuthor = (author: string, name: string) => {
     const handle = handleFromName(name, formatAddress(author));
     mentions.current.set(handle, author);
@@ -356,7 +370,9 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
       recipient: NostrCore.zapRecipientPubkey(event),
       sats: NostrCore.parseZapAmountSats(event)
     }))
-  ].sort((a, b) => (a.event.created_at || 0) - (b.event.created_at || 0));
+  ]
+    .filter(entry => !entry.author || !muted.has(entry.author))
+    .sort((a, b) => (a.event.created_at || 0) - (b.event.created_at || 0));
 
   return (
     <div className="live-chat-panel">
@@ -482,6 +498,19 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                   <button className="live-chat-author" onClick={() => author && onNavigateToProfile(author)}>
                     <EmojiText text={name} emojis={profile?.emojis} />
                   </button>
+                  {/* Muting from here, since this is where you meet someone
+                      worth muting */}
+                  {isLoggedIn && author && author !== myPubkey && (
+                    <button
+                      type="button"
+                      className="live-chat-mute-btn"
+                      title={`Mute ${name}`}
+                      onClick={() => mute(author, name)}
+                    >
+                      🔇
+                    </button>
+                  )}
+
                   {/* Answering someone by name, without hunting for it */}
                   {isLoggedIn && !disabled && author && (
                     <button
