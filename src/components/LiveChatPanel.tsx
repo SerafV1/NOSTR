@@ -193,10 +193,39 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   useEffect(() => {
     if (!relaysConnected || !identifier || owners.length === 0) return;
     let cancelled = false;
+
     NostrCore.fetchStreamMuteList(owners, identifier).then(list => {
       if (!cancelled) setStreamMuted(list);
     });
-    return () => { cancelled = true; };
+
+    // Read once, the list was whatever it said when this window opened: a
+    // host muting someone from the stream page never reached the popped-out
+    // chat — the one an overlay is actually showing — until it was reloaded.
+    // The list is replaceable, so each new version replaces its author's.
+    const byOwner = new Map<string, { at: number; muted: string[] }>();
+    const subId = NostrCore.subscribeLive(
+      [{
+        kinds: [EVENT_KINDS.PEOPLE_SET],
+        authors: owners,
+        '#d': [`livechat-mute:${identifier}`]
+      }],
+      (event) => {
+        const held = byOwner.get(event.pubkey);
+        if (held && held.at >= (event.created_at || 0)) return;
+        byOwner.set(event.pubkey, {
+          at: event.created_at || 0,
+          muted: event.tags.filter(t => t[0] === 'p' && t[1]).map(t => t[1])
+        });
+        if (!cancelled) {
+          setStreamMuted(new Set([...byOwner.values()].flatMap(entry => entry.muted)));
+        }
+      }
+    );
+
+    return () => {
+      cancelled = true;
+      NostrCore.unsubscribeLive(subId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [relaysConnected, identifier, owners.join(',')]);
 
