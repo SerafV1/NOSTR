@@ -63,21 +63,9 @@ interface LiveChatPanelProps {
   transparent?: boolean;
   bold?: boolean;
   onDisplayChange?: (opts: { transparent: boolean; bold: boolean }) => void;
-  /**
-   * Who is present, most recently heard from first. Nobody publishes a
-   * viewer list — a live event carries one 'p' tag, the host — so the people
-   * in the chat are the only ones a client can actually show.
-   */
-  onPeoplePresent?: (people: PresentPerson[]) => void;
 }
 
-export interface PresentPerson {
-  pubkey: string;
-  name: string;
-  picture?: string;
-}
-
-const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, onPeoplePresent, hideComposer, obsLink, transparent, bold, onDisplayChange }) => {
+const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, hideComposer, obsLink, transparent, bold, onDisplayChange }) => {
   const [messages, setMessages] = useState<NostrEventSigned[]>([]);
   const [zaps, setZaps] = useState<NostrEventSigned[]>([]);
   const [reactions, setReactions] = useState<NostrEventSigned[]>([]);
@@ -350,33 +338,6 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     }
   };
 
-  // Anyone who has spoken or zapped, newest first — the panel already holds
-  // both, so presence costs nothing extra to work out
-  const present: PresentPerson[] = (() => {
-    const seen = new Map<string, PresentPerson>();
-    const speakers = [
-      ...messages.map(m => m.pubkey),
-      ...zaps.map(z => NostrCore.zapSenderPubkey(z))
-    ];
-    for (const pubkey of [...messages].reverse().map(m => m.pubkey).concat(
-      speakers.filter((p): p is string => !!p)
-    )) {
-      if (!pubkey || seen.has(pubkey)) continue;
-      const profile = profiles.get(pubkey);
-      seen.set(pubkey, {
-        pubkey,
-        name: profile?.display_name || profile?.name || formatAddress(pubkey),
-        picture: profile?.picture
-      });
-    }
-    return [...seen.values()];
-  })();
-
-  const presenceKey = present.map(p => p.pubkey).join(',');
-  useEffect(() => {
-    onPeoplePresent?.(present);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presenceKey, profiles]);
 
   // Messages and zaps are two separate subscriptions but one conversation,
   // so they are interleaved by time the way the room actually experienced them

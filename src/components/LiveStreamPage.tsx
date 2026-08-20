@@ -1,11 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
-import { CredentialManager } from '../nostr/crypto';
 import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr } from '../utils/liveStream';
 import { formatAddress } from '../utils/helpers';
 import LiveVideoPlayer from './LiveVideoPlayer';
-import LiveChatPanel, { PresentPerson } from './LiveChatPanel';
+import LiveChatPanel from './LiveChatPanel';
 import ZapButton from './ZapButton';
 import RichText from './RichText';
 import EmojiText from './EmojiText';
@@ -22,10 +21,6 @@ interface LiveStreamPageProps {
 }
 
 /** Beyond this the row of faces starts crowding the line it sits on */
-const VISIBLE_FACES = 8;
-/** Presence is refreshed while watching; this is how long one stays valid */
-const PRESENCE_GOES_STALE_SECONDS = 10 * 60;
-const PRESENCE_REFRESH_MS = 2 * 60 * 1000;
 
 const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifier, relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
   // On a phone the chat sits below the video and the details, far from what
@@ -34,9 +29,6 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   const [chatOpen, setChatOpen] = useState(false);
   /** When the copy on screen was published, so an older one cannot replace it */
   const latestAt = useRef(0);
-  const [chatPresent, setChatPresent] = useState<PresentPerson[]>([]);
-  /** Viewers who announce themselves (NIP-53 presence), newest first */
-  const [watching, setWatching] = useState<PresentPerson[]>([]);
   const [stream, setStream] = useState<LiveStreamInfo | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -139,75 +131,6 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
     };
   }, [kind, pubkey, identifier, relaysConnected]);
 
-  // Who is watching, as announced. A viewer who never types is invisible
-  // otherwise — which is why a stream could read "4 viewers" with not one
-  // face beside it, not even your own.
-  useEffect(() => {
-    if (!relaysConnected || !stream || stream.status !== 'live') return;
-
-    const address = liveEventAddress(kind, pubkey, identifier);
-    const seen = new Map<string, number>();
-    let cancelled = false;
-
-    const rebuild = async () => {
-      const cutoff = Date.now() / 1000 - PRESENCE_GOES_STALE_SECONDS;
-      for (const [author, at] of seen) {
-        if (at < cutoff) seen.delete(author);
-      }
-      const authors = [...seen.entries()]
-        .sort(([, a], [, b]) => b - a)
-        .map(([author]) => author);
-      if (authors.length === 0) {
-        if (!cancelled) setWatching([]);
-        return;
-      }
-
-      const profiles = await NostrCore.fetchProfiles(authors);
-      if (cancelled) return;
-      setWatching(authors.map(author => {
-        const found = profiles.get(author);
-        return {
-          pubkey: author,
-          name: found?.display_name || found?.name || formatAddress(author),
-          picture: found?.picture
-        };
-      }));
-    };
-
-    const subId = NostrCore.subscribeLive(
-      [{ kinds: [EVENT_KINDS.LIVE_PRESENCE], '#a': [address] }],
-      (event) => {
-        seen.set(event.pubkey, event.created_at || 0);
-        rebuild();
-      }
-    );
-
-    // Presence is replaceable and goes stale rather than being withdrawn, so
-    // the list has to be swept even when nothing new arrives
-    const sweep = setInterval(rebuild, 30000);
-
-    // And announce this account, so a viewer of this client is visible to
-    // the others — republished on the same rhythm the note goes stale on
-    let heartbeat: ReturnType<typeof setInterval> | null = null;
-    if (CredentialManager.canSign()) {
-      const announce = () => {
-        if (document.visibilityState === 'visible') {
-          NostrCore.publishLivePresence(address);
-        }
-      };
-      announce();
-      heartbeat = setInterval(announce, PRESENCE_REFRESH_MS);
-    }
-
-    return () => {
-      cancelled = true;
-      clearInterval(sweep);
-      if (heartbeat) clearInterval(heartbeat);
-      NostrCore.unsubscribeLive(subId);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, pubkey, identifier, relaysConnected, stream?.status]);
-
   if (loading || !relaysConnected) {
     return (
       <div className="live-stream-page">
@@ -226,15 +149,6 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
 
   const hostName = profile?.display_name || profile?.name || formatAddress(stream.hostPubkey);
 
-  // Announced viewers first — they are actually here now — then people known
-  // only from the chat, deduplicated
-  const present: PresentPerson[] = (() => {
-    const byPubkey = new Map<string, PresentPerson>();
-    for (const person of [...watching, ...chatPresent]) {
-      if (!byPubkey.has(person.pubkey)) byPubkey.set(person.pubkey, person);
-    }
-    return [...byPubkey.values()];
-  })();
 
   const address = liveEventAddress(kind, stream.pubkey, stream.dTag);
   const naddrParam = encodeLiveNaddr(kind, stream.pubkey, stream.dTag);
@@ -291,7 +205,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
 
             </div>
 
-            {(stream.currentParticipants !== undefined || present.length > 0) && (
+            {stream.currentParticipants !== undefined && (
               <div className="live-stream-presence">
                 {stream.currentParticipants !== undefined && (
                   <span
@@ -302,41 +216,6 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                   </span>
                 )}
 
-                {/* Faces beside the count. Nobody publishes a viewer list —
-                    a live event names only its host — so these are whoever
-                    has spoken in the chat, which is the only presence a
-                    client can know about; the row says so on hover. */}
-                {present.length > 0 && (
-                  <div
-                    className="live-stream-faces"
-                    title="Whoever can be seen: viewers whose client announces them, and people talking in the chat. Most clients announce nobody, so this is usually fewer than the count."
-                  >
-                    {present.slice(0, VISIBLE_FACES).map(person => (
-                      <button
-                        key={person.pubkey}
-                        type="button"
-                        className="live-stream-face"
-                        title={person.name}
-                        onClick={() => onNavigateToProfile(person.pubkey)}
-                      >
-                        {person.picture ? (
-                          <img src={person.picture} alt={person.name} />
-                        ) : (
-                          <span className="live-stream-face-initial">
-                            {person.name.charAt(0).toUpperCase()}
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                    {present.length > VISIBLE_FACES && (
-                      <span className="live-stream-face-more">
-                        +{present.length - VISIBLE_FACES}
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {/* The count on its own, as a browser source for OBS */}
                 {/* Opens the count on its own, where the background and
                     weight are chosen and the address for OBS is handed out */}
                 <button
@@ -403,7 +282,6 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
               'width=420,height=760,menubar=no,toolbar=no'
             )}
             relaysConnected={relaysConnected}
-            onPeoplePresent={setChatPresent}
             disabled={stream.status !== 'live'}
             onNavigateToProfile={onNavigateToProfile}
             onNavigateToNote={onNavigateToNote}
