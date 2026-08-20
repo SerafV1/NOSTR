@@ -5049,6 +5049,21 @@ a.capability-indicator.paid:hover {
   white-space: pre-wrap;
 }
 
+/* Said once, right after muting, and gone on its own: muting takes someone
+   off screen, which also takes away the name you would click to undo it */
+.live-chat-undo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+  background: var(--dark-bg);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
 /* The owner's list of who they have muted in this chat, and the way back:
    a muted person's messages are gone, so their name is not there to click */
 .live-chat-muted-list {

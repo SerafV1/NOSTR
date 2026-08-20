@@ -102,6 +102,10 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   // thrown out — for the second or two the read takes — and then take them
   // back off screen. Better to hold the messages for that moment.
   const [muteListRead, setMuteListRead] = useState(false);
+  /** Shown after muting: what just happened, and the way to take it back */
+  const [justMuted, setJustMuted] = useState<
+    { pubkey: string; name: string; forEveryone: boolean } | null
+  >(null);
   // The owner's own view of that list: muting someone hides their messages,
   // which is also the only place their name was to click on
   const [showStreamMuted, setShowStreamMuted] = useState(false);
@@ -249,6 +253,12 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [relaysConnected, identifier, owners.join(',')]);
 
+  useEffect(() => {
+    if (!justMuted) return;
+    const timer = setTimeout(() => setJustMuted(null), 10000);
+    return () => clearTimeout(timer);
+  }, [justMuted]);
+
   // Names for the list, once there is one to show
   useEffect(() => {
     if (!showStreamMuted || streamMuted.size === 0) return;
@@ -258,6 +268,27 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     });
     return () => { cancelled = true; };
   }, [showStreamMuted, streamMuted]);
+
+  const undoMute = async () => {
+    if (!justMuted) return;
+    const { pubkey: target, forEveryone } = justMuted;
+    setJustMuted(null);
+    if (forEveryone) {
+      unmuteForEveryone(target);
+      return;
+    }
+    setMuted(current => {
+      const without = new Set(current);
+      without.delete(target);
+      return without;
+    });
+    try {
+      await NostrCore.unblockUser(target);
+    } catch (error) {
+      setMuted(current => new Set(current).add(target));
+      alert(error instanceof Error ? error.message : 'Could not unmute this account');
+    }
+  };
 
   const unmuteForEveryone = async (target: string) => {
     if (!identifier) return;
@@ -276,8 +307,9 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     }
   };
 
-  const setMutedForEveryone = async (author: string) => {
+  const setMutedForEveryone = async (author: string, name: string) => {
     if (!identifier) return;
+    setJustMuted({ pubkey: author, name, forEveryone: true });
     // Off screen at once. Publishing the list means reading the current one
     // back first, signing and waiting for a relay — some eight seconds in
     // which the person you just threw out was still talking.
@@ -437,8 +469,9 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     });
   };
 
-  const mute = async (author: string) => {
+  const mute = async (author: string, name: string) => {
     setMuted(current => new Set(current).add(author));
+    setJustMuted({ pubkey: author, name, forEveryone: false });
     try {
       await NostrCore.blockUser(author);
     } catch (error) {
@@ -638,6 +671,18 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
         </div>
       )}
 
+      {justMuted && (
+        <div className="live-chat-undo">
+          <span>
+            Muted <strong>{justMuted.name}</strong>
+            {justMuted.forEveryone ? ' for everyone here' : ''}
+          </span>
+          <button type="button" className="btn btn-secondary btn-small" onClick={undoMute}>
+            Undo
+          </button>
+        </div>
+      )}
+
       <div className="live-chat-messages" ref={listRef}>
         {timeline.length === 0 && (
           <div className="live-chat-empty">
@@ -739,7 +784,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                       type="button"
                       className="live-chat-mute-btn"
                       title={`Mute ${name} for everyone watching here`}
-                      onClick={() => setMutedForEveryone(author)}
+                      onClick={() => setMutedForEveryone(author, name)}
                     >
                       🚫
                     </button>
@@ -752,7 +797,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                       type="button"
                       className="live-chat-mute-btn"
                       title={`Mute ${name}`}
-                      onClick={() => mute(author)}
+                      onClick={() => mute(author, name)}
                     >
                       🔇
                     </button>
