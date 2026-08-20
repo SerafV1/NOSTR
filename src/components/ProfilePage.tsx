@@ -379,7 +379,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const handleBlockToggle = async () => {
     if (blockLoading) return;
     const name = profile?.display_name || profile?.name || formatAddress(pubkey);
-    if (!isBlocked && !window.confirm(`Block ${name}? Their posts disappear from your feeds.`)) return;
+    if (!isBlocked && !window.confirm(`Mute ${name}? Their posts and chat messages disappear for you, on every device.`)) return;
     setBlockLoading(true);
     try {
       if (isBlocked) {
@@ -492,7 +492,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                     onClick={handleBlockToggle}
                     disabled={blockLoading}
                   >
-                    {blockLoading ? '...' : isBlocked ? 'Unblock' : 'Block'}
+                    {blockLoading ? '...' : isBlocked ? 'Unmute' : 'Mute'}
                   </button>
                   {profile.lud16 && (
                     <ZapButton

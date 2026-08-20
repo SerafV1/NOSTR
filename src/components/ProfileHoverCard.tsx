@@ -10,7 +10,7 @@ interface ProfileHoverCardProps {
   /** Known profile, if the caller already has one — saves a lookup */
   profile?: UserProfile | null;
   onNavigateToProfile: (pubkey: string) => void;
-  /** Called after a block, so the surrounding feed can drop the author */
+  /** Called after a mute, so the surrounding feed can drop the author */
   onBlocked?: (pubkey: string) => void;
   /**
    * Open on click as well as on hover. For places where the name is there to
@@ -40,7 +40,7 @@ const CLOSE_DELAY_MS = 200;
 
 /**
  * Wraps an author's avatar/name and shows an actions popover on hover:
- * follow, unfollow, block, unblock. Everything is loaded lazily, on the
+ * follow, unfollow, mute, unmute. Everything is loaded lazily, on the
  * first open, so a feed of 100 cards costs nothing until you point at one.
  */
 const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
@@ -175,7 +175,7 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
   const handleBlockToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (busy) return;
-    if (!blocked && !window.confirm(`Block ${displayName}? Their posts disappear from your feeds.`)) return;
+    if (!blocked && !window.confirm(`Mute ${displayName}? Their posts and chat messages disappear for you, on every device.`)) return;
     setBusy('block');
     setError(null);
     try {
@@ -189,7 +189,7 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
         onBlocked?.(pubkey);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update block list');
+      setError(err instanceof Error ? err.message : 'Failed to update your mute list');
     } finally {
       setBusy(null);
     }
@@ -248,7 +248,7 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
                 onClick={handleBlockToggle}
                 disabled={busy !== null}
               >
-                {busy === 'block' ? '...' : blocked ? 'Unblock' : 'Block'}
+                {busy === 'block' ? '...' : blocked ? 'Unmute' : 'Mute'}
               </button>
               {extraAction && (
                 <button

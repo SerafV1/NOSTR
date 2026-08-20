@@ -373,7 +373,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   };
 
   const mute = async (author: string, name: string) => {
-    if (!window.confirm(`Mute ${name}? Their messages disappear from the chat, here and in your feed.`)) return;
+    if (!window.confirm(`Mute ${name}? Their posts and chat messages disappear for you, on every device.`)) return;
     try {
       await NostrCore.blockUser(author);
       setMuted(current => new Set(current).add(author));
@@ -547,13 +547,15 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                   profile={profile}
                   openOnClick
                   escapesClipping
-                  extraAction={{ label: 'Unmute', onClick: () => unmuteForEveryone(target) }}
+                  extraAction={{ label: 'Unmute in this chat', onClick: () => unmuteForEveryone(target) }}
                   onNavigateToProfile={onNavigateToProfile}
                 >
                   <button type="button" className="live-chat-author">
                     <EmojiText text={label} emojis={profile?.emojis} />
                   </button>
                 </ProfileHoverCard>
+                {/* The card carries the same action, but a list of names is
+                    read to act on, so it is here as well */}
                 <button
                   type="button"
                   className="btn btn-secondary btn-small"
