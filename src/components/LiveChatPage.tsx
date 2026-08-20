@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import LiveChatPanel from './LiveChatPanel';
-import { liveEventAddress } from '../utils/liveStream';
+import { liveEventAddress, parseLiveEvent } from '../utils/liveStream';
 import { CredentialManager } from '../nostr/crypto';
+import { NostrCore } from '../nostr/core';
 
 interface LiveChatPageProps {
   kind: number;
@@ -34,6 +35,11 @@ const LiveChatPage: React.FC<LiveChatPageProps> = ({
   const [transparent, setTransparent] = useState(() => params.get('transparent') === '1');
   // Over a moving picture, heavier text carries better
   const [bold, setBold] = useState(() => params.get('bold') === '1');
+  // Who runs the stream, so this window honours its mute list too — and
+  // offers it, if the person watching here is the one who runs it. Without
+  // this the popped-out chat, the one an overlay actually shows, ignored
+  // every moderation decision made on the page it came from.
+  const [owners, setOwners] = useState<string[]>([pubkey]);
   // In an overlay nobody can type, and the box would only take up room
   const readOnly = !CredentialManager.isLoggedIn();
   // The window OBS itself loads: signed out and transparent. There the header
@@ -61,6 +67,16 @@ const LiveChatPage: React.FC<LiveChatPageProps> = ({
     window.history.replaceState({}, '', window.location.pathname + search(opts));
   };
 
+  useEffect(() => {
+    if (!relaysConnected) return;
+    let cancelled = false;
+    NostrCore.fetchEventByAddress(kind, pubkey, identifier).then(event => {
+      // The presenter is not always the account that signed the event
+      if (event && !cancelled) setOwners([pubkey, parseLiveEvent(event).hostPubkey]);
+    });
+    return () => { cancelled = true; };
+  }, [kind, pubkey, identifier, relaysConnected]);
+
   // The page sits on several painted layers — body, the app shell, the
   // scrolling main — and every one of them has to be cleared or OBS gets a
   // solid rectangle. Marking the root element rather than matching upwards
@@ -82,6 +98,8 @@ const LiveChatPage: React.FC<LiveChatPageProps> = ({
       address={liveEventAddress(kind, pubkey, identifier)}
       relaysConnected={relaysConnected}
       hideComposer={readOnly}
+      owners={owners}
+      identifier={identifier}
       obsLink={obsLink}
       transparent={readOnly ? undefined : transparent}
       bold={readOnly ? undefined : bold}
