@@ -3,6 +3,7 @@ import { NostrCore } from '../nostr/core';
 import { UserProfile } from '../types';
 import { formatAddress } from '../utils/helpers';
 import EmojiText from './EmojiText';
+import ProfileHoverCard from './ProfileHoverCard';
 
 interface MutedSettingsProps {
   /** Names cannot be looked up before the pool is up — see the effect below */
@@ -85,11 +86,19 @@ const MutedSettings: React.FC<MutedSettingsProps> = ({ relaysConnected, onNaviga
         const name = profile?.display_name || profile?.name || formatAddress(pubkey);
         return (
           <div key={pubkey} className="muted-row">
+            {/* The card the feed opens on a name, rather than a trip to the
+                profile page: here it already offers Unmute, since this is a
+                list of people this account has muted */}
+            <ProfileHoverCard
+              pubkey={pubkey}
+              profile={profile}
+              openOnClick
+              onNavigateToProfile={(target) => onNavigateToProfile?.(target)}
+            >
             <button
               type="button"
               className="muted-person"
-              onClick={() => onNavigateToProfile?.(pubkey)}
-              title="Open this profile"
+              title="Who this is, and the way to unmute"
             >
               {profile?.picture ? (
                 <img src={profile.picture} alt="" className="muted-avatar" />
@@ -100,6 +109,7 @@ const MutedSettings: React.FC<MutedSettingsProps> = ({ relaysConnected, onNaviga
                 <EmojiText text={name} emojis={profile?.emojis} />
               </span>
             </button>
+            </ProfileHoverCard>
             <button
               type="button"
               className="btn btn-secondary btn-small"
