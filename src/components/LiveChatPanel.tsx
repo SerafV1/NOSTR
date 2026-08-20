@@ -261,21 +261,37 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
 
   const unmuteForEveryone = async (target: string) => {
     if (!identifier) return;
+    // Back on screen at once, for the same reason
+    setStreamMuted(current => {
+      const without = new Set(current);
+      without.delete(target);
+      return without;
+    });
     try {
       const updated = await NostrCore.setStreamMuted(address, identifier, target, false);
       setStreamMuted(updated);
     } catch (error) {
+      setStreamMuted(current => new Set(current).add(target));
       alert(error instanceof Error ? error.message : 'Could not update the stream mute list');
     }
   };
 
-  const setMutedForEveryone = async (author: string, name: string) => {
+  const setMutedForEveryone = async (author: string) => {
     if (!identifier) return;
-    if (!window.confirm(`Mute ${name} for everyone watching this stream here?`)) return;
+    // Off screen at once. Publishing the list means reading the current one
+    // back first, signing and waiting for a relay — some eight seconds in
+    // which the person you just threw out was still talking.
+    setStreamMuted(current => new Set(current).add(author));
     try {
       const updated = await NostrCore.setStreamMuted(address, identifier, author, true);
       setStreamMuted(updated);
     } catch (error) {
+      // Put them back rather than leave the screen disagreeing with the list
+      setStreamMuted(current => {
+        const reverted = new Set(current);
+        reverted.delete(author);
+        return reverted;
+      });
       alert(error instanceof Error ? error.message : 'Could not update the stream mute list');
     }
   };
@@ -421,12 +437,16 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     });
   };
 
-  const mute = async (author: string, name: string) => {
-    if (!window.confirm(`Mute ${name}? Their posts and chat messages disappear for you, on every device.`)) return;
+  const mute = async (author: string) => {
+    setMuted(current => new Set(current).add(author));
     try {
       await NostrCore.blockUser(author);
-      setMuted(current => new Set(current).add(author));
     } catch (error) {
+      setMuted(current => {
+        const reverted = new Set(current);
+        reverted.delete(author);
+        return reverted;
+      });
       alert(error instanceof Error ? error.message : 'Could not mute this account');
     }
   };
@@ -719,7 +739,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                       type="button"
                       className="live-chat-mute-btn"
                       title={`Mute ${name} for everyone watching here`}
-                      onClick={() => setMutedForEveryone(author, name)}
+                      onClick={() => setMutedForEveryone(author)}
                     >
                       🚫
                     </button>
@@ -732,7 +752,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                       type="button"
                       className="live-chat-mute-btn"
                       title={`Mute ${name}`}
-                      onClick={() => mute(author, name)}
+                      onClick={() => mute(author)}
                     >
                       🔇
                     </button>

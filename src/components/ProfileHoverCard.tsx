@@ -175,7 +175,6 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
   const handleBlockToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (busy) return;
-    if (!blocked && !window.confirm(`Mute ${displayName}? Their posts and chat messages disappear for you, on every device.`)) return;
     setBusy('block');
     setError(null);
     try {
