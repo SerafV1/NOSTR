@@ -671,6 +671,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                   profile={profile}
                   openOnClick
                   escapesClipping
+                  hideFollow
                   extraAction={{ label: 'Unmute in this chat', onClick: () => unmuteForEveryone(target) }}
                   onNavigateToProfile={onNavigateToProfile}
                 >

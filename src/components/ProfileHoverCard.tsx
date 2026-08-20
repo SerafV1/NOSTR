@@ -29,6 +29,9 @@ interface ProfileHoverCardProps {
    * list — a stream's list, say, which only its owner can undo.
    */
   extraAction?: { label: string; onClick: () => void | Promise<void> };
+  /** Dropped where the card is opened to undo a mute — following is not why
+   *  anyone opens it there */
+  hideFollow?: boolean;
   children: React.ReactNode;
 }
 
@@ -51,6 +54,7 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
   openOnClick,
   escapesClipping,
   extraAction,
+  hideFollow,
   children
 }) => {
   const [open, setOpen] = useState(false);
@@ -233,14 +237,16 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
 
           {!isOwnProfile && (
             <div className="hover-card-actions">
-              <button
-                type="button"
-                className={`hover-card-btn ${isFollowing ? 'secondary' : 'primary'}`}
-                onClick={handleFollowToggle}
-                disabled={busy !== null || isFollowing === null}
-              >
-                {busy === 'follow' ? '...' : isFollowing === null ? 'Follow' : isFollowing ? 'Unfollow' : 'Follow'}
-              </button>
+              {!hideFollow && (
+                <button
+                  type="button"
+                  className={`hover-card-btn ${isFollowing ? 'secondary' : 'primary'}`}
+                  onClick={handleFollowToggle}
+                  disabled={busy !== null || isFollowing === null}
+                >
+                  {busy === 'follow' ? '...' : isFollowing === null ? 'Follow' : isFollowing ? 'Unfollow' : 'Follow'}
+                </button>
+              )}
               <button
                 type="button"
                 className="hover-card-btn danger"

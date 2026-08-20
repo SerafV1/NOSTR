@@ -93,6 +93,7 @@ const MutedSettings: React.FC<MutedSettingsProps> = ({ relaysConnected, onNaviga
               pubkey={pubkey}
               profile={profile}
               openOnClick
+              hideFollow
               onNavigateToProfile={(target) => onNavigateToProfile?.(target)}
             >
             <button
