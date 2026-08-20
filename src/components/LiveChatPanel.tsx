@@ -97,6 +97,10 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   // Whoever the stream's owner has thrown out — hidden for everyone watching
   // through this client, not only for whoever muted them
   const [streamMuted, setStreamMuted] = useState<Set<string>>(new Set());
+  // The owner's own view of that list: muting someone hides their messages,
+  // which is also the only place their name was to click on
+  const [showStreamMuted, setShowStreamMuted] = useState(false);
+  const [streamMutedProfiles, setStreamMutedProfiles] = useState<Map<string, UserProfile>>(new Map());
   // Handles typed into the box stand in for pubkeys until the message is
   // sent, the same way the compose box does it — the chat shows "@Name",
   // the published message carries the reference
@@ -194,6 +198,26 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [relaysConnected, identifier, owners.join(',')]);
+
+  // Names for the list, once there is one to show
+  useEffect(() => {
+    if (!showStreamMuted || streamMuted.size === 0) return;
+    let cancelled = false;
+    NostrCore.fetchProfiles([...streamMuted]).then(found => {
+      if (!cancelled) setStreamMutedProfiles(found);
+    });
+    return () => { cancelled = true; };
+  }, [showStreamMuted, streamMuted]);
+
+  const unmuteForEveryone = async (target: string) => {
+    if (!identifier) return;
+    try {
+      const updated = await NostrCore.setStreamMuted(address, identifier, target, false);
+      setStreamMuted(updated);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Could not update the stream mute list');
+    }
+  };
 
   const setMutedForEveryone = async (author: string, name: string) => {
     if (!identifier) return;
@@ -449,6 +473,17 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
         <span>Stream Chat</span>
         {/* Shows what an OBS source would look like, and decides what the
             copied address says */}
+        {iRunThisStream && streamMuted.size > 0 && (
+          <button
+            type="button"
+            className="live-chat-obs-btn"
+            title="Everyone you have muted in this chat"
+            onClick={() => setShowStreamMuted(open => !open)}
+          >
+            🚫 {streamMuted.size}
+          </button>
+        )}
+
         {onDisplayChange && (
           <span className="live-chat-display-toggles">
             <label title="Preview the chat with no background, for laying over the video">
@@ -497,6 +532,33 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
           </button>
         )}
       </div>
+      {showStreamMuted && iRunThisStream && (
+        <div className="live-chat-muted-list">
+          {[...streamMuted].map(target => {
+            const profile = streamMutedProfiles.get(target);
+            const label = profile?.display_name || profile?.name || formatAddress(target);
+            return (
+              <div key={target} className="live-chat-muted-row">
+                <button
+                  type="button"
+                  className="live-chat-author"
+                  onClick={() => onNavigateToProfile(target)}
+                >
+                  <EmojiText text={label} emojis={profile?.emojis} />
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-small"
+                  onClick={() => unmuteForEveryone(target)}
+                >
+                  Unmute
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div className="live-chat-messages" ref={listRef}>
         {timeline.length === 0 && (
           <div className="live-chat-empty">No messages yet — say hello!</div>

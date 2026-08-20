@@ -1019,11 +1019,15 @@ export class NostrCore {
     if (owners.length === 0) return muted;
 
     try {
+      // waitForAll: the pool normally returns as soon as any relay answers,
+      // and a list like this lives on the two or three relays its owner
+      // publishes to — the fast "nothing here" from everyone else would win
+      // the race and the list would read as empty
       const events = await getRelayPool().fetchEvents([{
         kinds: [EVENT_KINDS.PEOPLE_SET],
         authors: owners,
         '#d': [this.streamMuteIdentifier(identifier)]
-      }]);
+      }], true);
 
       // Replaceable per author: only their newest list counts
       const newest = new Map<string, NostrEventSigned>();

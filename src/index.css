@@ -5049,6 +5049,25 @@ a.capability-indicator.paid:hover {
   white-space: pre-wrap;
 }
 
+/* The owner's list of who they have muted in this chat, and the way back:
+   a muted person's messages are gone, so their name is not there to click */
+.live-chat-muted-list {
+  border-bottom: 1px solid var(--border-color);
+  background: var(--dark-bg);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  max-height: 160px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.live-chat-muted-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: 2px 0;
+}
+
 /* Sits directly above the message box, inside the panel — the list of
    people to tag while typing "@" */
 .live-chat-suggestions {
