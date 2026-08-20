@@ -83,7 +83,9 @@ export const EVENT_KINDS = {
   POLL_RESPONSE: 1018,
   BLOSSOM_AUTH: 24242,
   LIVE_EVENT: 30311,
-  LIVE_CHAT_MESSAGE: 1311
+  LIVE_CHAT_MESSAGE: 1311,
+  /** NIP-53 room presence: "I am watching this right now" */
+  LIVE_PRESENCE: 10312
 };
 
 // Common hashtags

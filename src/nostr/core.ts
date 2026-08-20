@@ -998,6 +998,30 @@ export class NostrCore {
    * bottom like a normal chat log.
    */
   /**
+   * Announce that this account is watching a live stream (NIP-53 room
+   * presence, kind 10312). Being replaceable, each viewer has one current
+   * event; it is republished while they stay, and simply goes stale once
+   * they leave. Without publishing one, a viewer who never says anything is
+   * invisible to every client — including this one.
+   */
+  static async publishLivePresence(address: string, relayHint?: string): Promise<boolean> {
+    if (!CredentialManager.canSign()) return false;
+
+    try {
+      const signed = await this.signAnyMode({
+        kind: EVENT_KINDS.LIVE_PRESENCE,
+        content: '',
+        tags: [['a', address, relayHint || '', 'root']]
+      });
+      const results = await getRelayPool().publishEvent(signed);
+      return Array.from(results.values()).some(Boolean);
+    } catch (error) {
+      console.error('Failed to publish presence:', error);
+      return false;
+    }
+  }
+
+  /**
    * Reactions (kind 7) to a batch of events — one query for a whole chat's
    * worth of messages rather than one per message.
    */
