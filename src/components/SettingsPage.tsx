@@ -6,10 +6,9 @@ import MutedSettings from './MutedSettings';
 
 interface SettingsPageProps {
   relaysConnected: boolean;
-  onNavigateToProfile?: (pubkey: string) => void;
 }
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ relaysConnected, onNavigateToProfile }) => {
+const SettingsPage: React.FC<SettingsPageProps> = ({ relaysConnected }) => {
   const location = useLocation();
   const section = location.pathname.endsWith('/media')
     ? 'media'
@@ -43,7 +42,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ relaysConnected, onNavigate
 
         {section === 'relays' && <RelaySettings />}
         {section === 'media' && <MediaServerSettings />}
-        {section === 'muted' && <MutedSettings relaysConnected={relaysConnected} onNavigateToProfile={onNavigateToProfile} />}
+        {section === 'muted' && <MutedSettings relaysConnected={relaysConnected} />}
       </div>
     </div>
   );

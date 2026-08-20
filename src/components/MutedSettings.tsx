@@ -3,12 +3,10 @@ import { NostrCore } from '../nostr/core';
 import { UserProfile } from '../types';
 import { formatAddress } from '../utils/helpers';
 import EmojiText from './EmojiText';
-import ProfileHoverCard from './ProfileHoverCard';
 
 interface MutedSettingsProps {
   /** Names cannot be looked up before the pool is up — see the effect below */
   relaysConnected: boolean;
-  onNavigateToProfile?: (pubkey: string) => void;
 }
 
 /**
@@ -19,7 +17,7 @@ interface MutedSettingsProps {
  * a mute made in passing could only be undone by finding that person again
  * somewhere else entirely.
  */
-const MutedSettings: React.FC<MutedSettingsProps> = ({ relaysConnected, onNavigateToProfile }) => {
+const MutedSettings: React.FC<MutedSettingsProps> = ({ relaysConnected }) => {
   const [muted, setMuted] = useState<string[]>(() => [...NostrCore.getBlockedPubkeys()]);
   const [profiles, setProfiles] = useState<Map<string, UserProfile>>(new Map());
   const [working, setWorking] = useState<string | null>(null);
@@ -86,21 +84,7 @@ const MutedSettings: React.FC<MutedSettingsProps> = ({ relaysConnected, onNaviga
         const name = profile?.display_name || profile?.name || formatAddress(pubkey);
         return (
           <div key={pubkey} className="muted-row">
-            {/* The card the feed opens on a name, rather than a trip to the
-                profile page: here it already offers Unmute, since this is a
-                list of people this account has muted */}
-            <ProfileHoverCard
-              pubkey={pubkey}
-              profile={profile}
-              openOnClick
-              hideFollow
-              onNavigateToProfile={(target) => onNavigateToProfile?.(target)}
-            >
-            <button
-              type="button"
-              className="muted-person"
-              title="Who this is, and the way to unmute"
-            >
+            <span className="muted-person">
               {profile?.picture ? (
                 <img src={profile.picture} alt="" className="muted-avatar" />
               ) : (
@@ -109,8 +93,7 @@ const MutedSettings: React.FC<MutedSettingsProps> = ({ relaysConnected, onNaviga
               <span className="muted-name">
                 <EmojiText text={name} emojis={profile?.emojis} />
               </span>
-            </button>
-            </ProfileHoverCard>
+            </span>
             <button
               type="button"
               className="btn btn-secondary btn-small"

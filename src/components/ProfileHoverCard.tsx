@@ -13,25 +13,11 @@ interface ProfileHoverCardProps {
   /** Called after a mute, so the surrounding feed can drop the author */
   onBlocked?: (pubkey: string) => void;
   /**
-   * Open on click as well as on hover. For places where the name is there to
-   * be acted on rather than read past — and where hovering may not be
-   * available at all.
-   */
-  openOnClick?: boolean;
-  /**
    * Draw the card fixed to the viewport instead of inside the flow. For
    * places that clip their overflow — the chat panel cuts anything reaching
    * past its edge, card included.
    */
   escapesClipping?: boolean;
-  /**
-   * One more action for the card, for a mute that is not the account's own
-   * list — a stream's list, say, which only its owner can undo.
-   */
-  extraAction?: { label: string; onClick: () => void | Promise<void> };
-  /** Dropped where the card is opened to undo a mute — following is not why
-   *  anyone opens it there */
-  hideFollow?: boolean;
   children: React.ReactNode;
 }
 
@@ -51,10 +37,7 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
   profile: knownProfile,
   onNavigateToProfile,
   onBlocked,
-  openOnClick,
   escapesClipping,
-  extraAction,
-  hideFollow,
   children
 }) => {
   const [open, setOpen] = useState(false);
@@ -115,17 +98,6 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
     });
   };
 
-  /** Straight away, skipping the delay meant for a pointer passing by */
-  const openNow = () => {
-    if (openTimer.current) clearTimeout(openTimer.current);
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    const rect = wrapperRef.current?.getBoundingClientRect();
-    if (rect) {
-      setPlaceAbove(window.innerHeight - rect.bottom < 320);
-      if (escapesClipping) placeFixed(rect);
-    }
-    setOpen(current => !current);
-  };
 
   const scheduleOpen = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
@@ -207,7 +179,6 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
       ref={wrapperRef}
       onMouseEnter={scheduleOpen}
       onMouseLeave={scheduleClose}
-      onClick={openOnClick ? (e) => { e.stopPropagation(); openNow(); } : undefined}
     >
       {children}
 
@@ -237,16 +208,14 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
 
           {!isOwnProfile && (
             <div className="hover-card-actions">
-              {!hideFollow && (
-                <button
-                  type="button"
-                  className={`hover-card-btn ${isFollowing ? 'secondary' : 'primary'}`}
-                  onClick={handleFollowToggle}
-                  disabled={busy !== null || isFollowing === null}
-                >
-                  {busy === 'follow' ? '...' : isFollowing === null ? 'Follow' : isFollowing ? 'Unfollow' : 'Follow'}
-                </button>
-              )}
+              <button
+                type="button"
+                className={`hover-card-btn ${isFollowing ? 'secondary' : 'primary'}`}
+                onClick={handleFollowToggle}
+                disabled={busy !== null || isFollowing === null}
+              >
+                {busy === 'follow' ? '...' : isFollowing === null ? 'Follow' : isFollowing ? 'Unfollow' : 'Follow'}
+              </button>
               <button
                 type="button"
                 className="hover-card-btn danger"
@@ -255,16 +224,6 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
               >
                 {busy === 'block' ? '...' : blocked ? 'Unmute' : 'Mute'}
               </button>
-              {extraAction && (
-                <button
-                  type="button"
-                  className="hover-card-btn secondary"
-                  onClick={() => extraAction.onClick()}
-                  disabled={busy !== null}
-                >
-                  {extraAction.label}
-                </button>
-              )}
             </div>
           )}
 

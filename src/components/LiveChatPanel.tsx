@@ -666,30 +666,18 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
               <div key={target} className="live-chat-muted-row">
                 {/* The same card as on a name in the feed — who they are and
                     what can be done about them, without leaving the stream */}
-                <ProfileHoverCard
-                  pubkey={target}
-                  profile={profile}
-                  openOnClick
-                  escapesClipping
-                  hideFollow
-                  extraAction={{ label: 'Unmute in this chat', onClick: () => unmuteForEveryone(target) }}
-                  onNavigateToProfile={onNavigateToProfile}
-                >
-                  {/* Face and name, the way the list in settings reads —
-                      a row of bare names did not look like anything to open */}
-                  <button type="button" className="live-chat-muted-person">
-                    {profile?.picture ? (
-                      <img src={profile.picture} alt="" className="live-chat-muted-avatar" />
-                    ) : (
-                      <span className="live-chat-muted-avatar-placeholder">
-                        {label.charAt(0).toUpperCase()}
-                      </span>
-                    )}
-                    <span className="live-chat-author">
-                      <EmojiText text={label} emojis={profile?.emojis} />
+                <span className="live-chat-muted-person">
+                  {profile?.picture ? (
+                    <img src={profile.picture} alt="" className="live-chat-muted-avatar" />
+                  ) : (
+                    <span className="live-chat-muted-avatar-placeholder">
+                      {label.charAt(0).toUpperCase()}
                     </span>
-                  </button>
-                </ProfileHoverCard>
+                  )}
+                  <span className="live-chat-author">
+                    <EmojiText text={label} emojis={profile?.emojis} />
+                  </span>
+                </span>
                 {/* The card carries the same action, but a list of names is
                     read to act on, so it is here as well */}
                 <button

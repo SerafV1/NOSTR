@@ -619,9 +619,9 @@ function App() {
           <Route path="/messages" element={<MessagesRoute {...callbacks} />} />
           <Route path="/messages/:npub" element={<MessagesRoute {...callbacks} />} />
           <Route path="/settings" element={<Navigate to="/settings/relays" replace />} />
-          <Route path="/settings/relays" element={<SettingsPage relaysConnected={relaysConnected} onNavigateToProfile={navigateToProfile} />} />
-          <Route path="/settings/media" element={<SettingsPage relaysConnected={relaysConnected} onNavigateToProfile={navigateToProfile} />} />
-          <Route path="/settings/muted" element={<SettingsPage relaysConnected={relaysConnected} onNavigateToProfile={navigateToProfile} />} />
+          <Route path="/settings/relays" element={<SettingsPage relaysConnected={relaysConnected} />} />
+          <Route path="/settings/media" element={<SettingsPage relaysConnected={relaysConnected} />} />
+          <Route path="/settings/muted" element={<SettingsPage relaysConnected={relaysConnected} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
