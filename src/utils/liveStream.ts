@@ -32,6 +32,45 @@ export interface LiveStreamInfo {
 // hours is almost certainly stale, not actually live.
 const LIVE_STALE_SECONDS = 3 * 60 * 60;
 
+/**
+ * Why a stream cannot be played here, if it cannot. Two cases the browser
+ * will never get past, and both look identical from inside the player: it
+ * simply never receives a byte, and the page sits on "Connecting…" forever.
+ */
+export function unplayableReason(streamingUrl: string): string | null {
+  if (!streamingUrl) return null;
+
+  let url: URL;
+  try {
+    url = new URL(streamingUrl);
+  } catch {
+    return 'This stream\'s address is not a valid URL';
+  }
+
+  // A page served over https may not load http media — the browser blocks it
+  // before any request is made
+  if (url.protocol === 'http:' && window.location.protocol === 'https:') {
+    return 'This stream is published over http, which a page served over https is not allowed to play. The broadcaster needs an https address.';
+  }
+
+  // Addresses that exist only inside someone's own network: 10/8, 172.16/12,
+  // 192.168/16, 127/8, and the carrier-grade range 100.64/10 that Tailscale
+  // and mobile networks hand out
+  const host = url.hostname;
+  const privateRanges = [
+    /^127\./,
+    /^10\./,
+    /^192\.168\./,
+    /^172\.(1[6-9]|2\d|3[01])\./,
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./
+  ];
+  if (host === 'localhost' || host.endsWith('.local') || privateRanges.some(r => r.test(host))) {
+    return `This stream is published at ${host}, an address that only exists inside the broadcaster's own network — nobody outside it can reach the video.`;
+  }
+
+  return null;
+}
+
 export function isEffectivelyLive(event: NostrEventSigned): boolean {
   const status = event.tags.find(t => t[0] === 'status')?.[1];
   if (status !== 'live') return false;

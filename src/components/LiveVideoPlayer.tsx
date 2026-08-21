@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type Hls from 'hls.js';
+import { unplayableReason } from '../utils/liveStream';
 import {
   PlayIcon, PauseIcon, VolumeIcon, MutedIcon, GearIcon,
   FullscreenIcon, ExitFullscreenIcon, PipIcon
@@ -52,6 +53,16 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !src) return;
+
+    // Some addresses cannot work from here at all. Left to hls.js they look
+    // like a stream that never starts, and the page waits on it forever.
+    const refused = unplayableReason(src);
+    if (refused) {
+      setError(refused);
+      setBuffering(false);
+      return;
+    }
+
     setError(null);
     setBuffering(true);
     setSlow(false);
