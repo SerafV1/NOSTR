@@ -123,6 +123,39 @@ export function getColorFromPubkey(pubkey: string): string {
 }
 
 /**
+ * A profile's website as something safe to show and to link.
+ *
+ * People write "example.com", "@handle", or nothing that resembles an
+ * address at all, and `new URL` throws on every one of them — which took the
+ * whole app down with it, since a throw while rendering unmounts everything.
+ * A missing scheme is assumed to be https; anything still unparseable is
+ * shown as written and not linked.
+ */
+export function describeWebsite(website: string): { href: string | null; label: string } {
+  const trimmed = website.trim();
+  if (!trimmed) return { href: null, label: '' };
+
+  // A bare word is not an address, however willing `new URL` is to accept
+  // one once https:// is bolted on: "@handle" became a link to a host called
+  // "somehandle", and a sentence became one with %20 in it
+  const looksLikeHost = /^[\w-]+(\.[\w-]+)+([/:?#]|$)/.test(trimmed);
+  const candidates = /^[a-z][\w+.-]*:/i.test(trimmed)
+    ? [trimmed]
+    : looksLikeHost ? [`https://${trimmed}`] : [];
+
+  for (const candidate of candidates) {
+    try {
+      const url = new URL(candidate);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') break;
+      return { href: url.href, label: url.hostname.replace(/^www\./, '') };
+    } catch {
+      // Try the next shape
+    }
+  }
+  return { href: null, label: trimmed };
+}
+
+/**
  * Validate URL
  */
 export function isValidUrl(str: string): boolean {

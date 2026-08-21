@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, NostrEventSigned, NostrFilter, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache, PersistentCache, ZapActivity } from '../nostr/core';
 import { NostrCrypto } from '../nostr/crypto';
-import { formatAddress, formatDate, copyToClipboard } from '../utils/helpers';
+import { formatAddress, formatDate, copyToClipboard, describeWebsite } from '../utils/helpers';
 import { NO_CONTACT_LIST_PROMPT } from '../utils/followPrompt';
 import { extractImageUrls, extractVideoUrls, extractEmbeds } from '../utils/media';
 import EventCard from './EventCard';
@@ -535,11 +535,16 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
               {profile.about && (
                 <p className="profile-bio">{profile.about}</p>
               )}
-              {profile.website && (
-                <a href={profile.website} target="_blank" rel="noopener noreferrer" className="profile-website">
-                  🔗 {new URL(profile.website).hostname}
-                </a>
-              )}
+              {profile.website && (() => {
+                const site = describeWebsite(profile.website);
+                return site.href ? (
+                  <a href={site.href} target="_blank" rel="noopener noreferrer" className="profile-website">
+                    🔗 {site.label}
+                  </a>
+                ) : (
+                  <span className="profile-website">🔗 {site.label}</span>
+                );
+              })()}
               {profile.lud16 && (
                 <span className="profile-lightning">⚡ {profile.lud16}</span>
               )}
