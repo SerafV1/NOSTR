@@ -1743,6 +1743,23 @@ button.poll-option-vote:disabled {
   align-items: center;
 }
 
+.link-preview-favicon {
+  width: 32px;
+  height: 32px;
+  margin-left: var(--spacing-md);
+  border-radius: var(--border-radius);
+  flex-shrink: 0;
+}
+
+/* What the link points at, when the site would not say what it is */
+.link-preview-path {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .link-preview-image {
   width: 100%;
   max-height: 260px;
