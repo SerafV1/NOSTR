@@ -61,6 +61,18 @@ function safeUrl(raw: string): URL | null {
   return url;
 }
 
+// Two attempts, in this order. A plain browser string gets the ordinary page
+// from most sites; a few — IMDb among them — answer it with an empty 202 and
+// serve the page only to user agents on their list of social crawlers.
+// Measured on https://www.imdb.com/title/tt43676563/: browser and any
+// honestly-named bot get 202 and no body, while the string below gets the
+// full page. It names this app first and carries the token those sites match
+// on.
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+  'Mozilla/5.0 (compatible; NostrLinkPreview/1.0; +https://nostr-ebon.vercel.app) facebookexternalhit/1.1'
+];
+
 export default async function handler(req: any, res: any) {
   const raw = req.query?.url;
   const rawUrl = Array.isArray(raw) ? raw[0] : raw;
@@ -77,28 +89,32 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    let response: Response;
-    try {
-      response = await fetch(url.toString(), {
-        signal: controller.signal,
-        headers: {
-          // A generic browser UA gets more consistent OG tags than an
-          // unrecognized bot UA, which some sites serve a stripped page to
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'
-        }
-      });
-    } finally {
-      clearTimeout(timeout);
+    let html = '';
+    for (const userAgent of USER_AGENTS) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      try {
+        const response = await fetch(url.toString(), {
+          signal: controller.signal,
+          headers: { 'User-Agent': userAgent }
+        });
+        if (response.ok) html = await response.text();
+      } catch {
+        // This attempt failed; the next user agent may still work
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      // A gated site answers 202 with nothing at all, so "no tags" is the
+      // signal to try again rather than to give up
+      if (html.includes('og:title') || html.includes('twitter:title') || html.includes('<title')) break;
     }
 
-    if (!response.ok) {
+    if (!html) {
       res.status(200).json({ url: rawUrl });
       return;
     }
 
-    const html = await response.text();
     const title = extractMetaContent(html, 'og:title')
       || extractMetaContent(html, 'twitter:title')
       || html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1];
