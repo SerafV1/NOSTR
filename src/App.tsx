@@ -11,7 +11,7 @@ import {
 } from 'react-router-dom';
 import { CredentialManager, NostrCrypto } from './nostr/crypto';
 import { getRelayPool, DEFAULT_RELAYS } from './nostr/relay';
-import { NotificationCore, NotificationStore, cacheNotifications } from './nostr/notifications';
+import { NotificationCore, NotificationStore, cacheNotifications, dropMuted } from './nostr/notifications';
 import { DirectMessageCore, DirectMessageStore } from './nostr/dm';
 import { NostrCore, EventCache } from './nostr/core';
 import { clearSession as clearBunkerSession, onSigningWait } from './nostr/bunker';
@@ -389,7 +389,7 @@ function App() {
         // everything and showed a spinner for a badge you'd just seen. Merged
         // rather than written over: this runs every 30 seconds, and one thin
         // answer from the relays would otherwise erase the history.
-        const merged = cacheNotifications(publicKey, fetched);
+        const merged = dropMuted(cacheNotifications(publicKey, fetched));
         setUnreadNotifications(NotificationStore.countUnread(publicKey, merged));
       } catch (error) {
         console.error('Failed to refresh notification badge:', error);

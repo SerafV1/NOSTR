@@ -1,6 +1,6 @@
 import { NostrEventSigned, NostrFilter, EVENT_KINDS } from '../types';
 import { getRelayPool } from './relay';
-import { PersistentCache } from './core';
+import { PersistentCache, NostrCore } from './core';
 
 export type NotificationType =
   | 'reply' | 'mention' | 'reaction' | 'repost' | 'zap' | 'livechat'
@@ -43,6 +43,25 @@ const notificationsCacheKey = (pubkey: string): string => `notifications_${pubke
 
 export function readCachedNotifications(pubkey: string): NostrNotification[] {
   return PersistentCache.get<NostrNotification[]>(notificationsCacheKey(pubkey)) || [];
+}
+
+/**
+ * Someone muted should not be able to reach you by liking, zapping or
+ * replying: the mute list applied everywhere else, and notifications were
+ * the one door left open.
+ *
+ * A zap receipt is signed by the wallet that paid it, so the person to check
+ * is the one named inside the zap request it carries.
+ */
+export function dropMuted(notifications: NostrNotification[]): NostrNotification[] {
+  const muted = NostrCore.getBlockedPubkeys();
+  if (muted.size === 0) return notifications;
+  return notifications.filter(n => {
+    const actor = n.event.kind === EVENT_KINDS.ZAP_RECEIPT
+      ? NostrCore.zapSenderPubkey(n.event) || n.event.pubkey
+      : n.event.pubkey;
+    return !muted.has(actor);
+  });
 }
 
 /**

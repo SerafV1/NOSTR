@@ -9,7 +9,8 @@ import {
   cacheNotifications,
   readCachedNotifications,
   cacheTargets,
-  readCachedTargets
+  readCachedTargets,
+  dropMuted
 } from '../nostr/notifications';
 import { formatDate, formatAddress } from '../utils/helpers';
 import RichText from './RichText';
@@ -67,7 +68,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
   const loadNotifications = async () => {
     const cached = readCachedNotifications(pubkey);
     if (cached.length > 0) {
-      setNotifications(cached);
+      setNotifications(dropMuted(cached));
       setLoading(false);
     } else {
       setLoading(true);
@@ -85,8 +86,10 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
 
       // Merged, not replaced: a partial answer from the relays must not
       // take away notifications that were already on screen
+      // Filtered on the way to the screen rather than out of the cache, so
+      // unmuting brings someone's notifications back rather than losing them
       const shown = cacheNotifications(pubkey, fetched);
-      setNotifications(shown);
+      setNotifications(dropMuted(shown));
 
       // Every name on the page, not only the ones this fetch returned. A
       // follow is announced once — by whichever poll saw it first, often the
