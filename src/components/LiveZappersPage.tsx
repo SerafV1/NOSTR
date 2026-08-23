@@ -27,25 +27,33 @@ const LiveZappersPage: React.FC<LiveZappersPageProps> = ({
   const [transparent, setTransparent] = useState(() => params.get('transparent') === '1');
   const [bold, setBold] = useState(() => params.get('bold') === '1');
   const [copied, setCopied] = useState(false);
+  // How many rows to show. In the address as well, so the link handed to OBS
+  // brings the same list rather than a default someone has to set again.
+  const [top, setTop] = useState(() => {
+    const asked = Number(params.get('top'));
+    return Number.isFinite(asked) && asked > 0 ? Math.min(asked, 100) : 10;
+  });
   const readOnly = !CredentialManager.isLoggedIn();
   const isOverlaySource = readOnly && transparent;
 
-  const search = (opts: { transparent: boolean; bold: boolean }) => {
+  const search = (opts: { transparent: boolean; bold: boolean; top: number }) => {
     const chosen = new URLSearchParams();
     if (opts.transparent) chosen.set('transparent', '1');
     if (opts.bold) chosen.set('bold', '1');
+    if (opts.top !== 10) chosen.set('top', String(opts.top));
     const query = chosen.toString();
     return query ? `?${query}` : '';
   };
 
-  const choose = (opts: { transparent: boolean; bold: boolean }) => {
+  const choose = (opts: { transparent: boolean; bold: boolean; top: number }) => {
     setTransparent(opts.transparent);
     setBold(opts.bold);
+    setTop(opts.top);
     window.history.replaceState({}, '', window.location.pathname + search(opts));
   };
 
   const copyLink = async () => {
-    const url = `${window.location.origin}${window.location.pathname}${search({ transparent, bold })}`;
+    const url = `${window.location.origin}${window.location.pathname}${search({ transparent, bold, top })}`;
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
@@ -76,7 +84,7 @@ const LiveZappersPage: React.FC<LiveZappersPageProps> = ({
       <LiveZappersPanel
         address={liveEventAddress(kind, pubkey, identifier)}
         relaysConnected={relaysConnected}
-        limit={20}
+        limit={top}
         hideHeader={isOverlaySource}
         onNavigateToProfile={onNavigateToProfile}
         headerAction={!readOnly ? (
@@ -85,7 +93,7 @@ const LiveZappersPage: React.FC<LiveZappersPageProps> = ({
               <input
                 type="checkbox"
                 checked={transparent}
-                onChange={(e) => choose({ transparent: e.target.checked, bold })}
+                onChange={(e) => choose({ transparent: e.target.checked, bold, top })}
               />
               Transparent
             </label>
@@ -93,9 +101,21 @@ const LiveZappersPage: React.FC<LiveZappersPageProps> = ({
               <input
                 type="checkbox"
                 checked={bold}
-                onChange={(e) => choose({ transparent, bold: e.target.checked })}
+                onChange={(e) => choose({ transparent, bold: e.target.checked, top })}
               />
               Bold
+            </label>
+            <label title="How many zappers to list">
+              Top
+              <select
+                className="live-zappers-count"
+                value={top}
+                onChange={(e) => choose({ transparent, bold, top: Number(e.target.value) })}
+              >
+                {[3, 5, 10, 20, 50].map(n => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
             </label>
             <button type="button" className="live-chat-obs-btn" onClick={copyLink}>
               {copied ? '✓ Copied' : '🔗 Copy link'}

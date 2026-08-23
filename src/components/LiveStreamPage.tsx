@@ -300,12 +300,33 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
         </div>
 
         <div className={`live-chat-dock ${chatOpen ? 'open' : ''}`}>
+          <LiveChatPanel
+            address={address}
+            // Desktop only: the chat as its own window, to keep beside the
+            // video or on a second screen
+            onPopOut={() => window.open(
+              `${window.location.origin}/live/${naddrParam}/chat`,
+              `chat-${naddrParam}`,
+              'width=420,height=760,menubar=no,toolbar=no'
+            )}
+            relaysConnected={relaysConnected}
+            disabled={stream.status !== 'live'}
+            onPeoplePresent={setPresent}
+            // Either account behind the stream may moderate it: on a
+            // platform-published stream the presenter is not the signer
+            owners={[stream.pubkey, stream.hostPubkey]}
+            identifier={stream.dTag}
+            onNavigateToProfile={onNavigateToProfile}
+            onNavigateToNote={onNavigateToNote}
+            onNavigateToTopic={onNavigateToTopic}
+          />
+
           {/* Beside the chat, since it is the same zaps counted up rather
               than watched going past */}
           <LiveZappersPanel
             address={address}
             relaysConnected={relaysConnected}
-            limit={5}
+            limit={12}
             hideWhenEmpty
             onNavigateToProfile={onNavigateToProfile}
             headerAction={(
@@ -332,27 +353,6 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
           >
             ✕
           </button>
-
-          <LiveChatPanel
-            address={address}
-            // Desktop only: the chat as its own window, to keep beside the
-            // video or on a second screen
-            onPopOut={() => window.open(
-              `${window.location.origin}/live/${naddrParam}/chat`,
-              `chat-${naddrParam}`,
-              'width=420,height=760,menubar=no,toolbar=no'
-            )}
-            relaysConnected={relaysConnected}
-            disabled={stream.status !== 'live'}
-            onPeoplePresent={setPresent}
-            // Either account behind the stream may moderate it: on a
-            // platform-published stream the presenter is not the signer
-            owners={[stream.pubkey, stream.hostPubkey]}
-            identifier={stream.dTag}
-            onNavigateToProfile={onNavigateToProfile}
-            onNavigateToNote={onNavigateToNote}
-            onNavigateToTopic={onNavigateToTopic}
-          />
         </div>
 
         {/* Only on phones, where the dock is off-screen until asked for */}
