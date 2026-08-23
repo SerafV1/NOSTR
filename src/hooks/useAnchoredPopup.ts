@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, CSSProperties, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * Every open popup, so opening one closes the rest. Two of them at once
@@ -29,6 +30,14 @@ interface AnchoredPopup {
   popupRef: React.RefObject<HTMLDivElement>;
   /** Apply to the popup element */
   style: CSSProperties;
+  /**
+   * Wrap the popup in this. While something is fullscreen the browser paints
+   * only that element's subtree, so a popup living anywhere else is simply
+   * not drawn — it is still there, and comes back the moment fullscreen
+   * ends, which is exactly how it looked: the menu vanishing when the video
+   * was expanded.
+   */
+  render: (popup: ReactNode) => ReactNode;
   /** Call instead of setting the open flag directly, to dismiss the others */
   openPopup: () => void;
 }
@@ -57,6 +66,17 @@ export function useAnchoredPopup(
   const popupRef = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<CSSProperties>({ visibility: 'hidden' });
   const [measured, setMeasured] = useState(false);
+  const [fullscreenElement, setFullscreenElement] = useState<Element | null>(null);
+
+  // Kept current while open: entering or leaving fullscreen has to move the
+  // popup with it
+  useEffect(() => {
+    if (!open) return;
+    const update = () => setFullscreenElement(document.fullscreenElement);
+    update();
+    document.addEventListener('fullscreenchange', update);
+    return () => document.removeEventListener('fullscreenchange', update);
+  }, [open]);
 
   /** Place it against the trigger, wherever the trigger is now */
   const place = useCallback(() => {
@@ -150,6 +170,9 @@ export function useAnchoredPopup(
     triggerRef,
     popupRef,
     style,
+    render: (popup: ReactNode) => (
+      fullscreenElement ? createPortal(popup, fullscreenElement) : popup
+    ),
     openPopup: () => openPopups.forEach(close => close())
   };
 }

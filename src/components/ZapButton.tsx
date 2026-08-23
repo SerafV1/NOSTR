@@ -48,7 +48,7 @@ const ZapButton: React.FC<ZapButtonProps> = ({
   const [loading, setLoading] = useState(false);
   const [invoice, setInvoice] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const { containerRef, triggerRef, popupRef, style, openPopup } =
+  const { containerRef, triggerRef, popupRef, style, openPopup, render } =
     useAnchoredPopup(showMenu, () => setShowMenu(false), [invoice, loading]);
 
   const sendZap = async (amountSats: number) => {
@@ -117,7 +117,7 @@ const ZapButton: React.FC<ZapButtonProps> = ({
         {children}
       </button>
 
-      {showMenu && (
+      {showMenu && render(
         <div className="zap-menu" ref={popupRef} style={style}>
           {invoice ? (
             // Nothing here can pay it, so the invoice itself is the answer

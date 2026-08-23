@@ -922,7 +922,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
           >
             😊
           </button>
-          {showEmojiPicker && (
+          {showEmojiPicker && emoji.render(
             <div className="live-chat-emoji-popup" ref={emoji.popupRef} style={emoji.style}>
               <EmojiPicker onSelect={insertEmoji} />
             </div>

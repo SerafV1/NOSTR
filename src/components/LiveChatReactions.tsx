@@ -90,7 +90,7 @@ const LiveChatReactions: React.FC<LiveChatReactionsProps> = ({ tallies, canReact
           >
             ☺+
           </button>
-          {pickerOpen && (
+          {pickerOpen && picker.render(
             <div className="live-chat-emoji-popup" ref={picker.popupRef} style={picker.style}>
               <EmojiPicker onSelect={react} />
             </div>
