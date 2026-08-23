@@ -6581,7 +6581,9 @@ a.capability-indicator.paid:hover {
   position: fixed;
   right: var(--spacing-lg);
   bottom: var(--spacing-lg);
-  width: min(360px, 82vw);
+  /* A corner player, not a bar across the bottom: 82vw was most of a phone
+     screen, which is no longer a corner */
+  width: min(360px, 58vw);
   height: auto;
   aspect-ratio: 16 / 9;
   /* Above the feed, below the dialogs — a docked player must not sit over an
