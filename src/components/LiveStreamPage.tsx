@@ -181,9 +181,16 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
       return '';
     }
   })();
+  // The line that says what this is, in the words the moment calls for. A
+  // stream shared after it ended should not announce itself as live.
+  const shareLead = stream.status === 'live'
+    ? '🔴 Live now with'
+    : stream.status === 'planned'
+      ? 'Coming up, with'
+      : 'Was live with';
   const shareText = [
     stream.title,
-    hostMention ? `\n\n${hostMention}` : '',
+    hostMention ? `\n\n${shareLead} ${hostMention}` : '',
     `\n\n${window.location.origin}/live/${naddrParam}`
   ].join('');
 
