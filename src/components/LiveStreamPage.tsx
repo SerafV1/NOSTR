@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { nip19 } from 'nostr-tools';
 import { UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr } from '../utils/liveStream';
@@ -7,6 +8,7 @@ import LiveVideoPlayer from './LiveVideoPlayer';
 import LiveChatPanel, { PresentPerson } from './LiveChatPanel';
 import LiveZappersPanel from './LiveZappersPanel';
 import ZapButton from './ZapButton';
+import FollowButton from './FollowButton';
 import RichText from './RichText';
 import EmojiText from './EmojiText';
 import { ZapIcon, PopOutIcon, ShareIcon } from './Icons';
@@ -168,8 +170,22 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
 
 
   // The address rather than this page's URL: it names the stream itself, so
-  // every client resolves it, and this one draws it back as the stream
-  const shareText = `${stream.title}\n\n${window.location.origin}/live/${naddrParam}`;
+  // every client resolves it, and this one draws it back as the stream.
+  // Whoever is presenting is named in it too, which puts the post in their
+  // notifications — a stream shared without the streamer knowing helps nobody.
+  const hostMention = (() => {
+    try {
+      return `nostr:${nip19.npubEncode(stream.hostPubkey)}`;
+    } catch {
+      // An unencodable key is no reason to lose the rest of the post
+      return '';
+    }
+  })();
+  const shareText = [
+    stream.title,
+    hostMention ? `\n\n${hostMention}` : '',
+    `\n\n${window.location.origin}/live/${naddrParam}`
+  ].join('');
 
   return (
     <div className="live-stream-page">
@@ -208,6 +224,8 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                 )}
                 <span><EmojiText text={hostName} emojis={profile?.emojis} /></span>
               </button>
+
+              <FollowButton pubkey={stream.hostPubkey} className="btn btn-secondary btn-small" />
 
               {/* Zapping the host is the usual way to tip a stream. Only
                   shown when they actually publish a Lightning address —

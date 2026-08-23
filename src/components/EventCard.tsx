@@ -689,7 +689,10 @@ const EventCard: React.FC<EventCardProps> = ({
               const visibleImages = showAllImages ? images : images.slice(0, IMAGE_PREVIEW_LIMIT);
               return (
                 <>
-                  <div className="event-images">
+                  {/* The count decides the arrangement, and CSS cannot count
+                      its own children without :has(), which the browser OBS
+                      embeds may be too old for */}
+                  <div className="event-images" data-count={Math.min(visibleImages.length, 4)}>
                     {visibleImages.map((imageUrl, index) => (
                       <button
                         key={index}

@@ -1456,12 +1456,42 @@ button.poll-option-vote:disabled {
   text-decoration: underline;
 }
 
+/* Several pictures share the space rather than each taking a full-width
+   turn: a note with four of them used to be a column four screens tall.
+   The arrangement follows the count, the way every feed people already read
+   does it — one whole, two side by side, three with one leading, four square. */
 .event-images {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-md);
+  display: grid;
+  gap: 3px;
   margin-top: var(--spacing-md);
   max-width: 100%;
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+.event-images[data-count="2"] {
+  grid-template-columns: 1fr 1fr;
+}
+
+.event-images[data-count="3"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+/* The first of three leads, down the left, with the other two beside it */
+.event-images[data-count="3"] .event-image-preview:first-child {
+  grid-row: span 2;
+}
+
+.event-images[data-count="4"] {
+  grid-template-columns: 1fr 1fr;
+}
+
+/* Opening "show more" can leave an odd one at the end. Alone in half a row it
+   reads as a gap, so it takes the whole row instead. */
+.event-images[data-count="4"] .event-image-preview:last-child:nth-child(odd) {
+  grid-column: span 2;
+  aspect-ratio: 16 / 9;
 }
 
 .event-image-preview {
@@ -1478,9 +1508,20 @@ button.poll-option-vote:disabled {
   box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
 }
 
+/* Inside a group there is no room to grow into — a cell lifting would climb
+   over the one next to it */
+.event-images:not([data-count="1"]) .event-image-preview:hover {
+  transform: none;
+  box-shadow: none;
+  opacity: 0.9;
+}
+
 .event-image-preview {
   display: block;
   width: 100%;
+  /* The grid rounds its own outside corners; a child rounding its own too
+     would leave four notches inside the block */
+  border-radius: 0;
 }
 
 /* The width of the note, the way a video in the same note gets it. The old
@@ -1494,6 +1535,33 @@ button.poll-option-vote:disabled {
   height: auto;
   display: block;
   object-fit: contain;
+}
+
+/* In a group the cells have to agree on a shape or the grid tears: each is
+   filled and cropped, and the whole picture is a click away in the overlay */
+.event-images:not([data-count="1"]) .event-image-preview {
+  height: 100%;
+}
+
+.event-images:not([data-count="1"]) .event-image-preview img {
+  height: 100%;
+  max-height: none;
+  object-fit: cover;
+}
+
+.event-images[data-count="2"] .event-image-preview,
+.event-images[data-count="4"] .event-image-preview {
+  aspect-ratio: 1;
+}
+
+/* Two square cells stacked beside the leading picture make it twice as tall,
+   so the block keeps a shape close to a photograph rather than a tower */
+.event-images[data-count="3"] .event-image-preview {
+  aspect-ratio: 1;
+}
+
+.event-images[data-count="3"] .event-image-preview:first-child {
+  aspect-ratio: auto;
 }
 
 /* Image Modal/Lightbox */
