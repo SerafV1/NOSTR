@@ -6625,6 +6625,15 @@ a.capability-indicator.paid:hover {
   animation: fadeIn 0.2s ease;
 }
 
+/* A page with a chat has it down the right, which is exactly where a corner
+   player would land — one stream covering another stream's conversation. On
+   those pages it takes the other corner. Browsers without :has() keep it on
+   the right, which is where it was before. */
+body:has(.live-chat-dock) .inline-stream-playing.docked {
+  right: auto;
+  left: var(--spacing-lg);
+}
+
 .inline-stream-dock-bar {
   position: absolute;
   top: 0;
