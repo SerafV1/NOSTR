@@ -38,6 +38,8 @@ interface BunkerSession {
   remotePubkey: string;
   relays: string[];
   secret?: string;
+  /** When the invitation was made, so a reopened subscription asks from there */
+  since?: number;
   /** The account being signed for, learned from the signer */
   userPubkey?: string;
 }
@@ -47,6 +49,44 @@ interface PendingCall {
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 }
+
+/**
+ * A written trail of the pairing.
+ *
+ * Everything here happens across an app switch: the browser goes to the
+ * background, the signer answers, and whatever the console said in between is
+ * gone by the time anyone can look. Kept in storage instead, so what happened
+ * can be read after the fact — this is the only way to tell "no reply came"
+ * apart from "a reply came and could not be used".
+ */
+const TRAIL_KEY = 'nostr_signer_trail';
+
+export const trail = (line: string): void => {
+  try {
+    const at = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const kept = JSON.parse(localStorage.getItem(TRAIL_KEY) || '[]') as string[];
+    kept.push(`${at} ${line}`);
+    localStorage.setItem(TRAIL_KEY, JSON.stringify(kept.slice(-40)));
+  } catch {
+    // Storage being unavailable must not break a login
+  }
+};
+
+export const readTrail = (): string[] => {
+  try {
+    return JSON.parse(localStorage.getItem(TRAIL_KEY) || '[]') as string[];
+  } catch {
+    return [];
+  }
+};
+
+export const clearTrail = (): void => {
+  try {
+    localStorage.removeItem(TRAIL_KEY);
+  } catch {
+    // nothing to clear
+  }
+};
 
 // Every reachable relay, not just the first: one being down was enough to
 // leave an invitation with nowhere to be answered
@@ -255,7 +295,13 @@ const handleResponse = async (session: BunkerSession, event: NostrEventSigned): 
 };
 
 /** Open (or reuse) every relay the signer might answer on. */
-const ensureConnected = async (session: BunkerSession, onEvent?: (event: NostrEventSigned) => void): Promise<any[]> => {
+const ensureConnected = async (
+  session: BunkerSession,
+  onEvent?: (event: NostrEventSigned) => void,
+  /** Drop what is open and dial again — for coming back from the signer app */
+  reopen = false
+): Promise<any[]> => {
+  if (reopen) closeConnections();
   if (connections.length > 0) return connections;
 
   const filter = {
@@ -264,7 +310,9 @@ const ensureConnected = async (session: BunkerSession, onEvent?: (event: NostrEv
     // known until it answers, and the secret is what proves who it is
     ...(session.remotePubkey ? { authors: [session.remotePubkey] } : {}),
     '#p': [session.clientPubkey],
-    since: Math.floor(Date.now() / 1000) - 10
+    // From when the invitation was made, not from now: reopening after the
+    // browser was in the background must not skip past the answer
+    since: (session.since ?? Math.floor(Date.now() / 1000)) - 10
   };
 
   const attempts = await Promise.allSettled(
@@ -285,10 +333,25 @@ const ensureConnected = async (session: BunkerSession, onEvent?: (event: NostrEv
     .filter((a): a is PromiseFulfilledResult<any> => a.status === 'fulfilled')
     .map(a => a.value);
 
+  const failed = attempts.filter(a => a.status === 'rejected').length;
+  trail(`relays: ${connections.length} open, ${failed} refused`);
+
   if (connections.length === 0) {
     throw new Error(`Could not reach any of the signer's relays (${session.relays.join(', ')})`);
   }
   return connections;
+};
+
+/** Close every socket and subscription, so the next dial starts clean */
+const closeConnections = (): void => {
+  for (const sub of subscriptions) {
+    try { sub.unsub(); } catch { /* already gone */ }
+  }
+  for (const relay of connections) {
+    try { relay.close(); } catch { /* already gone */ }
+  }
+  subscriptions = [];
+  connections = [];
 };
 
 const call = async (session: BunkerSession, method: string, params: string[]): Promise<string> => {
@@ -379,8 +442,11 @@ export const startNostrConnect = (
     clientPubkey: (nostrTools as any).getPublicKey(clientSecret),
     remotePubkey: '', // learned from whoever answers
     relays: CONNECT_RELAYS,
-    secret
+    secret,
+    since: Math.floor(Date.now() / 1000)
   };
+  clearTrail();
+  trail('invitation made');
 
   // relay is repeatable in the URI, so the signer can pick whichever it can
   // reach — the same reason we listen on all of them
@@ -391,22 +457,31 @@ export const startNostrConnect = (
   for (const url of CONNECT_RELAYS) params.append('relay', url);
   const uri = `nostrconnect://${session.clientPubkey}?${params.toString()}`;
 
+  // Set once the listener below exists; called from every path that ends the
+  // wait, so a finished pairing does not leave a listener behind
+  let stopWatchingForReturn = () => {};
+
   const connected = new Promise<string>((resolve, reject) => {
     const timer = setTimeout(
-      () => reject(new Error('No signer connected. Paste the link into Amber and approve it there.')),
+      () => {
+        stopWatchingForReturn();
+        trail('gave up waiting');
+        reject(new Error('No signer connected. Paste the link into Amber and approve it there.'));
+      },
       5 * 60 * 1000
     );
 
     const onSignerReply = async (event: NostrEventSigned) => {
+      trail(`reply arrived from ${event.pubkey.slice(0, 8)}`);
       if (session.remotePubkey) return; // already paired
       onProgress?.('A signer answered — reading its reply…');
       let plaintext: string;
       try {
         plaintext = await decrypt(session, event.content, event.pubkey);
       } catch (error) {
-        onProgress?.(
-          `A reply arrived but could not be read: ${error instanceof Error ? error.message : 'unknown'}`
-        );
+        const why = error instanceof Error ? error.message : 'unknown';
+        trail(`reply unreadable: ${why}`);
+        onProgress?.(`A reply arrived but could not be read: ${why}`);
         return;
       }
 
@@ -437,8 +512,10 @@ export const startNostrConnect = (
         }
 
         clearTimeout(timer);
+        stopWatchingForReturn();
         session.remotePubkey = event.pubkey;
         writeSession(session);
+        trail('paired, asking which account');
         onProgress?.('Paired. Asking which account it signs for…');
 
         const userPubkey = await call(session, 'get_public_key', []);
@@ -456,10 +533,31 @@ export const startNostrConnect = (
       }
     };
 
+    // Going to the signer means leaving the browser, and Android is free to
+    // suspend a background tab — sockets included. Coming back to a dead
+    // socket is what "still waiting" looks like when the signer answered
+    // long ago, so the connection is remade the moment the page is in front
+    // again, and the subscription asks from the invitation's own moment.
+    const onReturn = () => {
+      if (document.visibilityState !== 'visible' || session.remotePubkey) return;
+      trail('back in the browser — reopening the connection');
+      onProgress?.('Back in the browser — listening again…');
+      ensureConnected(session, onSignerReply, true)
+        .then(relays => onProgress?.(`Listening on ${relays.length} relay(s) for Amber…`))
+        .catch(error => trail(`reopen failed: ${error instanceof Error ? error.message : 'unknown'}`));
+    };
+    document.addEventListener('visibilitychange', onReturn);
+    stopWatchingForReturn = () => document.removeEventListener('visibilitychange', onReturn);
+
     ensureConnected(session, onSignerReply)
-      .then(relays => onProgress?.(`Listening on ${relays.length} relay(s) for Amber…`))
+      .then(relays => {
+        trail(`listening on ${relays.length} relay(s)`);
+        onProgress?.(`Listening on ${relays.length} relay(s) for Amber…`);
+      })
       .catch(error => {
       clearTimeout(timer);
+      stopWatchingForReturn();
+      trail(`could not listen: ${error instanceof Error ? error.message : 'unknown'}`);
       reject(error);
     });
   });
