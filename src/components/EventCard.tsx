@@ -215,7 +215,16 @@ const EventCard: React.FC<EventCardProps> = ({
   };
 
   const loadQuotedNote = async () => {
-    if (!quoteRefRegex('i').test(event.content)) {
+    // A stream's address is a quotable reference like any other, and used to
+    // be quoted as well as drawn: the card, and under it the live event
+    // itself as a note — whose author is whatever service the stream runs
+    // through. One stream, shown twice, the second time as a stranger.
+    const withoutStreams = extractStreamRefs(event.content).reduce(
+      (text, { naddr }) => text.replace(new RegExp(`(?:nostr:)?${naddr}`, 'gi'), ''),
+      event.content
+    );
+
+    if (!quoteRefRegex('i').test(withoutStreams)) {
       setQuotedNoteStatus('none');
       return;
     }
@@ -223,7 +232,7 @@ const EventCard: React.FC<EventCardProps> = ({
     setQuotedNoteStatus('loading');
     setQuotedNoteRepostedBy(null);
     try {
-      const resolved = await NostrCore.resolveQuoteReference(event.content);
+      const resolved = await NostrCore.resolveQuoteReference(withoutStreams);
       if (resolved) {
         setQuotedNote(resolved.note);
         setQuotedNoteRepostedBy(resolved.repostedBy || null);
