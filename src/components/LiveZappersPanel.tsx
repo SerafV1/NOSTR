@@ -14,8 +14,6 @@ interface LiveZappersPanelProps {
   headerAction?: React.ReactNode;
   /** Hidden in an overlay, where a heading is just something to capture */
   hideHeader?: boolean;
-  /** Beside the chat there is no room for an empty box taking up the view */
-  hideWhenEmpty?: boolean;
 }
 
 interface Zapper {
@@ -38,8 +36,7 @@ const LiveZappersPanel: React.FC<LiveZappersPanelProps> = ({
   limit = 10,
   onNavigateToProfile,
   headerAction,
-  hideHeader,
-  hideWhenEmpty
+  hideHeader
 }) => {
   const [zaps, setZaps] = useState<NostrEventSigned[]>([]);
   const [profiles, setProfiles] = useState<Map<string, UserProfile>>(new Map());
@@ -106,8 +103,6 @@ const LiveZappersPanel: React.FC<LiveZappersPanelProps> = ({
     return [...totals.values()].sort((a, b) => b.sats - a.sats).slice(0, limit);
   })();
 
-  if (hideWhenEmpty && zappers.length === 0) return null;
-
   return (
     <div className="live-zappers-panel">
       {!hideHeader && (
@@ -119,7 +114,7 @@ const LiveZappersPanel: React.FC<LiveZappersPanelProps> = ({
 
       <div className="live-zappers-list">
         {zappers.length === 0 && (
-          <div className="live-chat-empty">No zaps yet</div>
+          <div className="live-chat-empty">No zaps yet — the first one lands here</div>
         )}
         {zappers.map((zapper, index) => {
           const profile = profiles.get(zapper.pubkey);

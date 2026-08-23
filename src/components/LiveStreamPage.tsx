@@ -332,7 +332,6 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
             address={address}
             relaysConnected={relaysConnected}
             limit={topZappers}
-            hideWhenEmpty
             onNavigateToProfile={onNavigateToProfile}
             headerAction={(<>
               <label className="live-zappers-count-label" title="How many zappers to list">
