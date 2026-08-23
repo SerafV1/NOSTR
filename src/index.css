@@ -6406,10 +6406,24 @@ a.capability-indicator.paid:hover {
   max-width: 300px;
 }
 
+/* The enlarged player: as wide as the window allows without the controls
+   running off the bottom of a short one */
+.inline-stream-large {
+  width: min(90vw, 1200px);
+  max-height: 86vh;
+  aspect-ratio: 16 / 9;
+}
+
+.inline-stream-large .live-video-wrapper {
+  max-height: 86vh;
+}
+
+/* Goes on the <video> itself, which the player leaves unsized — the rounding
+   belongs to the wrapper around it, which already has it */
 .inline-stream-video {
   width: 100%;
-  border-radius: var(--border-radius);
-  overflow: hidden;
+  height: 100%;
+  display: block;
 }
 
 /* A stream waits for a press before it starts pulling: shown as a plate with

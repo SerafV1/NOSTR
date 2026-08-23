@@ -33,8 +33,9 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
   const [hostName, setHostName] = useState('');
   const [missing, setMissing] = useState(false);
   const [playing, setPlaying] = useState(false);
-  // The thumbnail is a poster the streamer chose, and often the announcement
-  // itself — the text on it is unreadable at the size a note gives it
+  // A note gives the stream about a third of the screen. Enlarging opens the
+  // whole player at the size a stream is worth watching at — and for one that
+  // is no longer running, the poster, which is all there is to enlarge.
   const [zoomed, setZoomed] = useState(false);
 
   useEffect(() => {
@@ -114,25 +115,31 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
         {stream.status === 'live' && stream.currentParticipants !== undefined && (
           <span className="inline-stream-viewers">👁 {stream.currentParticipants.toLocaleString()}</span>
         )}
-        {stream.image && (
+        {(playable || stream.image) && (
           <button
             type="button"
             className="inline-stream-zoom"
             onClick={(e) => { e.stopPropagation(); setZoomed(true); }}
-            title="Enlarge the picture"
+            title={playable ? 'Watch it large' : 'Enlarge the picture'}
           >
             ⤢
           </button>
         )}
       </div>
 
-      {zoomed && stream.image && (
-        // Same overlay a picture in a note opens into, so enlarging works the
-        // one way everywhere
+      {zoomed && (
+        // The same overlay a picture in a note opens into, so enlarging works
+        // the one way everywhere — with the player in it where there is one
         <div className="image-modal" onClick={() => setZoomed(false)}>
           <div className="image-modal-content" onClick={(e) => e.stopPropagation()}>
             <button className="image-modal-close" onClick={() => setZoomed(false)}>✕</button>
-            <img src={stream.image} alt={stream.title} className="image-modal-img" />
+            {playable ? (
+              <div className="inline-stream-large">
+                <LiveVideoPlayer src={stream.streamingUrl} className="inline-stream-video" />
+              </div>
+            ) : (
+              <img src={stream.image} alt={stream.title} className="image-modal-img" />
+            )}
           </div>
         </div>
       )}
