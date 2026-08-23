@@ -30,10 +30,16 @@ interface ComposeNoteProps {
   replyTo?: string;
   /** Note id to quote — a nostr:note1... reference is appended to the content */
   quoteNoteId?: string;
+  /**
+   * Text the box opens with — used where the app itself starts a post, like
+   * sharing a stream. It takes precedence over a saved draft: the writer
+   * asked for this post, not the one they abandoned earlier.
+   */
+  initialContent?: string;
 }
 
-const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNoteId }) => {
-  const [content, setContent] = useState('');
+const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNoteId, initialContent }) => {
+  const [content, setContent] = useState(initialContent || '');
   // Debounced so the link card doesn't refetch on every keystroke
   const [previewLinkUrl, setPreviewLinkUrl] = useState<string | null>(null);
   // Set when this composer opened onto text left over from last time
@@ -295,8 +301,10 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
     }
   }, []);
 
-  // Restore whatever was left behind last time this box was open
+  // Restore whatever was left behind last time this box was open — unless the
+  // box was opened onto something specific, which would be overwritten
   useEffect(() => {
+    if (initialContent) return;
     const saved = PersistentCache.get<{
       content?: string;
       mentions?: [string, string][];

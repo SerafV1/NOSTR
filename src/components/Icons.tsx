@@ -130,6 +130,16 @@ export const PopOutIcon: React.FC<IconProps> = ({ className }) => (
   </svg>
 );
 
+export const ShareIcon: React.FC<IconProps> = ({ className }) => (
+  <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="18" cy="5" r="3" />
+    <circle cx="6" cy="12" r="3" />
+    <circle cx="18" cy="19" r="3" />
+    <path d="M8.6 13.5 15.4 17.5" />
+    <path d="M15.4 6.5 8.6 10.5" />
+  </svg>
+);
+
 /* Player controls — drawn here rather than left to the browser, so quality
    and speed can live in one menu instead of two different ones */
 export const PlayIcon: React.FC<IconProps> = ({ className }) => (

@@ -12,6 +12,8 @@ interface ComposeModalProps {
   title: string;
   replyTo?: string;
   quoteNoteId?: string;
+  /** Text the box opens with, where the app starts the post itself */
+  initialContent?: string;
   /** Compact preview of the post being replied to/quoted, shown above the composer */
   context?: ComposeContext;
   onClose: () => void;
@@ -22,6 +24,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
   title,
   replyTo,
   quoteNoteId,
+  initialContent,
   context,
   onClose,
   onPublished
@@ -55,6 +58,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
         <ComposeNote
           replyTo={replyTo}
           quoteNoteId={quoteNoteId}
+          initialContent={initialContent}
           onPublished={(event) => {
             onPublished(event);
             onClose();

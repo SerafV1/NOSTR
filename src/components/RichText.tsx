@@ -5,6 +5,8 @@ import { NostrCore, EventCache } from '../nostr/core';
 import { formatAddress } from '../utils/helpers';
 import { splitContentTokens, extractImageUrls, extractVideoUrls, extractStreamUrls } from '../utils/media';
 import InlineStreamPlayer from './InlineStreamPlayer';
+import InlineLiveStream from './InlineLiveStream';
+import { streamNaddrFromUrl } from '../utils/liveStream';
 import { customEmojiMap, splitCustomEmoji } from '../utils/customEmoji';
 import InlineQuotedNote from './InlineQuotedNote';
 
@@ -184,6 +186,18 @@ const RichText: React.FC<RichTextProps> = ({
             </a>
           );
           continue;
+        }
+
+        // A link to a stream's page — this app's, zap.stream's, anyone's —
+        // names the stream itself, so it is drawn as the stream
+        if (inlineImages) {
+          const sharedStream = streamNaddrFromUrl(token.value);
+          if (sharedStream) {
+            parts.push(
+              <InlineLiveStream key={key++} naddr={sharedStream} href={token.value} />
+            );
+            continue;
+          }
         }
 
         // A stream link is a playlist rather than a file, so it needs the

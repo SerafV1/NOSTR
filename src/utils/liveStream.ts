@@ -122,6 +122,51 @@ export function decodeLiveNaddr(naddr: string): { kind: number; pubkey: string; 
   }
 }
 
+/**
+ * The stream a link points at, if it points at one.
+ *
+ * A stream gets shared as a page address far more often than as a bare
+ * `naddr` — someone copies what is in the address bar. Every client that has
+ * such a page puts the naddr in the path (this app's /live/…, zap.stream's
+ * root, njump's), so the shape to look for is a path segment that is one,
+ * whoever is hosting it.
+ *
+ * Only live events come back: the same path may carry an article or a group
+ * address, and neither is something to play.
+ */
+export function streamNaddrFromUrl(url: string): string | null {
+  let path: string;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    return null;
+  }
+
+  for (const segment of path.split('/')) {
+    const candidate = segment.trim().toLowerCase();
+    if (!candidate.startsWith('naddr1')) continue;
+    const decoded = decodeLiveNaddr(candidate);
+    if (decoded?.kind === 30311) return candidate;
+  }
+  return null;
+}
+
+/** Every stream page linked in a note, paired with the link it came from */
+export function extractStreamPageLinks(content: string): { url: string; naddr: string }[] {
+  const found: { url: string; naddr: string }[] = [];
+  const seen = new Set<string>();
+  const matches = content.match(/https?:\/\/[^\s]+/gi) || [];
+
+  for (const raw of matches) {
+    const url = raw.replace(/[.,;:!?)]+$/, '');
+    const naddr = streamNaddrFromUrl(url);
+    if (!naddr || seen.has(naddr)) continue;
+    seen.add(naddr);
+    found.push({ url, naddr });
+  }
+  return found;
+}
+
 // The "<kind>:<pubkey>:<d-tag>" coordinate NIP-53 live chat messages (kind
 // 1311) reference in their 'a' tag to say which stream they belong to
 export function liveEventAddress(kind: number, pubkey: string, dTag: string): string {

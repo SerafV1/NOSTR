@@ -9,7 +9,8 @@ import LiveZappersPanel from './LiveZappersPanel';
 import ZapButton from './ZapButton';
 import RichText from './RichText';
 import EmojiText from './EmojiText';
-import { ZapIcon, PopOutIcon } from './Icons';
+import { ZapIcon, PopOutIcon, ShareIcon } from './Icons';
+import ComposeModal from './ComposeModal';
 
 interface LiveStreamPageProps {
   kind: number;
@@ -31,6 +32,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   // it is about. Opening it over the page keeps the stream in view while
   // reading along, the way stream sites do it.
   const [chatOpen, setChatOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [present, setPresent] = useState<PresentPerson[]>([]);
   /** How many zappers to list beside the stream, remembered between visits */
   const [topZappers, setTopZappers] = useState(() => {
@@ -165,8 +167,20 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
 
 
 
+  // The address rather than this page's URL: it names the stream itself, so
+  // every client resolves it, and this one draws it back as the stream
+  const shareText = `${stream.title}\n\n${window.location.origin}/live/${naddrParam}`;
+
   return (
     <div className="live-stream-page">
+      {sharing && (
+        <ComposeModal
+          title="Share this stream"
+          initialContent={shareText}
+          onClose={() => setSharing(false)}
+          onPublished={() => setSharing(false)}
+        />
+      )}
       <div className="live-stream-page-layout">
         <div className="live-stream-page-container">
           {stream.status === 'live' ? (
@@ -212,6 +226,19 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                   <ZapIcon /> Zap
                 </ZapButton>
               )}
+
+              {/* A stream is announced by posting where it is. Written here
+                  so the note carries the title and the address of the stream
+                  itself, which every client that knows nostr can resolve —
+                  and which this one draws back as the stream. */}
+              <button
+                type="button"
+                className="btn btn-secondary btn-small btn-with-icon"
+                onClick={() => setSharing(true)}
+                title="Post this stream to nostr"
+              >
+                <ShareIcon /> Share
+              </button>
 
             </div>
 

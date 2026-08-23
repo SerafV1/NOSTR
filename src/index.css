@@ -6274,6 +6274,115 @@ a.capability-indicator.paid:hover {
 }
 
 /* A clip posted in the chat, sized like the pictures beside it */
+/* A shared stream, drawn as the stream: its own picture, its title, and
+   whether it is still running. Sized like the other inline players. */
+.inline-stream-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  background: var(--light-bg);
+  max-width: 520px;
+}
+
+.inline-stream-loading {
+  padding: var(--spacing-md);
+  color: var(--text-secondary);
+}
+
+.inline-stream-art {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(160deg, var(--card-hover-bg), var(--dark-bg));
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inline-stream-art-play {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  /* Over a thumbnail that could be any colour, so it carries its own ground */
+  background: rgba(15, 15, 30, 0.6);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+}
+
+.inline-stream-art-play:hover {
+  background: rgba(15, 15, 30, 0.85);
+  border-color: #fff;
+}
+
+.inline-stream-art-play svg {
+  width: 22px;
+  height: 22px;
+}
+
+.inline-stream-status {
+  position: absolute;
+  top: var(--spacing-sm);
+  left: var(--spacing-sm);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: rgba(15, 15, 30, 0.75);
+  color: var(--text-secondary);
+}
+
+.inline-stream-status-live {
+  background: var(--error-color);
+  color: #1a0000;
+}
+
+.inline-stream-viewers {
+  position: absolute;
+  top: var(--spacing-sm);
+  right: var(--spacing-sm);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  background: rgba(15, 15, 30, 0.75);
+  color: var(--text-primary);
+}
+
+.inline-stream-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.inline-stream-title {
+  color: var(--text-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.inline-stream-title:hover {
+  color: var(--primary-color);
+}
+
+.inline-stream-by {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.inline-stream-video {
+  width: 100%;
+  max-width: 520px;
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
 /* A stream waits for a press before it starts pulling: shown as a plate with
    a play button and where the stream comes from, at the shape of the player
    that replaces it */
