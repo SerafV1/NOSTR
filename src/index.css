@@ -2105,17 +2105,25 @@ button.poll-option-vote:disabled {
 /* Top zappers: the same zap receipts the chat shows going past, added up per
    person. Stands beside the chat, not above it, so neither takes the other's
    room. */
+/* The two panels are taken out of the flow inside this, so their contents
+   cannot decide how tall the row is: the video and its description do, and
+   the panels are stretched to match. Left in the flow, a chat with a few
+   hundred messages grew past the left column and hung below it. */
 .live-chat-dock {
-  display: flex;
-  align-items: stretch;
-  gap: var(--spacing-sm);
-  /* Never past the window, however long the description runs */
+  position: relative;
+  flex-shrink: 0;
+  width: 598px;
+  align-self: stretch;
   max-height: calc(100vh - var(--spacing-xl) * 2);
 }
 
 .live-zappers-panel {
-  flex-shrink: 0;
-  width: 210px;
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  /* Wide enough for the title, the count and the link to share one line */
+  width: 250px;
   display: flex;
   flex-direction: column;
   /* The amber of a zap, the same as the zap lines inside the chat */
@@ -2132,10 +2140,26 @@ button.poll-option-vote:disabled {
   .live-chat-dock .live-zappers-panel {
     display: none;
   }
+
+  /* With the zappers gone the dock is just the chat's width */
+  .live-chat-dock {
+    width: 340px;
+  }
+}
+
+@media (max-width: 768px) {
+  .live-chat-dock {
+    width: auto;
+  }
 }
 
 /* The count picker sits in the row of options, so it takes its size from
    the text rather than the full-width default every select has here */
+.live-zappers-header .live-chat-obs-btn {
+  padding: 1px 5px;
+  line-height: 1.4;
+}
+
 .live-zappers-count {
   width: auto;
   min-width: 0;
@@ -2150,12 +2174,18 @@ button.poll-option-vote:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
+  gap: 6px;
+  padding: var(--spacing-sm);
   border-bottom: 1px solid rgba(247, 147, 26, 0.35);
   font-weight: 700;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+/* In its own window there is room to spare, and more options to fit */
+.live-zappers-page .live-zappers-header {
+  flex-wrap: wrap;
+  white-space: normal;
 }
 
 .live-zappers-list {
@@ -4905,7 +4935,10 @@ a.capability-indicator.paid:hover {
 }
 
 .live-chat-panel {
-  flex-shrink: 0;
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
   width: 340px;
   background: var(--light-bg);
   border: 1px solid var(--border-color);
@@ -5380,6 +5413,7 @@ a.capability-indicator.paid:hover {
   }
 
   .live-chat-panel {
+    position: static;
     width: 100%;
     height: 70vh;
     position: static;

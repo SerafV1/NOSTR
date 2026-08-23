@@ -32,6 +32,11 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   // reading along, the way stream sites do it.
   const [chatOpen, setChatOpen] = useState(false);
   const [present, setPresent] = useState<PresentPerson[]>([]);
+  /** How many zappers to list beside the stream, remembered between visits */
+  const [topZappers, setTopZappers] = useState(() => {
+    const held = Number(localStorage.getItem('razr_top_zappers'));
+    return Number.isFinite(held) && held > 0 ? held : 12;
+  });
   /** When the copy on screen was published, so an older one cannot replace it */
   const latestAt = useRef(0);
   const [stream, setStream] = useState<LiveStreamInfo | null>(null);
@@ -326,10 +331,26 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
           <LiveZappersPanel
             address={address}
             relaysConnected={relaysConnected}
-            limit={12}
+            limit={topZappers}
             hideWhenEmpty
             onNavigateToProfile={onNavigateToProfile}
-            headerAction={(
+            headerAction={(<>
+              <label className="live-zappers-count-label" title="How many zappers to list">
+                <select
+                  className="live-zappers-count"
+                  value={topZappers}
+                  onChange={(e) => {
+                    const chosen = Number(e.target.value);
+                    setTopZappers(chosen);
+                    localStorage.setItem('razr_top_zappers', String(chosen));
+                  }}
+                >
+                  {[3, 5, 10, 12, 20, 50].map(n => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </label>
+
               <button
                 type="button"
                 className="live-chat-obs-btn"
@@ -342,7 +363,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
               >
                 <PopOutIcon />
               </button>
-            )}
+            </>)}
           />
 
           <button

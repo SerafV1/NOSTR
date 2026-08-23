@@ -1171,9 +1171,13 @@ export class NostrCore {
    */
   static async fetchLiveZaps(address: string, limit: number = 100): Promise<NostrEventSigned[]> {
     try {
+      // Waits for every relay. Asked the usual way — first answer wins — the
+      // zaps a stream has taken came back all but empty, so the chat showed
+      // none while the zappers panel, whose subscription replays them from
+      // scratch, listed a dozen
       const events = await getRelayPool().fetchEvents([
         { kinds: [EVENT_KINDS.ZAP_RECEIPT], '#a': [address], limit }
-      ]);
+      ], true);
       return events
         .filter(event => this.zapIsShowable(event))
         .sort((a, b) => (a.created_at || 0) - (b.created_at || 0));

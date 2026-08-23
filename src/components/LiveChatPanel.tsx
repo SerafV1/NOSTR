@@ -41,6 +41,9 @@ export interface PresentPerson {
   picture?: string;
 }
 
+/** How many past zaps the chat keeps alongside the talk */
+const CHAT_ZAP_HISTORY = 50;
+
 interface TimelineEntry {
   kind: 'message' | 'zap';
   event: NostrEventSigned;
@@ -148,6 +151,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
 
     let cancelled = false;
     let subId: string | null = null;
+    let zapSubId: string | null = null;
 
     (async () => {
       const [history, zapHistory] = await Promise.all([
@@ -183,13 +187,38 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
       ]);
       if (!cancelled) setProfiles(profileMap);
 
+      // Zaps come through a subscription of their own, with no `since`, so
+      // the relays replay everything the stream has taken. Asked for as
+      // history instead, they came back empty on streams whose zaps the
+      // zappers panel — which subscribes exactly this way — listed a dozen of.
+      zapSubId = NostrCore.subscribeLive(
+        [{ kinds: [EVENT_KINDS.ZAP_RECEIPT], '#a': [address] }],
+        (event) => {
+          if (!NostrCore.zapIsShowable(event)) return;
+          setZaps(prev => {
+            if (prev.some(z => z.id === event.id)) return prev;
+            // The relays replay every zap the stream has ever taken; a chat
+            // is a conversation, not a ledger, so only the recent ones sit
+            // in it. The zappers panel keeps the full tally.
+            return [...prev, event]
+              .sort((a, b) => (a.created_at || 0) - (b.created_at || 0))
+              .slice(-CHAT_ZAP_HISTORY);
+          });
+          const sender = NostrCore.zapSenderPubkey(event);
+          const recipient = NostrCore.zapRecipientPubkey(event);
+          const unknown = [sender, recipient]
+            .filter((pubkey): pubkey is string => !!pubkey && !profilesRef.current.has(pubkey));
+          if (unknown.length) {
+            NostrCore.fetchProfiles(unknown).then(found => {
+              if (!cancelled) setProfiles(prev => new Map([...prev, ...found]));
+            });
+          }
+        }
+      );
+
       const since = Math.floor(Date.now() / 1000);
       subId = NostrCore.subscribeLive(
-        [{
-          kinds: [EVENT_KINDS.LIVE_CHAT_MESSAGE, EVENT_KINDS.ZAP_RECEIPT],
-          '#a': [address],
-          since
-        }],
+        [{ kinds: [EVENT_KINDS.LIVE_CHAT_MESSAGE], '#a': [address], since }],
         async (event) => {
           // A zap receipt is signed by the wallet, so the person to name
           // and to look up is the one inside the zap request it carries
@@ -217,6 +246,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     return () => {
       cancelled = true;
       if (subId) NostrCore.unsubscribeLive(subId);
+      if (zapSubId) NostrCore.unsubscribeLive(zapSubId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, relaysConnected]);
