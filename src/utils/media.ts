@@ -1,5 +1,7 @@
 // Shared helpers for detecting and stripping media URLs in note content
 
+import { streamNaddrFromUrl } from './liveStream';
+
 const IMAGE_URL_SOURCE = 'https?:\\/\\/[^\\s]+\\.(?:jpg|jpeg|png|gif|webp|bmp|svg)(?:\\?[^\\s]*)?';
 const VIDEO_URL_SOURCE = 'https?:\\/\\/[^\\s]+\\.(?:mp4|webm|mov|m4v|ogv)(?:\\?[^\\s]*)?';
 // A live stream is a playlist, not a file: outside Safari the browser cannot
@@ -261,7 +263,11 @@ export function extractPreviewLinkUrl(content: string): string | null {
 
   for (const raw of matches) {
     const url = trimTrailingPunctuation(raw);
-    if (images.has(url) || videos.has(url) || streams.has(url) || isEmbeddable(url)) continue;
+    // A stream's page is drawn as the stream, so it is not the note's one
+    // "real" link either — left in, it drew a second card underneath saying
+    // nothing but the address
+    if (images.has(url) || videos.has(url) || streams.has(url)) continue;
+    if (isEmbeddable(url) || streamNaddrFromUrl(url)) continue;
     return url;
   }
   return null;
@@ -282,6 +288,14 @@ export function stripMediaUrls(content: string): string {
   for (const source of sources) {
     cleaned = cleaned.replace(new RegExp(source, 'gi'), '');
   }
+  // A link to a stream's page is replaced by the stream, so it goes from the
+  // text too. It cannot be a pattern like the rest: whether the address names
+  // a stream is only knowable by decoding it.
+  for (const url of cleaned.match(new RegExp(ANY_URL_SOURCE, 'gi')) || []) {
+    const trimmed = trimTrailingPunctuation(url);
+    if (streamNaddrFromUrl(trimmed)) cleaned = cleaned.replace(trimmed, '');
+  }
+
   return cleaned
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
