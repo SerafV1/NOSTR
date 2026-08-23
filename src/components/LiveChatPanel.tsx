@@ -7,6 +7,7 @@ import { formatAddress } from '../utils/helpers';
 import { resolveMentionHandles, handleFromName, detectMentionTrigger } from '../utils/mentions';
 import { EventCache } from '../nostr/core';
 import EmojiPicker from './EmojiPicker';
+import GifPicker from './GifPicker';
 import ZapButton from './ZapButton';
 import { ZapIcon } from './Icons';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
@@ -143,6 +144,8 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   // The panel clips anything that reaches outside it, and the picker is wider
   // than the button it hangs off — anchored in CSS it was cut to a strip
   const emoji = useAnchoredPopup(showEmojiPicker, () => setShowEmojiPicker(false));
+  const [showGifPicker, setShowGifPicker] = useState(false);
+  const gifPicker = useAnchoredPopup(showGifPicker, () => setShowGifPicker(false));
   const myPubkey = CredentialManager.getPublicKey();
   const iRunThisStream = !!myPubkey && owners.includes(myPubkey);
 
@@ -469,6 +472,13 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     }
   }, [messages.length, zaps.length]);
 
+
+  /** A gif is sent as its address, which the chat draws as the picture */
+  const sendGif = (url: string) => {
+    setShowGifPicker(false);
+    setInput(current => (current ? `${current.trimEnd()} ${url}` : url));
+    inputRef.current?.focus();
+  };
 
   const insertEmoji = (emoji: string) => {
     const inputEl = inputRef.current;
@@ -992,6 +1002,30 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
           {showEmojiPicker && emoji.render(
             <div className="live-chat-emoji-popup" ref={emoji.popupRef} style={emoji.style}>
               <EmojiPicker onSelect={insertEmoji} />
+            </div>
+          )}
+        </div>
+        <div className="live-chat-emoji-wrapper" ref={gifPicker.containerRef}>
+          <button
+            ref={gifPicker.triggerRef}
+            type="button"
+            className="live-chat-emoji-btn live-chat-gif-btn"
+            onClick={() => {
+              if (showGifPicker) {
+                setShowGifPicker(false);
+                return;
+              }
+              gifPicker.openPopup();
+              setShowGifPicker(true);
+            }}
+            disabled={!isLoggedIn || disabled || sending}
+            title="Send a GIF"
+          >
+            GIF
+          </button>
+          {showGifPicker && gifPicker.render(
+            <div className="live-chat-emoji-popup" ref={gifPicker.popupRef} style={gifPicker.style}>
+              <GifPicker onSelect={sendGif} />
             </div>
           )}
         </div>

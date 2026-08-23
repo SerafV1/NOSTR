@@ -18,6 +18,7 @@ import MediaEmbed from './MediaEmbed';
 import LinkPreviewCard from './LinkPreviewCard';
 import VideoPlayer from './VideoPlayer';
 import EmojiPicker from './EmojiPicker';
+import GifPicker from './GifPicker';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 import { detectMentionTrigger } from '../utils/mentions';
 import { PollIcon, PersonIcon, ZapIcon, ImageIcon } from './Icons';
@@ -41,6 +42,8 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
   const [publishing, setPublishing] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const emojiPicker = useAnchoredPopup(showEmojiPicker, () => setShowEmojiPicker(false));
+  const [showGifPicker, setShowGifPicker] = useState(false);
+  const gifPicker = useAnchoredPopup(showGifPicker, () => setShowGifPicker(false));
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [showPoll, setShowPoll] = useState(false);
@@ -224,6 +227,17 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
       const cursor = start + emoji.length;
       textarea.setSelectionRange(cursor, cursor);
     });
+  };
+
+  /**
+   * A gif goes in as its address, on a line of its own — the same thing the
+   * client draws as a picture when the note is read back.
+   */
+  const insertGif = (url: string) => {
+    setShowGifPicker(false);
+    const separator = content && !content.endsWith('\n') ? '\n' : '';
+    updateContent(`${content}${separator}${url}\n`);
+    requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
   const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -703,9 +717,32 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
             >
               😊
             </button>
-            {showEmojiPicker && (
+            {showEmojiPicker && emojiPicker.render(
               <div className="compose-emoji-popup" ref={emojiPicker.popupRef} style={emojiPicker.style}>
                 <EmojiPicker onSelect={insertEmoji} />
+              </div>
+            )}
+          </div>
+          <div className="compose-emoji-wrapper" ref={gifPicker.containerRef}>
+            <button
+              ref={gifPicker.triggerRef}
+              type="button"
+              className="compose-emoji-btn compose-gif-btn"
+              onClick={() => {
+                if (showGifPicker) {
+                  setShowGifPicker(false);
+                  return;
+                }
+                gifPicker.openPopup();
+                setShowGifPicker(true);
+              }}
+              title="Add a GIF"
+            >
+              GIF
+            </button>
+            {showGifPicker && gifPicker.render(
+              <div className="compose-emoji-popup" ref={gifPicker.popupRef} style={gifPicker.style}>
+                <GifPicker onSelect={insertGif} />
               </div>
             )}
           </div>

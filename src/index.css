@@ -2261,6 +2261,72 @@ button.poll-option-vote:disabled {
   font-weight: 700;
 }
 
+/* GIF picker — same shape as the emoji one, two columns of moving pictures */
+/* The GIF buttons say so in letters, since there is no glyph for it */
+.compose-gif-btn,
+.live-chat-gif-btn {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.gif-picker {
+  width: min(320px, calc(100vw - 2rem));
+  padding: var(--spacing-sm);
+  background: var(--light-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+.gif-picker-search {
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+  background: var(--dark-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.gif-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.gif-picker-item {
+  padding: 0;
+  border: none;
+  border-radius: var(--border-radius);
+  background: var(--dark-bg);
+  cursor: pointer;
+  overflow: hidden;
+  line-height: 0;
+}
+
+.gif-picker-item img {
+  width: 100%;
+  height: 96px;
+  object-fit: cover;
+  display: block;
+}
+
+.gif-picker-item:hover {
+  outline: 2px solid var(--primary-color);
+}
+
+.gif-picker-note {
+  padding: var(--spacing-sm);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
 /* Emoji picker — shared by the reaction menu and the compose emoji button */
 .emoji-picker {
   background: var(--light-bg);
