@@ -76,6 +76,26 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
 
     const slowTimer = setTimeout(() => setSlow(true), 15000);
 
+    // Not every "stream" is HLS: some broadcasters publish a plain file —
+    // .mp4, .webm — and hls.js cannot make sense of one, since it is looking
+    // for a playlist. The browser plays those on its own.
+    const isPlaylist = /\.(m3u8|mpd)(\?|#|$)/i.test(src);
+    if (!isPlaylist) {
+      const onNativeError = () => {
+        setBuffering(false);
+        setError('This stream could not be played — the file may be gone, or in a format this browser cannot play');
+      };
+      video.addEventListener('error', onNativeError);
+      video.src = src;
+      tryPlay();
+
+      return () => {
+        cancelled = true;
+        clearTimeout(slowTimer);
+        video.removeEventListener('error', onNativeError);
+      };
+    }
+
     import('hls.js').then(({ default: Hls }) => {
       if (cancelled) return;
 
