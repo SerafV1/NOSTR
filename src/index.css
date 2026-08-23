@@ -6376,6 +6376,13 @@ a.capability-indicator.paid:hover {
   color: var(--text-secondary);
 }
 
+/* In the composer the card is a check on what is being posted, not the
+   posting itself — full size it pushed the buttons off the box */
+.compose-preview .inline-stream-card,
+.compose-preview .inline-stream-poster {
+  max-width: 300px;
+}
+
 .inline-stream-video {
   width: 100%;
   max-width: 520px;

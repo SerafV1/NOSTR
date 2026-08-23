@@ -11,11 +11,13 @@ import {
   extractEmbeds,
   extractPreviewLinkUrl,
   stripMediaUrls,
-  splitContentTokens
-} from '../utils/media';
+  splitContentTokens, extractStreamUrls } from '../utils/media';
 import { extractMentionPubkeys, formatAddress } from '../utils/helpers';
 import MediaEmbed from './MediaEmbed';
 import LinkPreviewCard from './LinkPreviewCard';
+import InlineStreamPlayer from './InlineStreamPlayer';
+import InlineLiveStream from './InlineLiveStream';
+import { extractStreamPageLinks } from '../utils/liveStream';
 import VideoPlayer from './VideoPlayer';
 import EmojiPicker from './EmojiPicker';
 import GifPicker from './GifPicker';
@@ -617,7 +619,15 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
         const previewImages = extractImageUrls(content);
         const previewVideos = extractVideoUrls(content);
         const previewEmbeds = extractEmbeds(content);
-        if (previewImages.length === 0 && previewVideos.length === 0 && previewEmbeds.length === 0) {
+        // A stream is worth seeing before it is posted too — and since a
+        // stream link no longer draws the generic preview card, without this
+        // pasting one showed nothing at all
+        const previewStreams = extractStreamUrls(content);
+        const previewSharedStreams = extractStreamPageLinks(content);
+        if (
+          previewImages.length === 0 && previewVideos.length === 0 && previewEmbeds.length === 0
+          && previewStreams.length === 0 && previewSharedStreams.length === 0
+        ) {
           return null;
         }
         return (
@@ -636,6 +646,12 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
             ))}
             {previewEmbeds.map(embed => (
               <MediaEmbed key={`${embed.kind}:${embed.id}`} embed={embed} />
+            ))}
+            {previewStreams.map(url => (
+              <InlineStreamPlayer key={url} src={url} className="compose-preview-video" />
+            ))}
+            {previewSharedStreams.map(({ url, naddr }) => (
+              <InlineLiveStream key={naddr} naddr={naddr} href={url} />
             ))}
           </div>
         );
