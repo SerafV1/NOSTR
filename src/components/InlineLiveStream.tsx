@@ -55,17 +55,33 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
 
     let cancelled = false;
     (async () => {
-      const event = await NostrCore.fetchEventByAddress(address.kind, address.pubkey, address.identifier);
-      if (cancelled) return;
-      if (!event) { setMissing(true); return; }
+      // A card can be drawn before this browser has finished connecting to
+      // any relay — on a phone that is the common case, not the rare one —
+      // and one empty answer then stood as "no such stream" for good. So it
+      // asks again a few times, waiting longer each time.
+      for (let attempt = 0; attempt < 4 && !cancelled; attempt++) {
+        if (attempt > 0) {
+          await new Promise(resolve => setTimeout(resolve, attempt * 1500));
+          if (cancelled) return;
+        }
 
-      const parsed = parseLiveEvent(event);
-      setStream(parsed);
+        const event = await NostrCore.fetchEventByAddress(address.kind, address.pubkey, address.identifier);
+        if (cancelled) return;
+        if (!event) continue;
 
-      const profiles = await NostrCore.fetchProfiles([parsed.hostPubkey]);
-      if (cancelled) return;
-      const profile = profiles.get(parsed.hostPubkey);
-      setHostName(profile?.display_name || profile?.name || formatAddress(parsed.hostPubkey));
+        const parsed = parseLiveEvent(event);
+        setStream(parsed);
+
+        const profiles = await NostrCore.fetchProfiles([parsed.hostPubkey]);
+        if (cancelled) return;
+        const profile = profiles.get(parsed.hostPubkey);
+        setHostName(profile?.display_name || profile?.name || formatAddress(parsed.hostPubkey));
+        return;
+      }
+
+      // Asked for often enough now that this means the relays this browser
+      // uses genuinely do not hold it
+      if (!cancelled) setMissing(true);
     })();
 
     return () => { cancelled = true; };
