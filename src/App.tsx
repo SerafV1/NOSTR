@@ -32,9 +32,16 @@ import LiveStreamPage from './components/LiveStreamPage';
 import LiveChatPage from './components/LiveChatPage';
 import LiveViewersPage from './components/LiveViewersPage';
 import LiveZappersPage from './components/LiveZappersPage';
-import { BellIcon, MessageIcon, SettingsIcon } from './components/Icons';
+import { BellIcon, MessageIcon, SettingsIcon, ZapIcon } from './components/Icons';
+import ZapButton from './components/ZapButton';
 import RazrWordmark from './components/RazrWordmark';
 import { decodeLiveNaddr, encodeLiveNaddr } from './utils/liveStream';
+
+/**
+ * Where a tip for this app goes. Kept here rather than in a profile, because
+ * the button in the header is the app asking, not one of its users.
+ */
+const TIP_ADDRESS = 'sera@getalby.com';
 
 // URL-safe encode/decode for note ids and pubkeys — bech32 (note1.../npub1...)
 // with a raw-hex fallback so malformed or hand-typed links still resolve
@@ -580,6 +587,13 @@ function App() {
             </>}
           </nav>
           <div className="header-right">
+            <ZapButton
+              lud16={TIP_ADDRESS}
+              triggerClassName="btn btn-secondary btn-small btn-with-icon header-tip-btn"
+              triggerTitle="Tip RAZR"
+            >
+              <ZapIcon /> Tip
+            </ZapButton>
             {browsingAnonymously ? (
               <Link to="/" className="btn btn-primary btn-small">Log in</Link>
             ) : (

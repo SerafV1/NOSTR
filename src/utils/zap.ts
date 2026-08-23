@@ -12,6 +12,8 @@ interface LnurlPayResponse {
   /** NIP-57: set when the provider will publish a zap receipt */
   allowsNostr?: boolean;
   nostrPubkey?: string;
+  /** LUD-12: how long a note the provider will carry, 0 or absent for none */
+  commentAllowed?: number;
 }
 
 /**
@@ -33,7 +35,8 @@ interface LnurlInvoiceResponse {
 export async function resolveLnurlInvoice(
   lud16: string,
   amountSats: number,
-  buildZapRequest?: ZapRequestBuilder
+  buildZapRequest?: ZapRequestBuilder,
+  comment?: string
 ): Promise<string> {
   const [name, domain] = lud16.split('@');
   if (!name || !domain) {
@@ -72,9 +75,19 @@ export async function resolveLnurlInvoice(
     }
   }
 
+  // LUD-12: a note carried by the payment itself, for the case the zap
+  // request above did not take one — an anonymous zap, or a provider that
+  // publishes no receipts. Providers state how long a note they will take,
+  // and reject the request outright if it is longer, so it is cut to fit.
+  let commentParam = '';
+  const note = comment?.trim();
+  if (note && payInfo.commentAllowed) {
+    commentParam = `&comment=${encodeURIComponent(note.slice(0, payInfo.commentAllowed))}`;
+  }
+
   const separator = payInfo.callback.includes('?') ? '&' : '?';
   const invoiceInfo = await fetchJson<LnurlInvoiceResponse>(
-    `${payInfo.callback}${separator}amount=${amountMsats}${zapRequestParam}`,
+    `${payInfo.callback}${separator}amount=${amountMsats}${zapRequestParam}${commentParam}`,
     'Failed to request an invoice'
   );
 

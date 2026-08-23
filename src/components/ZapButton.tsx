@@ -60,15 +60,22 @@ const ZapButton: React.FC<ZapButtonProps> = ({
       // the wallet publishes a receipt, so it shows up on the note, the
       // profile and — for a stream — in its chat. Without a recipient it
       // is an ordinary private lightning payment, as before.
-      const invoice = await resolveLnurlInvoice(lud16, amountSats, recipientPubkey
-        ? (amountMsats) => NostrCore.createZapRequest({
-            recipientPubkey,
-            amountMsats,
-            eventId,
-            eventAddress,
-            comment: comment.trim()
-          })
-        : undefined);
+      const invoice = await resolveLnurlInvoice(
+        lud16,
+        amountSats,
+        recipientPubkey
+          ? (amountMsats) => NostrCore.createZapRequest({
+              recipientPubkey,
+              amountMsats,
+              eventId,
+              eventAddress,
+              comment: comment.trim()
+            })
+          : undefined,
+        // Carried by the payment itself where the zap request cannot take it:
+        // a tip to a plain lightning address still arrives with a word on it
+        comment.trim()
+      );
 
       // An extension wallet answers over WebLN, not the `lightning:` scheme
       const paid = await payWithWebln(invoice);
@@ -182,17 +189,18 @@ const ZapButton: React.FC<ZapButtonProps> = ({
                   </button>
                 ))}
               </div>
-              {recipientPubkey && (
-                <input
-                  type="text"
-                  className="zap-comment"
-                  placeholder="Comment (optional)"
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  disabled={loading}
-                  maxLength={200}
-                />
-              )}
+              {/* Offered wherever there is something to pay: as part of the
+                  zap where the recipient is known, and as the payment's own
+                  note where they are not */}
+              <input
+                type="text"
+                className="zap-comment"
+                placeholder="Message (optional)"
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                disabled={loading}
+                maxLength={200}
+              />
               <div className="zap-custom">
                 <input
                   type="number"
