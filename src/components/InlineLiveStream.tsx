@@ -33,6 +33,9 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
   const [hostName, setHostName] = useState('');
   const [missing, setMissing] = useState(false);
   const [playing, setPlaying] = useState(false);
+  // The thumbnail is a poster the streamer chose, and often the announcement
+  // itself — the text on it is unreadable at the size a note gives it
+  const [zoomed, setZoomed] = useState(false);
 
   useEffect(() => {
     const address = decodeLiveNaddr(naddr);
@@ -111,7 +114,28 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
         {stream.status === 'live' && stream.currentParticipants !== undefined && (
           <span className="inline-stream-viewers">👁 {stream.currentParticipants.toLocaleString()}</span>
         )}
+        {stream.image && (
+          <button
+            type="button"
+            className="inline-stream-zoom"
+            onClick={(e) => { e.stopPropagation(); setZoomed(true); }}
+            title="Enlarge the picture"
+          >
+            ⤢
+          </button>
+        )}
       </div>
+
+      {zoomed && stream.image && (
+        // Same overlay a picture in a note opens into, so enlarging works the
+        // one way everywhere
+        <div className="image-modal" onClick={() => setZoomed(false)}>
+          <div className="image-modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="image-modal-close" onClick={() => setZoomed(false)}>✕</button>
+            <img src={stream.image} alt={stream.title} className="image-modal-img" />
+          </div>
+        </div>
+      )}
 
       <div className="inline-stream-meta">
         <a

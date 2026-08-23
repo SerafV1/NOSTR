@@ -6281,7 +6281,9 @@ a.capability-indicator.paid:hover {
   border-radius: var(--border-radius);
   overflow: hidden;
   background: var(--light-bg);
-  max-width: 520px;
+  /* As wide as a video in the same note: held narrower it read as a
+     footnote to the post rather than as the thing being posted */
+  width: 100%;
 }
 
 .inline-stream-loading {
@@ -6354,6 +6356,27 @@ a.capability-indicator.paid:hover {
   color: var(--text-primary);
 }
 
+.inline-stream-zoom {
+  position: absolute;
+  right: var(--spacing-sm);
+  bottom: var(--spacing-sm);
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(15, 15, 30, 0.75);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  transition: var(--transition);
+}
+
+.inline-stream-zoom:hover {
+  background: rgba(15, 15, 30, 0.95);
+  border-color: #fff;
+}
+
 .inline-stream-meta {
   display: flex;
   flex-direction: column;
@@ -6385,7 +6408,6 @@ a.capability-indicator.paid:hover {
 
 .inline-stream-video {
   width: 100%;
-  max-width: 520px;
   border-radius: var(--border-radius);
   overflow: hidden;
 }
