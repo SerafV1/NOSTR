@@ -2266,7 +2266,9 @@ button.poll-option-vote:disabled {
 .compose-gif-btn,
 .live-chat-gif-btn {
   font-size: 0.7rem;
-  font-weight: 700;
+  /* Lettering rather than a symbol, so it sits at the weight of the text
+     around it instead of shouting beside the emoji button */
+  font-weight: 500;
   letter-spacing: 0.03em;
 }
 
