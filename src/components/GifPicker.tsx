@@ -13,7 +13,7 @@ interface GifPickerProps {
 }
 
 /**
- * Search Tenor and pick one. The search runs through this app's own endpoint,
+ * Search for a GIF and pick one. The search runs through this app's own endpoint,
  * which holds the key — see api/gifs.ts.
  */
 const GifPicker: React.FC<GifPickerProps> = ({ onSelect }) => {
