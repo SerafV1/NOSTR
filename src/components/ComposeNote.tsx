@@ -17,7 +17,7 @@ import MediaEmbed from './MediaEmbed';
 import LinkPreviewCard from './LinkPreviewCard';
 import InlineStreamPlayer from './InlineStreamPlayer';
 import InlineLiveStream from './InlineLiveStream';
-import { extractStreamPageLinks } from '../utils/liveStream';
+import { extractStreamRefs } from '../utils/liveStream';
 import VideoPlayer from './VideoPlayer';
 import EmojiPicker from './EmojiPicker';
 import GifPicker from './GifPicker';
@@ -688,7 +688,7 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
         // stream link no longer draws the generic preview card, without this
         // pasting one showed nothing at all
         const previewStreams = extractStreamUrls(content);
-        const previewSharedStreams = extractStreamPageLinks(content);
+        const previewSharedStreams = extractStreamRefs(content);
         if (
           previewImages.length === 0 && previewVideos.length === 0 && previewEmbeds.length === 0
           && previewStreams.length === 0 && previewSharedStreams.length === 0

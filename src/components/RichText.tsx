@@ -295,6 +295,10 @@ const RichText: React.FC<RichTextProps> = ({
               {addressRef.label}
             </span>
           );
+        } else if (inlineQuotes) {
+          // The stream itself, the same as a link to its page — this is how
+          // a note shared from another client carries one
+          parts.push(<InlineLiveStream key={key++} naddr={addressRef.naddr} />);
         } else {
           // Where no navigation was handed in, the address is still a real
           // page on this app — a plain link reaches it

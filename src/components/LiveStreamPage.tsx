@@ -188,9 +188,15 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
     : stream.status === 'planned'
       ? 'Coming up, with'
       : 'Was live with';
+  // Two ways to the same stream, because they reach different readers. The
+  // `nostr:` address is what other clients understand — Amethyst and the rest
+  // draw their own player from it, where a link to this app's page was only
+  // ever a link to them. The web address stays for anyone reading outside a
+  // nostr client at all. This app shows one card for the two of them.
   const shareText = [
     stream.title,
     hostMention ? `\n\n${shareLead} ${hostMention}` : '',
+    `\n\nnostr:${naddrParam}`,
     `\n\n${window.location.origin}/live/${naddrParam}`
   ].join('');
 

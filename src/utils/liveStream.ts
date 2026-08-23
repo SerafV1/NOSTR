@@ -151,6 +151,35 @@ export function streamNaddrFromUrl(url: string): string | null {
   return null;
 }
 
+/**
+ * Every stream a note points at, however it was written: as this app's page
+ * address, as another client's, or as a bare `naddr` — which is what nostr
+ * clients understand, and so what a note meant to be read anywhere carries.
+ *
+ * The same stream written twice, once as a link and once as an address,
+ * comes back once.
+ */
+export function extractStreamRefs(content: string): { naddr: string; url?: string }[] {
+  const found: { naddr: string; url?: string }[] = [];
+  const seen = new Set<string>();
+
+  for (const { url, naddr } of extractStreamPageLinks(content)) {
+    seen.add(naddr);
+    found.push({ naddr, url });
+  }
+
+  const bare = content.match(/(?:nostr:)?naddr1[a-z0-9]{20,}/gi) || [];
+  for (const raw of bare) {
+    const naddr = raw.replace(/^nostr:/i, '').toLowerCase();
+    if (seen.has(naddr)) continue;
+    if (decodeLiveNaddr(naddr)?.kind !== 30311) continue;
+    seen.add(naddr);
+    found.push({ naddr });
+  }
+
+  return found;
+}
+
 /** Every stream page linked in a note, paired with the link it came from */
 export function extractStreamPageLinks(content: string): { url: string; naddr: string }[] {
   const found: { url: string; naddr: string }[] = [];
