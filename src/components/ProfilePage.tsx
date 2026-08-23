@@ -68,7 +68,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [contentTab, setContentTab] = useState<'posts' | 'replies' | 'media' | 'zaps' | 'following' | 'followers'>('posts');
-  const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
+  // Seeded from the follow list kept locally, so the button reads right at
+  // once instead of after a relay answers — the relays are still asked below
+  const [isFollowing, setIsFollowing] = useState<boolean | null>(
+    () => (NostrCore.getCachedFollowedAccounts().includes(pubkey) ? true : null)
+  );
   const [followLoading, setFollowLoading] = useState(false);
   const [isBlocked, setIsBlocked] = useState(() => NostrCore.isBlocked(pubkey));
   const [blockLoading, setBlockLoading] = useState(false);

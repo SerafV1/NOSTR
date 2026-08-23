@@ -21,6 +21,14 @@ interface ProfileHoverCardProps {
   children: React.ReactNode;
 }
 
+/**
+ * When the follow list was last read from the relays, shared by every card.
+ * Each hover asking again meant a round trip per name pointed at, for a list
+ * that changes rarely.
+ */
+let followListCheckedAt = 0;
+const FOLLOW_LIST_STALE_MS = 60_000;
+
 // Long enough that brushing past a name doesn't flash a card, short enough
 // that deliberately resting on one feels immediate
 const OPEN_DELAY_MS = 400;
@@ -42,7 +50,12 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
 }) => {
   const [open, setOpen] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(knownProfile || EventCache.getProfile(pubkey));
-  const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
+  // The follow list this account already keeps locally answers instantly;
+  // asking the relays took long enough that the card sat there offering to
+  // follow someone already followed
+  const [isFollowing, setIsFollowing] = useState<boolean | null>(
+    () => (NostrCore.getCachedFollowedAccounts().includes(pubkey) ? true : null)
+  );
   const [blocked, setBlocked] = useState(() => NostrCore.isBlocked(pubkey));
   const [busy, setBusy] = useState<'follow' | 'block' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +87,11 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
         if (!cancelled && p) setProfile(p);
       });
     }
-    if (isFollowing === null && !isOwnProfile) {
+    // The local list answers at once; the relays are asked only when it had
+    // nothing to say, or when what it says has not been checked in a while
+    const stale = Date.now() - followListCheckedAt > FOLLOW_LIST_STALE_MS;
+    if (!isOwnProfile && (isFollowing === null || stale)) {
+      followListCheckedAt = Date.now();
       NostrCore.isFollowing(pubkey).then(result => {
         if (!cancelled) setIsFollowing(result);
       });
@@ -214,7 +231,9 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
                 onClick={handleFollowToggle}
                 disabled={busy !== null || isFollowing === null}
               >
-                {busy === 'follow' ? '...' : isFollowing === null ? 'Follow' : isFollowing ? 'Unfollow' : 'Follow'}
+                {/* Not yet known is its own state: offering "Follow" while
+                    the answer is still coming was wrong half the time */}
+                {busy === 'follow' ? '…' : isFollowing === null ? '…' : isFollowing ? 'Unfollow' : 'Follow'}
               </button>
               <button
                 type="button"
