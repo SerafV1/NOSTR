@@ -35,7 +35,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   /** How many zappers to list beside the stream, remembered between visits */
   const [topZappers, setTopZappers] = useState(() => {
     const held = Number(localStorage.getItem('razr_top_zappers'));
-    return Number.isFinite(held) && held > 0 ? held : 12;
+    return Number.isFinite(held) && held > 0 ? held : 10;
   });
   /** When the copy on screen was published, so an older one cannot replace it */
   const latestAt = useRef(0);
@@ -345,7 +345,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                     localStorage.setItem('razr_top_zappers', String(chosen));
                   }}
                 >
-                  {[3, 5, 10, 12, 20, 50].map(n => (
+                  {[5, 10, 20, 40, 80].map(n => (
                     <option key={n} value={n}>{n}</option>
                   ))}
                 </select>

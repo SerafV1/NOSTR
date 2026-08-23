@@ -41,8 +41,14 @@ export interface PresentPerson {
   picture?: string;
 }
 
+/** When something was said, to the minute — seconds say nothing in a chat */
+const atTime = (createdAt?: number): string =>
+  createdAt
+    ? new Date(createdAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '';
+
 /** How many past zaps the chat keeps alongside the talk */
-const CHAT_ZAP_HISTORY = 50;
+const CHAT_ZAP_HISTORY = 15;
 
 interface TimelineEntry {
   kind: 'message' | 'zap';
@@ -619,6 +625,18 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
 
   // Messages and zaps are two separate subscriptions but one conversation,
   // so they are interleaved by time the way the room actually experienced them
+  // Zaps sit in the conversation, not on top of it: the relays replay every
+  // one the stream has ever taken, and being the newest events they landed
+  // at the bottom — where the chat scrolls to — leaving a screen of nothing
+  // but zap boxes. Only those from the stretch of time the messages cover
+  // are shown, and only the last few of them.
+  const oldestMessage = messages.length
+    ? Math.min(...messages.map(m => m.created_at || 0))
+    : 0;
+  const zapsInView = zaps
+    .filter(zap => (zap.created_at || 0) >= oldestMessage)
+    .slice(-CHAT_ZAP_HISTORY);
+
   const timeline: TimelineEntry[] = !muteListRead ? [] : [
     ...messages.map((event): TimelineEntry => ({
       kind: 'message',
@@ -627,7 +645,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
       recipient: null,
       sats: 0
     })),
-    ...zaps.map((event): TimelineEntry => ({
+    ...zapsInView.map((event): TimelineEntry => ({
       kind: 'zap',
       event,
       author: NostrCore.zapSenderPubkey(event),
@@ -812,6 +830,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                       </>
                     )}
                     <strong>⚡ {entry.sats.toLocaleString()} sats</strong>
+                    <time className="live-chat-time">{atTime(event.created_at)}</time>
                   </span>
                   {comment && (
                     <span className="live-chat-text">
@@ -900,6 +919,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                       <ZapIcon />
                     </ZapButton>
                   )}
+                  <time className="live-chat-time">{atTime(event.created_at)}</time>
                 </span>
                 <span className="live-chat-text">
                   <RichText

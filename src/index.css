@@ -5241,6 +5241,20 @@ a.capability-indicator.paid:hover {
   text-align: left;
 }
 
+/* When it was said, quiet enough to read past */
+.live-chat-time {
+  margin-left: auto;
+  padding-left: 6px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-chat-zap-line .live-chat-time {
+  margin-left: 6px;
+}
+
 .live-chat-text {
   color: var(--text-primary);
   font-size: 0.9rem;

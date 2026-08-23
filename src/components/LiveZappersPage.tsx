@@ -112,7 +112,7 @@ const LiveZappersPage: React.FC<LiveZappersPageProps> = ({
                 value={top}
                 onChange={(e) => choose({ transparent, bold, top: Number(e.target.value) })}
               >
-                {[3, 5, 10, 20, 50].map(n => (
+                {[5, 10, 20, 40, 80].map(n => (
                   <option key={n} value={n}>{n}</option>
                 ))}
               </select>
