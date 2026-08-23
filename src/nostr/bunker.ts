@@ -384,7 +384,7 @@ export const startNostrConnect = (
 
   // relay is repeatable in the URI, so the signer can pick whichever it can
   // reach — the same reason we listen on all of them
-  const params = new URLSearchParams({ secret, name: 'NOSTR Web App' });
+  const params = new URLSearchParams({ secret, name: 'RAZR' });
   // Named so the signer can show what's being asked for; leaving it out gave
   // it nothing to present and the pairing simply sat there
   if (perms) params.append('perms', perms);

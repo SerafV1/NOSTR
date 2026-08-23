@@ -32,6 +32,7 @@ import LiveStreamPage from './components/LiveStreamPage';
 import LiveChatPage from './components/LiveChatPage';
 import LiveViewersPage from './components/LiveViewersPage';
 import { BellIcon, MessageIcon, SettingsIcon } from './components/Icons';
+import RazrLogo from './components/RazrLogo';
 import { decodeLiveNaddr, encodeLiveNaddr } from './utils/liveStream';
 
 // URL-safe encode/decode for note ids and pubkeys — bech32 (note1.../npub1...)
@@ -502,7 +503,7 @@ function App() {
     <div className="app">
       {!poppedOutChat && <header className="app-header">
         <div className="header-content">
-          <h1 className="app-title">⚡ NOSTR</h1>
+          <h1 className="app-title"><RazrLogo className="app-logo" /> RAZR</h1>
           <button
             type="button"
             className="nav-toggle"

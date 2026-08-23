@@ -448,7 +448,21 @@ textarea {
   gap: var(--spacing-lg);
 }
 
+/* The mark sits on the same line as the name, and neither shrinks */
+.app-logo {
+  flex-shrink: 0;
+}
+
+.login-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
 .app-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
   font-size: 1.5rem;
   background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
   -webkit-background-clip: text;

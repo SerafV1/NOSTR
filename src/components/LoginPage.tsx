@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import RazrLogo from './RazrLogo';
 import { NostrCrypto, CredentialManager, ExtensionManager } from '../nostr/crypto';
 import { isAndroid } from '../utils/platform';
 import {
@@ -173,7 +174,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     <div className="login-page">
       <div className="login-container">
         <div className="login-header">
-          <h1>⚡ NOSTR Web App</h1>
+          <h1 className="login-title"><RazrLogo size={38} /> RAZR</h1>
           <p>A decentralized social network</p>
         </div>
 

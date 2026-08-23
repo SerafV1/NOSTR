@@ -70,7 +70,7 @@ function safeUrl(raw: string): URL | null {
 // on.
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
-  'Mozilla/5.0 (compatible; NostrLinkPreview/1.0; +https://nostr-ebon.vercel.app) facebookexternalhit/1.1'
+  'Mozilla/5.0 (compatible; RazrLinkPreview/1.0; +https://razr.social) facebookexternalhit/1.1'
 ];
 
 export default async function handler(req: any, res: any) {

@@ -1,7 +1,7 @@
 {
-  "name": "nostr-web-app",
+  "name": "razr",
   "version": "1.0.0",
-  "description": "A comprehensive NOSTR web application with relay support, user profiles, and event publishing",
+  "description": "RAZR — a nostr client with relays, profiles, live streams and private messages",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
