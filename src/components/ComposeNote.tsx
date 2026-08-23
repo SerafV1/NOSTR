@@ -46,6 +46,9 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
   const [previewLinkUrl, setPreviewLinkUrl] = useState<string | null>(null);
   // Set when this composer opened onto text left over from last time
   const [draftRestored, setDraftRestored] = useState(false);
+  // Names for the accounts a reference in the text points at, so the preview
+  // shows who is being mentioned rather than sixty characters of bech32
+  const [referencedNames, setReferencedNames] = useState<Map<string, string>>(new Map());
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [publishing, setPublishing] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -380,6 +383,28 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
     const parts: React.ReactNode[] = [];
     let key = 0;
 
+    /** A "nostr:npub…" written into the text, shown as the person it names */
+    const referencePattern = /(?:nostr:)?(?:npub1|nprofile1)[a-z0-9]{20,}/gi;
+    const asReference = (piece: string): React.ReactNode | null => {
+      try {
+        const decoded = nip19.decode(piece.replace(/^nostr:/, ''));
+        const pubkey = decoded.type === 'npub'
+          ? decoded.data as string
+          : decoded.type === 'nprofile'
+            ? (decoded.data as { pubkey: string }).pubkey
+            : null;
+        if (!pubkey) return null;
+        // Until the name is in, the short form beats the full bech32
+        return (
+          <span key={key++} className="mention-link">
+            @{referencedNames.get(pubkey) || formatAddress(pubkey)}
+          </span>
+        );
+      } catch {
+        return null;
+      }
+    };
+
     for (const token of splitContentTokens(stripMediaUrls(content))) {
       if (token.type === 'link') {
         parts.push(<a key={key++} className="content-link">{token.value}</a>);
@@ -389,22 +414,62 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
         parts.push(<span key={key++} className="hashtag-link">#{token.value}</span>);
         continue;
       }
-      if (!mentionPattern) {
-        parts.push(token.value);
-        continue;
-      }
-      // Plain text can still contain an @handle picked from the mention list
-      for (const piece of token.value.split(mentionPattern)) {
+      // Plain text can hold both an @handle picked from the suggestion list
+      // and a reference written straight into the text
+      const pieces = mentionPattern ? token.value.split(mentionPattern) : [token.value];
+      for (const piece of pieces) {
         if (!piece) continue;
-        parts.push(
-          piece.startsWith('@') && handles.some(h => piece === `@${h}`)
-            ? <span key={key++} className="mention-link">{piece}</span>
-            : piece
-        );
+        if (mentionPattern && piece.startsWith('@') && handles.some(h => piece === `@${h}`)) {
+          parts.push(<span key={key++} className="mention-link">{piece}</span>);
+          continue;
+        }
+        for (const part of piece.split(new RegExp(`(${referencePattern.source})`, 'gi'))) {
+          if (!part) continue;
+          const reference = /^(?:nostr:)?(?:npub1|nprofile1)/i.test(part) ? asReference(part) : null;
+          parts.push(reference ?? part);
+        }
       }
     }
     return parts;
   };
+
+  // A reference can arrive without ever being typed — the composer opened on
+  // it, as sharing a stream does — so names are looked up from the text
+  // rather than from what the writer picked out of the suggestion list
+  useEffect(() => {
+    const pubkeys = extractMentionPubkeys(content);
+    const unknown = pubkeys.filter(pubkey => !referencedNames.has(pubkey));
+    if (unknown.length === 0) return;
+
+    let cancelled = false;
+    const named = (profile?: UserProfile, pubkey?: string) =>
+      profile?.display_name || profile?.name || formatAddress(pubkey || '');
+
+    // Whatever is already known renders at once; the rest is asked for
+    const fromCache = new Map<string, string>();
+    const missing: string[] = [];
+    for (const pubkey of unknown) {
+      const cached = EventCache.getProfile(pubkey);
+      if (cached) fromCache.set(pubkey, named(cached, pubkey));
+      else missing.push(pubkey);
+    }
+    if (fromCache.size > 0) {
+      setReferencedNames(prev => new Map([...prev, ...fromCache]));
+    }
+    if (missing.length === 0) return;
+
+    NostrCore.fetchProfiles(missing).then(profiles => {
+      if (cancelled) return;
+      setReferencedNames(prev => {
+        const next = new Map(prev);
+        for (const pubkey of missing) next.set(pubkey, named(profiles.get(pubkey), pubkey));
+        return next;
+      });
+    });
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Escape' && mentionStart !== null) {
