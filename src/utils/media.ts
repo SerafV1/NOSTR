@@ -2,6 +2,10 @@
 
 const IMAGE_URL_SOURCE = 'https?:\\/\\/[^\\s]+\\.(?:jpg|jpeg|png|gif|webp|bmp|svg)(?:\\?[^\\s]*)?';
 const VIDEO_URL_SOURCE = 'https?:\\/\\/[^\\s]+\\.(?:mp4|webm|mov|m4v|ogv)(?:\\?[^\\s]*)?';
+// A live stream is a playlist, not a file: outside Safari the browser cannot
+// open it without hls.js, so it is kept apart from the video URLs above and
+// handed to the player that carries it.
+const STREAM_URL_SOURCE = 'https?:\\/\\/[^\\s]+\\.m3u8(?:\\?[^\\s]*)?';
 const ANY_URL_SOURCE = 'https?:\\/\\/[^\\s]+';
 // A quoted note reference (NIP-19 note/nevent/naddr) — rendered as an
 // embedded quote card, so the raw reference is hidden from the visible text.
@@ -28,6 +32,13 @@ export function extractImageUrls(content: string): string[] {
 export function extractVideoUrls(content: string): string[] {
   const urls = new Set<string>();
   const matches = content.match(new RegExp(VIDEO_URL_SOURCE, 'gi')) || [];
+  matches.forEach(url => urls.add(trimTrailingPunctuation(url)));
+  return Array.from(urls);
+}
+
+export function extractStreamUrls(content: string): string[] {
+  const urls = new Set<string>();
+  const matches = content.match(new RegExp(STREAM_URL_SOURCE, 'gi')) || [];
   matches.forEach(url => urls.add(trimTrailingPunctuation(url)));
   return Array.from(urls);
 }
@@ -245,11 +256,12 @@ const isEmbeddable = (url: string): boolean =>
 export function extractPreviewLinkUrl(content: string): string | null {
   const images = new Set(extractImageUrls(content));
   const videos = new Set(extractVideoUrls(content));
+  const streams = new Set(extractStreamUrls(content));
   const matches = content.match(new RegExp(ANY_URL_SOURCE, 'gi')) || [];
 
   for (const raw of matches) {
     const url = trimTrailingPunctuation(raw);
-    if (images.has(url) || videos.has(url) || isEmbeddable(url)) continue;
+    if (images.has(url) || videos.has(url) || streams.has(url) || isEmbeddable(url)) continue;
     return url;
   }
   return null;
@@ -263,6 +275,7 @@ export function stripMediaUrls(content: string): string {
   const sources = [
     IMAGE_URL_SOURCE,
     VIDEO_URL_SOURCE,
+    STREAM_URL_SOURCE,
     ...EMBED_PROVIDERS.map(p => p.source),
     QUOTE_REF_SOURCE,
   ];

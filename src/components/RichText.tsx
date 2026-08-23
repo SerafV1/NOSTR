@@ -3,7 +3,8 @@ import { nip19 } from 'nostr-tools';
 import { UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { formatAddress } from '../utils/helpers';
-import { splitContentTokens, extractImageUrls, extractVideoUrls } from '../utils/media';
+import { splitContentTokens, extractImageUrls, extractVideoUrls, extractStreamUrls } from '../utils/media';
+import InlineStreamPlayer from './InlineStreamPlayer';
 import { customEmojiMap, splitCustomEmoji } from '../utils/customEmoji';
 import InlineQuotedNote from './InlineQuotedNote';
 
@@ -181,6 +182,15 @@ const RichText: React.FC<RichTextProps> = ({
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
               />
             </a>
+          );
+          continue;
+        }
+
+        // A stream link is a playlist rather than a file, so it needs the
+        // player that carries hls.js instead of a bare <video>
+        if (inlineImages && extractStreamUrls(token.value).length > 0) {
+          parts.push(
+            <InlineStreamPlayer key={key++} src={token.value} className="rich-video" />
           );
           continue;
         }

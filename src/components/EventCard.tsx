@@ -7,6 +7,7 @@ import { formatDate, formatAddress } from '../utils/helpers';
 import {
   extractImageUrls,
   extractVideoUrls,
+  extractStreamUrls,
   extractEmbeds,
   extractPreviewLinkUrl,
   stripMediaUrls,
@@ -17,6 +18,7 @@ import ComposeModal from './ComposeModal';
 import MediaEmbed from './MediaEmbed';
 import ProfileHoverCard from './ProfileHoverCard';
 import VideoPlayer from './VideoPlayer';
+import InlineStreamPlayer from './InlineStreamPlayer';
 import QuotedNoteCard from './QuotedNoteCard';
 import LinkPreviewCard from './LinkPreviewCard';
 import EmojiPicker from './EmojiPicker';
@@ -661,6 +663,7 @@ const EventCard: React.FC<EventCardProps> = ({
         )}
         {(extractImageUrls(event.content).length > 0 ||
           extractVideoUrls(event.content).length > 0 ||
+          extractStreamUrls(event.content).length > 0 ||
           extractEmbeds(event.content).length > 0) && (
           <div className={`sensitive-media-wrapper ${isSensitive && !mediaRevealed ? 'blurred' : ''}`}>
             {isSensitive && !mediaRevealed && (
@@ -721,6 +724,13 @@ const EventCard: React.FC<EventCardProps> = ({
               <div className="event-videos" onClick={(e) => e.stopPropagation()}>
                 {extractVideoUrls(event.content).map((videoUrl) => (
                   <VideoPlayer key={videoUrl} src={videoUrl} className="event-video" />
+                ))}
+              </div>
+            )}
+            {extractStreamUrls(event.content).length > 0 && (
+              <div className="event-videos" onClick={(e) => e.stopPropagation()}>
+                {extractStreamUrls(event.content).map((streamUrl) => (
+                  <InlineStreamPlayer key={streamUrl} src={streamUrl} className="event-video" />
                 ))}
               </div>
             )}

@@ -6274,6 +6274,64 @@ a.capability-indicator.paid:hover {
 }
 
 /* A clip posted in the chat, sized like the pictures beside it */
+/* A stream waits for a press before it starts pulling: shown as a plate with
+   a play button and where the stream comes from, at the shape of the player
+   that replaces it */
+.inline-stream-poster {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  justify-content: center;
+  background: linear-gradient(160deg, var(--light-bg), var(--dark-bg));
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: var(--transition);
+}
+
+.inline-stream-poster:hover {
+  border-color: var(--primary-color);
+  color: var(--text-primary);
+}
+
+.inline-stream-play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(102, 126, 234, 0.15);
+  border: 1px solid var(--primary-color);
+}
+
+.inline-stream-play svg {
+  width: 22px;
+  height: 22px;
+}
+
+.inline-stream-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+}
+
+.inline-stream-kind {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.inline-stream-host {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
 .rich-video {
   display: block;
   max-width: 100%;
