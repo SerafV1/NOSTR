@@ -2864,6 +2864,11 @@ button.poll-option-vote:disabled {
   width: 100%;
   max-width: 600px;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  /* The box scrolls rather than growing past the window: what is being
+     written can be a stream, several pictures or a poll, and any of those
+     used to push Publish off the bottom of the screen */
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .compose-modal-header {
@@ -6407,13 +6412,6 @@ a.capability-indicator.paid:hover {
 .inline-stream-by {
   font-size: 0.8rem;
   color: var(--text-secondary);
-}
-
-/* In the composer the card is a check on what is being posted, not the
-   posting itself — full size it pushed the buttons off the box */
-.compose-preview .inline-stream-card,
-.compose-preview .inline-stream-poster {
-  max-width: 300px;
 }
 
 /* The enlarged player: as wide as the window allows without the controls
