@@ -1008,6 +1008,41 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
       )}
 
       {!hideComposer && <form className="live-chat-input-row" onSubmit={handleSend}>
+        {/* What is being written comes first; what can be attached to it sits
+            underneath. Side by side, the five of them squeezed the message
+            box down to a slot barely wider than the word in it. */}
+        <div className="live-chat-line">
+        <input
+          ref={inputRef}
+          type="text"
+          className="live-chat-input"
+          placeholder={isLoggedIn ? 'Send a message…' : 'Log in to chat'}
+          value={input}
+          onChange={(e) => {
+            const value = e.target.value;
+            setInput(value);
+            const trigger = detectMentionTrigger(value, e.target.selectionStart ?? value.length);
+            if (trigger) {
+              setMentionStart(trigger.start);
+              setMentionQuery(trigger.query);
+            } else {
+              closeSuggestions();
+            }
+          }}
+          onKeyDown={(e) => { if (e.key === 'Escape') closeSuggestions(); }}
+          onFocus={() => setShowEmojiPicker(false)}
+          disabled={!isLoggedIn || disabled || sending}
+          maxLength={500}
+        />
+        <button
+          type="submit"
+          className="btn btn-primary live-chat-send-btn"
+          disabled={!isLoggedIn || disabled || sending || !input.trim()}
+        >
+          Send
+        </button>
+        </div>
+        <div className="live-chat-tools">
         <div className="live-chat-emoji-wrapper" ref={emoji.containerRef}>
           <button
             ref={emoji.triggerRef}
@@ -1072,35 +1107,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
             </div>
           )}
         </div>
-        <input
-          ref={inputRef}
-          type="text"
-          className="live-chat-input"
-          placeholder={isLoggedIn ? 'Send a message…' : 'Log in to chat'}
-          value={input}
-          onChange={(e) => {
-            const value = e.target.value;
-            setInput(value);
-            const trigger = detectMentionTrigger(value, e.target.selectionStart ?? value.length);
-            if (trigger) {
-              setMentionStart(trigger.start);
-              setMentionQuery(trigger.query);
-            } else {
-              closeSuggestions();
-            }
-          }}
-          onKeyDown={(e) => { if (e.key === 'Escape') closeSuggestions(); }}
-          onFocus={() => setShowEmojiPicker(false)}
-          disabled={!isLoggedIn || disabled || sending}
-          maxLength={500}
-        />
-        <button
-          type="submit"
-          className="btn btn-primary live-chat-send-btn"
-          disabled={!isLoggedIn || disabled || sending || !input.trim()}
-        >
-          Send
-        </button>
+        </div>
       </form>}
     </div>
   );

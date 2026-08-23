@@ -5525,10 +5525,25 @@ a.capability-indicator.paid:hover {
 
 .live-chat-input-row {
   display: flex;
-  align-items: center;
+  /* The message and its Send on one line, everything that can be attached on
+     the next — five controls in a row left the box itself hardly wider than
+     the placeholder in it */
+  flex-direction: column;
   gap: var(--spacing-sm);
   padding: var(--spacing-md);
   border-top: 1px solid var(--border-color);
+}
+
+.live-chat-line {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.live-chat-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
 }
 
 .live-chat-emoji-wrapper {
