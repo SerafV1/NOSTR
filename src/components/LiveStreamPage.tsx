@@ -195,16 +195,15 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
     : (stream.status === 'live'
         ? '🔴 Live now with'
         : stream.status === 'planned' ? 'Coming up, with' : 'Was live with');
-  // Two ways to the same stream, because they reach different readers. The
-  // `nostr:` address is what other clients understand — Amethyst and the rest
-  // draw their own player from it, where a link to this app's page was only
-  // ever a link to them. The web address stays for anyone reading outside a
-  // nostr client at all. This app shows one card for the two of them.
+  // The stream's own address and nothing else. Carrying this app's web link
+  // beside it meant two references to one stream, which clients that show
+  // both drew as two things in one post — and this app now reads the plain
+  // address the same way every other client does, so the link bought it
+  // nothing either.
   const shareText = [
     stream.title,
     hostMention ? `\n\n${shareLead} ${hostMention}` : `\n\n${shareLead}`,
-    `\n\nnostr:${naddrParam}`,
-    `\n\n${window.location.origin}/live/${naddrParam}`
+    `\n\nnostr:${naddrParam}`
   ].join('');
 
   return (
