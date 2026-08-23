@@ -5,6 +5,7 @@ import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr } fro
 import { formatAddress } from '../utils/helpers';
 import LiveVideoPlayer from './LiveVideoPlayer';
 import LiveChatPanel, { PresentPerson } from './LiveChatPanel';
+import LiveZappersPanel from './LiveZappersPanel';
 import ZapButton from './ZapButton';
 import RichText from './RichText';
 import EmojiText from './EmojiText';
@@ -299,6 +300,30 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
         </div>
 
         <div className={`live-chat-dock ${chatOpen ? 'open' : ''}`}>
+          {/* Beside the chat, since it is the same zaps counted up rather
+              than watched going past */}
+          <LiveZappersPanel
+            address={address}
+            relaysConnected={relaysConnected}
+            limit={5}
+            hideWhenEmpty
+            onNavigateToProfile={onNavigateToProfile}
+            headerAction={(
+              <button
+                type="button"
+                className="live-chat-obs-btn"
+                title="Open the zappers on their own, to set up as an OBS browser source"
+                onClick={() => window.open(
+                  `${window.location.origin}/live/${naddrParam}/zappers`,
+                  `zappers-${naddrParam}`,
+                  'width=380,height=520,menubar=no,toolbar=no'
+                )}
+              >
+                <PopOutIcon />
+              </button>
+            )}
+          />
+
           <button
             type="button"
             className="live-chat-close"
