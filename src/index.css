@@ -1812,6 +1812,17 @@ button.poll-option-vote:disabled {
 }
 
 /* Mention Links */
+/* An addressable reference this app has no page for: named, not spelled out */
+.address-ref {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: var(--border-radius);
+  background: var(--dark-bg);
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  cursor: help;
+}
+
 .mention-link {
   background: none;
   border: none;

@@ -12,6 +12,8 @@ interface RichTextProps {
   onNavigateToProfile?: (pubkey: string) => void;
   onNavigateToNote?: (noteId: string) => void;
   onNavigateToTopic?: (topic: string) => void;
+  /** Where a shared live stream leads. Without it the naddr stays as text. */
+  onNavigateToStream?: (naddr: string) => void;
   /** Draw picture links as pictures — chat messages are mostly images */
   inlineImages?: boolean;
   /** Show a referenced note as the note, not as a link to it */
@@ -41,6 +43,38 @@ const decodeProfileRef = (ref: string): string | null => {
   return null;
 };
 
+/** What an addressable reference points at, by kind */
+const ADDRESSABLE_KINDS: Record<number, string> = {
+  30023: '📄 Article',
+  30311: '📺 View stream',
+  34550: '🗂 Community',
+  39000: '👥 Group'
+};
+
+/**
+ * An `naddr1…` and what can be done with it. A live stream opens here; the
+ * rest — articles, groups, communities — have no page in this app, but a
+ * hundred and twenty characters of bech32 in the middle of a sentence is
+ * unreadable either way, so they at least say what they are.
+ */
+const describeAddressRef = (
+  ref: string
+): { naddr: string; label: string; openable: boolean } | null => {
+  try {
+    const naddr = bareRef(ref);
+    const decoded = nip19.decode(naddr);
+    if (decoded.type !== 'naddr') return null;
+    const { kind } = decoded.data as { kind: number };
+    return {
+      naddr,
+      label: ADDRESSABLE_KINDS[kind] || '🔗 nostr address',
+      openable: kind === 30311
+    };
+  } catch {
+    return null;
+  }
+};
+
 const decodeNoteRef = (ref: string): string | null => {
   try {
     const decoded = nip19.decode(bareRef(ref));
@@ -63,6 +97,7 @@ const RichText: React.FC<RichTextProps> = ({
   onNavigateToProfile,
   onNavigateToNote,
   onNavigateToTopic,
+  onNavigateToStream,
   inlineImages = false,
   inlineQuotes = false,
   eventTags,
@@ -212,6 +247,7 @@ const RichText: React.FC<RichTextProps> = ({
       const lower = bareRef(ref).toLowerCase();
       const pubkey = lower.startsWith('npub1') || lower.startsWith('nprofile1') ? decodeProfileRef(ref) : null;
       const noteId = lower.startsWith('note1') || lower.startsWith('nevent1') ? decodeNoteRef(ref) : null;
+      const addressRef = lower.startsWith('naddr1') ? describeAddressRef(ref) : null;
 
       if (pubkey) {
         const profile = profiles[pubkey];
@@ -226,6 +262,38 @@ const RichText: React.FC<RichTextProps> = ({
             @{name}
           </button>
         );
+      } else if (addressRef) {
+        if (!addressRef.openable) {
+          // Nothing here can show it, so it says what it is and keeps the
+          // address in reach rather than spelling it out in full
+          parts.push(
+            <span key={key++} className="address-ref" title={addressRef.naddr}>
+              {addressRef.label}
+            </span>
+          );
+        } else {
+          // Where no navigation was handed in, the address is still a real
+          // page on this app — a plain link reaches it
+          parts.push(onNavigateToStream ? (
+            <button
+              key={key++}
+              type="button"
+              className="mention-link"
+              onClick={(e) => { e.stopPropagation(); onNavigateToStream(addressRef.naddr); }}
+            >
+              {addressRef.label}
+            </button>
+          ) : (
+            <a
+              key={key++}
+              href={`/live/${addressRef.naddr}`}
+              className="mention-link"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {addressRef.label}
+            </a>
+          ));
+        }
       } else if (noteId) {
         parts.push(inlineQuotes ? (
           <InlineQuotedNote

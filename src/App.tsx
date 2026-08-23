@@ -186,7 +186,8 @@ function LiveViewersRoute({ relaysConnected }: RouteCallbacks) {
   );
 }
 
-function MessagesRoute({ relaysConnected, publicKey, onNavigateToProfile, onMarkMessagesRead }: RouteCallbacks) {
+function MessagesRoute({ relaysConnected, publicKey, onNavigateToProfile, onNavigateToNote, onMarkMessagesRead }: RouteCallbacks) {
+  const navigate = useNavigate();
   const { npub } = useParams();
   const recipient = decodeNpubParam(npub);
 
@@ -195,6 +196,8 @@ function MessagesRoute({ relaysConnected, publicKey, onNavigateToProfile, onMark
       pubkey={publicKey}
       relaysConnected={relaysConnected}
       onNavigateToProfile={onNavigateToProfile}
+      onNavigateToNote={onNavigateToNote}
+      onNavigateToStream={(naddr) => navigate(`/live/${naddr}`)}
       onMarkRead={onMarkMessagesRead}
       initialRecipient={recipient}
     />

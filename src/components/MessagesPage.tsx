@@ -3,8 +3,11 @@ import { UserProfile } from '../types';
 import { NostrCore, PersistentCache } from '../nostr/core';
 import { DirectMessageCore, DirectMessageStore, DirectMessage, Conversation } from '../nostr/dm';
 import { formatDate, formatAddress } from '../utils/helpers';
+import RichText from './RichText';
 
 interface MessagesPageProps {
+  onNavigateToNote?: (noteId: string) => void;
+  onNavigateToStream?: (naddr: string) => void;
   pubkey: string;
   relaysConnected: boolean;
   onNavigateToProfile: (pubkey: string) => void;
@@ -17,6 +20,8 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
   pubkey,
   relaysConnected,
   onNavigateToProfile,
+  onNavigateToNote,
+  onNavigateToStream,
   onMarkRead,
   initialRecipient
 }) => {
@@ -159,7 +164,18 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
           {thread.map(message => (
             <div key={message.id} className={`dm-bubble-row ${message.isOwn ? 'own' : ''}`}>
               <div className="dm-bubble">
-                <div className="dm-bubble-content">{message.content}</div>
+                <div className="dm-bubble-content">
+                  {/* Pictures are deliberately not loaded here: fetching one
+                      tells whoever hosts it that this message was opened,
+                      and in a private conversation that is the sender's to
+                      learn only if you follow the link yourself. */}
+                  <RichText
+                    content={message.content}
+                    onNavigateToProfile={onNavigateToProfile}
+                    onNavigateToNote={onNavigateToNote}
+                    onNavigateToStream={onNavigateToStream}
+                  />
+                </div>
                 <div className="dm-bubble-time">{formatDate(new Date(message.createdAt * 1000))}</div>
               </div>
             </div>
