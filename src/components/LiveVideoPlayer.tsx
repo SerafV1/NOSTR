@@ -15,6 +15,24 @@ interface QualityLevel {
 interface LiveVideoPlayerProps {
   src: string;
   className?: string;
+  /**
+   * Shrink the player into a corner of the page rather than into the
+   * browser's own picture-in-picture window. Where this is given it replaces
+   * that button: the browser's window is placed and stacked by the browser,
+   * which drops it behind everything the moment something else is clicked,
+   * and a page cannot ask it to do otherwise. A corner of the page can be
+   * put where it belongs and stays where it is put.
+   */
+  onMinimize?: () => void;
+  /** True while it is in that corner, so the button offers the way back */
+  minimized?: boolean;
+  /**
+   * Where the LIVE mark goes. Over the picture where the picture is small —
+   * a note, the corner player — since the control row there has no width to
+   * spare and hides itself besides. On a page given over to the stream the
+   * row is roomy and always worth reading, so it belongs in it.
+   */
+  liveMark?: 'corner' | 'controls';
 }
 
 /**
@@ -23,7 +41,13 @@ interface LiveVideoPlayerProps {
  * into fragments MSE can play. hls.js is ~500KB, so it's dynamically
  * imported here rather than bundled into the main chunk every page pays for.
  */
-const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => {
+const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({
+  src,
+  className,
+  onMinimize,
+  minimized,
+  liveMark = 'corner'
+}) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [buffering, setBuffering] = useState(true);
@@ -287,10 +311,7 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
 
   return (
     <div className={`live-video-wrapper ${menu !== 'closed' ? 'menu-open' : ''}`} ref={wrapperRef}>
-      {/* Over the picture at the top left, where every player people already
-          know puts it — and where it does not have to compete for room with
-          the controls, which on a phone squeezed it until it broke apart */}
-      <span className="live-video-live">● LIVE</span>
+      {liveMark === 'corner' && <span className="live-video-live">● LIVE</span>}
 
       {buffering && (
         <div className="live-video-buffering">
@@ -336,6 +357,8 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
             title="Volume"
           />
         </div>
+
+        {liveMark === 'controls' && <span className="live-video-live in-controls">● LIVE</span>}
 
         <span className="live-video-spacer" />
 
@@ -416,7 +439,16 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
 
         <span className="live-video-quality-label">{qualityLabel}</span>
 
-        {document.pictureInPictureEnabled && (
+        {onMinimize ? (
+          <button
+            type="button"
+            className={`live-video-btn ${minimized ? 'active' : ''}`}
+            onClick={onMinimize}
+            title={minimized ? 'Back to full size' : 'Shrink into the corner'}
+          >
+            <PipIcon />
+          </button>
+        ) : document.pictureInPictureEnabled && (
           <button type="button" className="live-video-btn" onClick={togglePip} title="Picture in picture">
             <PipIcon />
           </button>

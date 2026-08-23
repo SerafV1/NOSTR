@@ -36,6 +36,13 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   // reading along, the way stream sites do it.
   const [chatOpen, setChatOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
+  // Shrunk into a corner of the page, so the description and the chat can be
+  // read with the stream still on screen
+  const [minimized, setMinimized] = useState(false);
+  // Where it has been dragged to, once it has been. Until then the corner in
+  // the stylesheet decides.
+  const [miniAt, setMiniAt] = useState<{ left: number; top: number } | null>(null);
+  const dragFrom = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const [present, setPresent] = useState<PresentPerson[]>([]);
   /** How many zappers to list beside the stream, remembered between visits */
   const [topZappers, setTopZappers] = useState(() => {
@@ -186,6 +193,34 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
       return '';
     }
   })();
+  /**
+   * Dragging the small player. It is picked up by the strip along its top
+   * rather than by the picture, which is where the player's own clicks live.
+   * Pointer capture, so a fast drag that leaves the strip keeps hold of it.
+   */
+  const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const frame = (e.currentTarget.parentElement as HTMLElement)?.getBoundingClientRect();
+    if (!frame) return;
+    dragFrom.current = { x: e.clientX, y: e.clientY, left: frame.left, top: frame.top };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const from = dragFrom.current;
+    if (!from) return;
+    const frame = (e.currentTarget.parentElement as HTMLElement)?.getBoundingClientRect();
+    if (!frame) return;
+    // Kept whole on screen: a player dragged off the edge cannot be dragged back
+    const left = Math.min(Math.max(0, from.left + (e.clientX - from.x)), window.innerWidth - frame.width);
+    const top = Math.min(Math.max(0, from.top + (e.clientY - from.y)), window.innerHeight - frame.height);
+    setMiniAt({ left, top });
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    dragFrom.current = null;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+  };
+
   // The line that says what this is, in the words the moment calls for. A
   // stream shared after it ended should not announce itself as live.
   const shareLead = sharingOwnStream
@@ -219,7 +254,46 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
       <div className="live-stream-page-layout">
         <div className="live-stream-page-container">
           {stream.status === 'live' ? (
-            <LiveVideoPlayer src={stream.streamingUrl} className="live-stream-video" />
+            // The slot keeps the page's shape while the player is away in the
+            // corner; the frame is what actually moves, and it is the same
+            // element either way, so the stream does not reconnect
+            <div className="live-stream-video-slot">
+              <div
+                className={`live-stream-video-frame ${minimized ? 'minimized' : ''}`}
+                style={minimized && miniAt
+                  ? { left: miniAt.left, top: miniAt.top, right: 'auto', bottom: 'auto' }
+                  : undefined}
+              >
+                {minimized && (
+                  <div
+                    className="live-stream-mini-bar"
+                    key="bar"
+                    onPointerDown={startDrag}
+                    onPointerMove={onDrag}
+                    onPointerUp={endDrag}
+                    onPointerCancel={endDrag}
+                  >
+                    <span className="live-stream-mini-grip" title="Drag to move">⠿</span>
+                    <button
+                      type="button"
+                      onClick={() => setMinimized(false)}
+                      title="Back to full size"
+                      onPointerDown={(e) => e.stopPropagation()}
+                    >
+                      ↑
+                    </button>
+                  </div>
+                )}
+                <LiveVideoPlayer
+                  key="player"
+                  src={stream.streamingUrl}
+                  className="live-stream-video"
+                  liveMark="controls"
+                  minimized={minimized}
+                  onMinimize={() => setMinimized(open => !open)}
+                />
+              </div>
+            </div>
           ) : (
             <div className="live-stream-offline">
               {stream.status === 'planned' ? '📅 This stream hasn\'t started yet' : '⏹ This stream has ended'}
