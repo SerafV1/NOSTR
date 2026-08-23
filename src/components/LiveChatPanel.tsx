@@ -158,6 +158,22 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
       setMessages(history);
       setZaps(zapHistory);
 
+      // Then the same question again, this time waiting for every relay: the
+      // first answer comes from whichever replies first and is routinely
+      // missing messages the others hold, which looked like a chat that had
+      // stopped updating until it was reloaded
+      NostrCore.fetchLiveChatMessages(address, 200, true).then(complete => {
+        if (cancelled || complete.length === 0) return;
+        setMessages(prev => {
+          const byId = new Map(prev.map(m => [m.id, m]));
+          for (const message of complete) byId.set(message.id, message);
+          return [...byId.values()].sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+        });
+        NostrCore.fetchProfiles(complete.map(m => m.pubkey)).then(found => {
+          if (!cancelled) setProfiles(prev => new Map([...prev, ...found]));
+        });
+      });
+
       const zapParties = zapHistory
         .flatMap(zap => [NostrCore.zapSenderPubkey(zap), NostrCore.zapRecipientPubkey(zap)])
         .filter((pubkey): pubkey is string => !!pubkey);

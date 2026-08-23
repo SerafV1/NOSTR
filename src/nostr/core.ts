@@ -1228,12 +1228,22 @@ export class NostrCore {
     }
   }
 
-  static async fetchLiveChatMessages(address: string, limit: number = 200): Promise<NostrEventSigned[]> {
+  static async fetchLiveChatMessages(
+    address: string,
+    limit: number = 200,
+    /**
+     * Wait for every relay instead of returning on the first answer. The
+     * quick answer is what the chat opens with; asked again this way, the
+     * relays that were slower fill in what the first one did not have —
+     * which is what made a chat look stuck until it was reloaded.
+     */
+    waitForAll: boolean = false
+  ): Promise<NostrEventSigned[]> {
     try {
       const relayPool = getRelayPool();
       const events = await relayPool.fetchEvents([
         { kinds: [EVENT_KINDS.LIVE_CHAT_MESSAGE], '#a': [address], limit }
-      ]);
+      ], waitForAll);
       return events.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
     } catch (error) {
       console.error('Failed to fetch live chat messages:', error);
