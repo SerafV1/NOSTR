@@ -56,8 +56,10 @@ interface PendingCall {
  * Everything here happens across an app switch: the browser goes to the
  * background, the signer answers, and whatever the console said in between is
  * gone by the time anyone can look. Kept in storage instead, so what happened
- * can be read after the fact — this is the only way to tell "no reply came"
- * apart from "a reply came and could not be used".
+ * can be read after the fact — the only way to tell "no reply came" apart
+ * from "a reply came and could not be used". Nothing in the app shows it:
+ * it is here for the next pairing that goes nowhere, read from the browser's
+ * own storage under this key.
  */
 const TRAIL_KEY = 'nostr_signer_trail';
 
@@ -69,14 +71,6 @@ export const trail = (line: string): void => {
     localStorage.setItem(TRAIL_KEY, JSON.stringify(kept.slice(-40)));
   } catch {
     // Storage being unavailable must not break a login
-  }
-};
-
-export const readTrail = (): string[] => {
-  try {
-    return JSON.parse(localStorage.getItem(TRAIL_KEY) || '[]') as string[];
-  } catch {
-    return [];
   }
 };
 

@@ -6,7 +6,6 @@ import {
   connectBunker,
   startNostrConnect,
   reconnectBunker,
-  readTrail,
   readPairing,
   forgetPairing,
   EVERYDAY_PERMISSIONS
@@ -54,10 +53,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   // gives nothing to act on but "still waiting"
   const [connectStatus, setConnectStatus] = useState<string | null>(null);
   const [connectCopied, setConnectCopied] = useState(false);
-  // What the pairing actually did, for the case it ends in nothing. Read from
-  // storage rather than held in state: the browser may have been suspended
-  // while the signer was in front, and anything only in memory is gone.
-  const [trailLines, setTrailLines] = useState<string[]>([]);
 
   // The direction Amber makes easy: this page publishes an invitation and
   // the signer joins it, so nothing has to be found in Amber's own menus
@@ -212,25 +207,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                       {connectStatus && <p className="connect-status">{connectStatus}</p>}
                       {amberError && <div className="login-error">{amberError}</div>}
 
-                      {/* When a pairing goes nowhere, this is the difference
-                          between "nothing answered" and "something answered
-                          and could not be used" — which is not guessable from
-                          the outside */}
-                      <details
-                        className="amber-handoff"
-                        onToggle={(e) => {
-                          if ((e.target as HTMLDetailsElement).open) setTrailLines(readTrail());
-                        }}
-                      >
-                        <summary>What happened?</summary>
-                        {trailLines.length === 0 ? (
-                          <p className="extension-desc">Nothing recorded yet.</p>
-                        ) : (
-                          <ol className="signer-trail">
-                            {trailLines.map((line, index) => <li key={index}>{line}</li>)}
-                          </ol>
-                        )}
-                      </details>
 
                       <details className="amber-handoff">
                         <summary>Amber didn't open, or nothing happened?</summary>

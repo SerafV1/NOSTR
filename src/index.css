@@ -6308,19 +6308,6 @@ a.capability-indicator.paid:hover {
   margin-bottom: var(--spacing-sm);
 }
 
-/* The pairing's own account of itself — small, monospaced, and only opened
-   by someone trying to find out why a login went nowhere */
-.signer-trail {
-  margin: var(--spacing-sm) 0 0;
-  padding-left: 1.4em;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.72rem;
-  line-height: 1.5;
-  color: var(--text-secondary);
-  max-height: 220px;
-  overflow-y: auto;
-}
-
 .connect-status {
   margin: 0;
   padding: var(--spacing-sm);
