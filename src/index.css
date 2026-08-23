@@ -629,10 +629,21 @@ textarea {
   display: flex;
   border-bottom: 1px solid var(--border-color);
   margin-bottom: var(--spacing-md);
+  /* A profile carries six of these. On a phone they were squeezed until the
+     words were cut through; the row slides sideways instead. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.feed-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .feed-tab {
-  flex: 1;
+  /* Grows to share the width where there is room — the feed's two tabs still
+     split it — but never shrinks below the word it holds */
+  flex: 1 0 auto;
+  white-space: nowrap;
   background: none;
   border: none;
   cursor: pointer;
@@ -642,6 +653,17 @@ textarea {
   color: var(--text-secondary);
   border-bottom: 2px solid transparent;
   transition: var(--transition);
+}
+
+/* Narrower padding on a phone, so more of the row fits before it has to
+   slide at all */
+@media (max-width: 600px) {
+  .feed-tab {
+    /* Tight enough that a profile's six fit a phone outright, rather than
+       leaving the last one to be found by sliding */
+    padding: 0.6rem 0.5rem;
+    font-size: 0.82rem;
+  }
 }
 
 .feed-tab:hover {
@@ -3850,7 +3872,19 @@ button.poll-option-vote:disabled {
   }
 
   .profile-page {
+    padding: var(--spacing-sm);
+  }
+
+  /* Three layers each held a wide margin — the page, the card and the main
+     column — which together took 56px off both sides of a 390px screen and
+     left the content in the middle third of it */
+  .profile-content {
     padding: var(--spacing-md);
+  }
+
+  /* Two thirds of a phone screen for a picture nobody came for */
+  .profile-banner {
+    height: 140px;
   }
 
   .search-page {
