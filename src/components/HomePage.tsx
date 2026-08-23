@@ -140,7 +140,9 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
 
   useEffect(() => {
     if (relaysConnected) {
-      fetchFeed();
+      // A feed already on screen is refreshed in the background; only an
+      // empty one, or a switch to another feed, replaces what is there
+      fetchFeed({ background: eventsRef.current.length > 0 });
     } else {
       // Relays not ready yet — show the cached feed instantly if we have one
       const cached = readCachedFeed();
@@ -345,16 +347,25 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     document.querySelector('.app-main')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const fetchFeed = async () => {
+  /**
+   * `background` is a refresh of a feed already on screen — after the tab
+   * comes back and the relays reconnect, say. Anything newer than what is
+   * shown goes behind the "new posts" button rather than appearing under the
+   * reader's eyes: coming back to the tab used to rewrite the feed on its
+   * own, which is the one thing that button exists to prevent.
+   */
+  const fetchFeed = async ({ background = false }: { background?: boolean } = {}) => {
     // Stale-while-revalidate: render the cached feed immediately, then
     // fetch fresh events and silently replace it
     const cached = readCachedFeed();
-    if (cached && cached.length > 0) {
-      setEvents(cached);
-      setLoading(false);
-    } else {
-      setLoading(true);
-      setEvents([]); // Clear old events while loading new feed
+    if (!background) {
+      if (cached && cached.length > 0) {
+        setEvents(cached);
+        setLoading(false);
+      } else {
+        setLoading(true);
+        setEvents([]); // Clear old events while loading new feed
+      }
     }
     try {
       // Refresh the block list before the feed, so a block made in another
@@ -409,7 +420,26 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
       // instead of each card querying its author separately
       await NostrCore.fetchProfiles(merged.map(e => e.pubkey));
 
-      setEvents(merged);
+      const shownNow = eventsRef.current;
+      if (background && shownNow.length > 0) {
+        const known = new Set(shownNow.map(e => e.id));
+        const newestShown = Math.max(...shownNow.map(e => e.created_at || 0));
+        // Only what is genuinely newer than the feed on screen — older posts
+        // this fetch happened to reach further back for are not "new"
+        const arrived = merged.filter(
+          e => !known.has(e.id) && (e.created_at || 0) > newestShown
+        );
+        if (arrived.length > 0) {
+          setPendingEvents(prev => {
+            const ids = new Set(prev.map(e => e.id));
+            return [...arrived.filter(e => !ids.has(e.id)), ...prev]
+              .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
+              .slice(0, 50);
+          });
+        }
+      } else {
+        setEvents(merged);
+      }
       // The global fallback shown to an account with no follows is not a
       // home feed — persisting it under the home key would replay those
       // strangers as "your" feed on every later load
@@ -681,7 +711,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
                       onNavigateToProfile={onNavigateToProfile}
                       onNavigateToNote={onNavigateToNote}
                       onNavigateToTopic={onNavigateToTopic}
-                      onRefresh={fetchFeed}
+                      onRefresh={() => fetchFeed()}
                     />
                   </div>
                 );
@@ -693,7 +723,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
                   onNavigateToProfile={onNavigateToProfile}
                   onNavigateToNote={onNavigateToNote}
                   onNavigateToTopic={onNavigateToTopic}
-                  onRefresh={fetchFeed}
+                  onRefresh={() => fetchFeed()}
                 />
               );
             })}
