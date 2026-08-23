@@ -52,6 +52,18 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   const [newFeedHashtag, setNewFeedHashtag] = useState('');
   const [hasFollows, setHasFollows] = useState<boolean | null>(null);
   const [contentTab, setContentTab] = useState<'posts' | 'replies'>('posts');
+  // Reading further back: a fetch in flight, and the point where the relays
+  // stopped having anything older to give
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [reachedEnd, setReachedEnd] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  // State is too slow to guard with: the observer can fire several times in
+  // one tick, and every one of those would pass a check on `loadingOlder`
+  // before React had re-rendered with it set
+  const loadingOlderRef = useRef(false);
+  // One empty answer is not the end: relays drop sockets and answer thinly.
+  // Two in a row is.
+  const emptyRunsRef = useRef(0);
   // New posts found by background polling, shown behind an X-style
   // "N new posts" button instead of jumping into the feed
   const [pendingEvents, setPendingEvents] = useState<NostrEventSigned[]>([]);
@@ -354,6 +366,108 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
    * reader's eyes: coming back to the tab used to rewrite the feed on its
    * own, which is the one thing that button exists to prevent.
    */
+  /**
+   * The next page back, asked for from the oldest post on screen. Relays are
+   * asked for what came before that moment rather than for "page 2" — there
+   * are no pages in a set of relays that each hold a different slice.
+   */
+  const loadOlder = async () => {
+    const shown = eventsRef.current;
+    if (loadingOlderRef.current || reachedEnd || shown.length === 0) return;
+
+    let until = Math.min(...shown.map(e => e.created_at || 0)) - 1;
+    if (until <= 0) return;
+
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const known = new Set(shown.map(e => e.id));
+
+      // A page can come back holding nothing this feed shows — all of it
+      // already on screen, or, on a home feed, all of it from people not
+      // followed. That is not the end of the feed, so the reach goes further
+      // back and asks again rather than stopping on the first empty page.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        let older: NostrEventSigned[];
+
+        // Every relay is heard out here, unlike the feed's own fetch: the
+        // first answer decides whether there is history left, and a fast
+        // relay with a short memory would end the feed for all of them
+        if (feedType === 'global') {
+          older = await NostrCore.fetchGlobalFeed(50, undefined, until, true);
+        } else if (feedType === 'topic' && activeTopic) {
+          older = await NostrCore.fetchEventsByTag(activeTopic, 50, undefined, until, true);
+        } else if (followedRef.current.length > 0) {
+          older = await NostrCore.fetchHomeFeed(followedRef.current, 50, undefined, until, true);
+        } else {
+          older = await NostrCore.fetchGlobalFeed(50, undefined, until, true);
+        }
+
+        if (older.length === 0) {
+          // Nothing before this moment — but a relay that dropped its socket
+          // answers the same way, so a day is stepped over and it is asked
+          // again rather than the feed ending here
+          until -= 86400;
+          continue;
+        }
+
+        let fresh = older.filter(e => !known.has(e.id));
+        // Same rule the feed itself keeps: a home feed holds followed authors
+        if (feedType === 'home') {
+          const allowed = homeAuthors();
+          if (allowed) fresh = fresh.filter(e => allowed.has(e.pubkey));
+        }
+
+        if (fresh.length > 0) {
+          emptyRunsRef.current = 0;
+          await NostrCore.fetchProfiles(fresh.map(e => e.pubkey));
+          setEvents(prev => {
+            const ids = new Set(prev.map(e => e.id));
+            return [...prev, ...fresh.filter(e => !ids.has(e.id))]
+              .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+          });
+          return;
+        }
+
+        const oldestSeen = Math.min(...older.map(e => e.created_at || 0));
+        // Not actually further back than the last ask, so asking again the
+        // same way would return the same page for ever
+        until = !oldestSeen || oldestSeen - 1 >= until ? until - 86400 : oldestSeen - 1;
+      }
+
+      // Three tries brought nothing this feed can show. Once is a thin
+      // answer; twice running is the end of what the relays keep.
+      emptyRunsRef.current += 1;
+      if (emptyRunsRef.current >= 2) setReachedEnd(true);
+    } catch (error) {
+      console.error('Failed to load older posts:', error);
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  };
+
+  // The end of the feed coming into view is the request for more. A margin
+  // ahead of it so the next page is already arriving as the reader gets
+  // there, rather than after they have stopped at the bottom.
+  useEffect(() => {
+    const sentinel = bottomRef.current;
+    if (!sentinel || loading || reachedEnd) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) loadOlder(); },
+      { rootMargin: '600px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, reachedEnd, loadingOlder, feedType, activeTopic, contentTab]);
+
+  // A different feed starts again from its own newest
+  useEffect(() => {
+    setReachedEnd(false);
+  }, [feedType, activeTopic]);
+
   const fetchFeed = async ({ background = false }: { background?: boolean } = {}) => {
     // Stale-while-revalidate: render the cached feed immediately, then
     // fetch fresh events and silently replace it
@@ -728,6 +842,16 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
               );
             })}
           </div>
+
+          {timelineItems.length > 0 && (
+            <div className="feed-end" ref={bottomRef}>
+              {loadingOlder
+                ? 'Loading older posts…'
+                : reachedEnd
+                  ? 'That is as far back as the relays go'
+                  : ''}
+            </div>
+          )}
         </main>
 
         <aside className="home-sidebar-right">

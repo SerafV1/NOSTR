@@ -891,20 +891,29 @@ export class NostrCore {
   static async fetchHomeFeed(
     authors: string[],
     limit: number = 100,
-    since?: number
+    since?: number,
+    /** Only what was published before this, for reading further back */
+    until?: number,
+    /**
+     * Hear every relay out instead of answering as soon as one has spoken.
+     * Worth the wait when reading further back: the fast answer decides
+     * whether there is any history left, and a thin one ends the feed.
+     */
+    waitForAll?: boolean
   ): Promise<NostrEventSigned[]> {
     const filters: NostrFilter[] = [
       {
         kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.POLL],
         authors,
         limit,
-        ...(since !== undefined ? { since } : {})
+        ...(since !== undefined ? { since } : {}),
+        ...(until !== undefined ? { until } : {})
       }
     ];
 
     try {
       const relayPool = getRelayPool();
-      const events = this.dropBlocked(this.dropFutureEvents(await relayPool.fetchEvents(filters)));
+      const events = this.dropBlocked(this.dropFutureEvents(await relayPool.fetchEvents(filters, waitForAll)));
       EventCache.addEvents(events);
       return events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
@@ -916,18 +925,26 @@ export class NostrCore {
   /**
    * Fetch global feed
    */
-  static async fetchGlobalFeed(limit: number = 100, since?: number): Promise<NostrEventSigned[]> {
+  static async fetchGlobalFeed(
+    limit: number = 100,
+    since?: number,
+    /** Only what was published before this, for reading further back */
+    until?: number,
+    /** See fetchHomeFeed: hear every relay out rather than the first */
+    waitForAll?: boolean
+  ): Promise<NostrEventSigned[]> {
     const filters: NostrFilter[] = [
       {
         kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.POLL],
         limit,
-        ...(since !== undefined ? { since } : {})
+        ...(since !== undefined ? { since } : {}),
+        ...(until !== undefined ? { until } : {})
       }
     ];
 
     try {
       const relayPool = getRelayPool();
-      const events = this.dropBlocked(this.dropFutureEvents(await relayPool.fetchEvents(filters)));
+      const events = this.dropBlocked(this.dropFutureEvents(await relayPool.fetchEvents(filters, waitForAll)));
       EventCache.addEvents(events);
       return events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
@@ -942,20 +959,25 @@ export class NostrCore {
   static async fetchEventsByTag(
     tag: string,
     limit: number = 100,
-    since?: number
+    since?: number,
+    /** Only what was published before this, for reading further back */
+    until?: number,
+    /** See fetchHomeFeed: hear every relay out rather than the first */
+    waitForAll?: boolean
   ): Promise<NostrEventSigned[]> {
     const filters: NostrFilter[] = [
       {
         kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.POLL],
         '#t': [tag.toLowerCase()],
         limit,
-        ...(since !== undefined ? { since } : {})
+        ...(since !== undefined ? { since } : {}),
+        ...(until !== undefined ? { until } : {})
       }
     ];
 
     try {
       const relayPool = getRelayPool();
-      const events = this.dropBlocked(await relayPool.fetchEvents(filters));
+      const events = this.dropBlocked(await relayPool.fetchEvents(filters, waitForAll));
       EventCache.addEvents(events);
       return events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
