@@ -5817,6 +5817,25 @@ a.capability-indicator.paid:hover {
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.04em;
+  /* In a narrow player the row squeezed this until the word broke apart, one
+     letter under the next. It is five characters; it gives up no space. */
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* A player small enough that its controls have to choose what to keep: the
+   slider and the quality wording go, and what they do is still reachable —
+   the speaker button mutes, the gear holds the quality list. */
+.inline-stream-playing.docked .live-video-volume input[type="range"],
+.inline-stream-playing.docked .live-video-quality-label {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .live-video-volume input[type="range"],
+  .live-video-quality-label {
+    display: none;
+  }
 }
 
 .live-video-spacer {
