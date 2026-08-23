@@ -6206,6 +6206,15 @@ a.capability-indicator.paid:hover {
 }
 
 /* Host line on a stream page — name on the left, zap on the right */
+/* The presenter and the one control that is about them, kept together while
+   the row spreads the rest to the other side */
+.live-stream-who {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
 .live-stream-host-row {
   display: flex;
   align-items: center;

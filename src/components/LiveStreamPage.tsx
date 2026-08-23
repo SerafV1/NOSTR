@@ -223,6 +223,9 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
             </div>
 
             <div className="live-stream-host-row">
+              {/* Name and Follow read as one thing — the row spreads its
+                  contents apart, which left Follow adrift halfway to Zap */}
+              <div className="live-stream-who">
               <button className="live-stream-host-link" onClick={() => onNavigateToProfile(stream.hostPubkey)}>
                 {profile?.picture ? (
                   <img src={profile.picture} alt="" className="live-stream-host-avatar" />
@@ -233,6 +236,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
               </button>
 
               <FollowButton pubkey={stream.hostPubkey} className="btn btn-secondary btn-small" />
+              </div>
 
               {/* Zapping the host is the usual way to tip a stream. Only
                   shown when they actually publish a Lightning address —
