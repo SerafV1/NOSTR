@@ -9,7 +9,8 @@ import { EventCache } from '../nostr/core';
 import EmojiPicker from './EmojiPicker';
 import GifPicker from './GifPicker';
 import ZapButton from './ZapButton';
-import { ZapIcon } from './Icons';
+import { ZapIcon, ImageIcon } from './Icons';
+import { BlossomClient } from '../nostr/blossom';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 import LiveChatReactions, { ReactionTally } from './LiveChatReactions';
 import EmojiText from './EmojiText';
@@ -146,6 +147,9 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   const emoji = useAnchoredPopup(showEmojiPicker, () => setShowEmojiPicker(false));
   const [showGifPicker, setShowGifPicker] = useState(false);
   const gifPicker = useAnchoredPopup(showGifPicker, () => setShowGifPicker(false));
+  // How far the picture being sent has got, or null when none is going up
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const myPubkey = CredentialManager.getPublicKey();
   const iRunThisStream = !!myPubkey && owners.includes(myPubkey);
 
@@ -472,6 +476,29 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     }
   }, [messages.length, zaps.length]);
 
+
+  /**
+   * A picture goes to a media server first, and what the chat carries is its
+   * address — the same thing a gif or a pasted link is. It lands in the box
+   * rather than being sent outright, so a caption can still be typed and
+   * nothing leaves before the writer presses Send.
+   */
+  const sendImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // so the same picture can be picked again
+    if (!file) return;
+
+    setUploadPct(0);
+    try {
+      const blob = await BlossomClient.uploadFile(file, undefined, setUploadPct);
+      setInput(current => (current ? `${current.trimEnd()} ${blob.url}` : blob.url));
+      inputRef.current?.focus();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Could not upload that picture');
+    } finally {
+      setUploadPct(null);
+    }
+  };
 
   /** A gif is sent as its address, which the chat draws as the picture */
   const sendGif = (url: string) => {
@@ -1005,6 +1032,22 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
             </div>
           )}
         </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={sendImage}
+        />
+        <button
+          type="button"
+          className="live-chat-emoji-btn live-chat-image-btn"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!isLoggedIn || disabled || sending || uploadPct !== null}
+          title="Send a picture"
+        >
+          {uploadPct === null ? <ImageIcon /> : <span className="live-chat-upload-pct">{uploadPct}%</span>}
+        </button>
         <div className="live-chat-emoji-wrapper" ref={gifPicker.containerRef}>
           <button
             ref={gifPicker.triggerRef}

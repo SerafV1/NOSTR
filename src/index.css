@@ -2263,13 +2263,30 @@ button.poll-option-vote:disabled {
 
 /* GIF picker — same shape as the emoji one, two columns of moving pictures */
 /* The GIF buttons say so in letters, since there is no glyph for it */
-.compose-gif-btn,
-.live-chat-gif-btn {
-  font-size: 0.7rem;
-  /* Lettering rather than a symbol, so it sits at the weight of the text
-     around it instead of shouting beside the emoji button */
-  font-weight: 500;
-  letter-spacing: 0.03em;
+/* Lettering where its neighbours are emoji, which are glyphs that carry their
+   own colour. A button inheriting none is painted in the browser's default
+   button text — black, on a dark background — so this one names its own, and
+   an outline gives the word an edge to read against a busy chat. */
+.compose-emoji-btn.compose-gif-btn,
+.live-chat-emoji-btn.live-chat-gif-btn {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  /* Held to the height of the emoji buttons beside it, which are set by their
+     own font size rather than by padding */
+  line-height: 1.5;
+  padding: 0.1rem 0.32rem;
+  align-self: center;
+}
+
+.compose-emoji-btn.compose-gif-btn:hover:not(:disabled),
+.live-chat-emoji-btn.live-chat-gif-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+  background: none;
 }
 
 .gif-picker {
@@ -5439,6 +5456,32 @@ a.capability-indicator.paid:hover {
 
 .live-chat-emoji-btn:hover {
   background: var(--dark-bg);
+}
+
+/* The picture button sits between two glyph buttons, and an svg icon takes
+   its colour from the text — which a button inherits from the browser as
+   black — so it names its own, like the GIF button beside it. */
+.live-chat-emoji-btn.live-chat-image-btn {
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+}
+
+.live-chat-emoji-btn.live-chat-image-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.live-chat-emoji-btn.live-chat-image-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* While a picture is going up the button carries how far it has got, so the
+   wait is legible without a second row appearing under the chat */
+.live-chat-upload-pct {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-secondary);
 }
 
 .live-chat-emoji-btn:disabled {
