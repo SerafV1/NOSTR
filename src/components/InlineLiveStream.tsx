@@ -1,10 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { NostrCore } from '../nostr/core';
 import { LiveStreamInfo, decodeLiveNaddr, parseLiveEvent, unplayableReason } from '../utils/liveStream';
 import { formatAddress } from '../utils/helpers';
 import LiveVideoPlayer from './LiveVideoPlayer';
 import { PlayIcon } from './Icons';
+
+/**
+ * Only one of these plays at a time. Without this a feed could end up with
+ * two streams sounding at once and two docked players stacked in the same
+ * corner — starting one stops whichever was already going.
+ */
+let stopPlayingElsewhere: (() => void) | null = null;
 
 interface InlineLiveStreamProps {
   /** The stream's address, however it was written in the note */
@@ -37,6 +44,10 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
   // whole player at the size a stream is worth watching at — and for one that
   // is no longer running, the poster, which is all there is to enlarge.
   const [zoomed, setZoomed] = useState(false);
+  // Scrolled past while playing, so the player has left the note and sits in
+  // the corner instead
+  const [docked, setDocked] = useState(false);
+  const slotRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const address = decodeLiveNaddr(naddr);
@@ -59,6 +70,36 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
 
     return () => { cancelled = true; };
   }, [naddr]);
+
+  // Follows the note's own place on the page: out of sight means the player
+  // moves to the corner, back in sight means it returns. Two thresholds so a
+  // player sitting exactly on the edge does not flicker between the two.
+  useEffect(() => {
+    const slot = slotRef.current;
+    if (!playing || !slot) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.intersectionRatio < 0.15) setDocked(true);
+        else if (entry.intersectionRatio > 0.5) setDocked(false);
+      },
+      { threshold: [0, 0.15, 0.5, 1] }
+    );
+    observer.observe(slot);
+    return () => observer.disconnect();
+  }, [playing]);
+
+  // A player left docked after its note is gone — a feed refresh, a page
+  // change — would otherwise keep sounding from an empty corner
+  useEffect(() => {
+    if (!playing) return;
+    stopPlayingElsewhere?.();
+    const stop = () => { setPlaying(false); setDocked(false); };
+    stopPlayingElsewhere = stop;
+    return () => {
+      if (stopPlayingElsewhere === stop) stopPlayingElsewhere = null;
+    };
+  }, [playing]);
 
   const open = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -90,7 +131,34 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
     && !unplayableReason(stream.streamingUrl);
 
   if (playing && playable) {
-    return <LiveVideoPlayer src={stream.streamingUrl} className="inline-stream-video" />;
+    return (
+      // The slot holds the note's layout open while the player is away in the
+      // corner — without it the feed jumps under the reader's cursor at the
+      // moment they scroll past
+      <div className="inline-stream-slot" ref={slotRef}>
+        <div className={`inline-stream-playing ${docked ? 'docked' : ''}`}>
+          {docked && (
+            <div className="inline-stream-dock-bar">
+              <button
+                type="button"
+                onClick={() => slotRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                title="Back to the post"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                onClick={() => { setPlaying(false); setDocked(false); }}
+                title="Close the player"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          <LiveVideoPlayer src={stream.streamingUrl} className="inline-stream-video" />
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -6428,6 +6428,65 @@ a.capability-indicator.paid:hover {
 
 /* Goes on the <video> itself, which the player leaves unsized — the rounding
    belongs to the wrapper around it, which already has it */
+/* The place the player leaves behind when it docks: same shape, so nothing
+   in the note moves while the reader scrolls */
+.inline-stream-slot {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+
+.inline-stream-playing {
+  width: 100%;
+  height: 100%;
+}
+
+/* Scrolled past: the stream carries on from the corner, the way a video does
+   on the sites people are used to */
+.inline-stream-playing.docked {
+  position: fixed;
+  right: var(--spacing-lg);
+  bottom: var(--spacing-lg);
+  width: min(360px, 82vw);
+  height: auto;
+  aspect-ratio: 16 / 9;
+  /* Above the feed, below the dialogs — a docked player must not sit over an
+     open composer or an enlarged picture */
+  z-index: 900;
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--border-color);
+  animation: fadeIn 0.2s ease;
+}
+
+.inline-stream-dock-bar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+}
+
+.inline-stream-dock-bar button {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(15, 15, 30, 0.8);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  transition: var(--transition);
+}
+
+.inline-stream-dock-bar button:hover {
+  background: rgba(15, 15, 30, 1);
+  border-color: #fff;
+}
+
 .inline-stream-video {
   width: 100%;
   height: 100%;
