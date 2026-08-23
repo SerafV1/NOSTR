@@ -5812,15 +5812,25 @@ a.capability-indicator.paid:hover {
   opacity: 1;
 }
 
+/* A live stream has no position to show, only whether you are at the edge of
+   it — which is where this player always is. It sits on the picture rather
+   than in the control row: the row is where a phone ran out of width, and it
+   also hides itself until the picture is touched, taking the one thing worth
+   knowing at a glance with it. */
 .live-video-live {
-  color: #ff4d4f;
-  font-size: 0.7rem;
+  position: absolute;
+  top: var(--spacing-sm);
+  left: var(--spacing-sm);
+  z-index: 3;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #ff4d4f;
+  color: #1a0000;
+  font-size: 0.68rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  /* In a narrow player the row squeezed this until the word broke apart, one
-     letter under the next. It is five characters; it gives up no space. */
+  letter-spacing: 0.05em;
   white-space: nowrap;
-  flex-shrink: 0;
+  pointer-events: none;
 }
 
 /* A player small enough that its controls have to choose what to keep: the

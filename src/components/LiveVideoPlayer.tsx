@@ -287,6 +287,11 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
 
   return (
     <div className={`live-video-wrapper ${menu !== 'closed' ? 'menu-open' : ''}`} ref={wrapperRef}>
+      {/* Over the picture at the top left, where every player people already
+          know puts it — and where it does not have to compete for room with
+          the controls, which on a phone squeezed it until it broke apart */}
+      <span className="live-video-live">● LIVE</span>
+
       {buffering && (
         <div className="live-video-buffering">
           Connecting to stream…
@@ -331,10 +336,6 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className }) => 
             title="Volume"
           />
         </div>
-
-        {/* A live stream has no position to show, only whether you are at the
-            edge of it — which is where this player always is */}
-        <span className="live-video-live">● LIVE</span>
 
         <span className="live-video-spacer" />
 
