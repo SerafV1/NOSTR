@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { nip19 } from 'nostr-tools';
 import { UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
+import { CredentialManager } from '../nostr/crypto';
 import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr } from '../utils/liveStream';
 import { formatAddress } from '../utils/helpers';
 import LiveVideoPlayer from './LiveVideoPlayer';
@@ -173,7 +174,11 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   // every client resolves it, and this one draws it back as the stream.
   // Whoever is presenting is named in it too, which puts the post in their
   // notifications — a stream shared without the streamer knowing helps nobody.
+  // Naming yourself in your own announcement reads as a stranger wrote it,
+  // and the 'p' tag it carries would only notify you of your own post
+  const sharingOwnStream = CredentialManager.getPublicKey() === stream.hostPubkey;
   const hostMention = (() => {
+    if (sharingOwnStream) return '';
     try {
       return `nostr:${nip19.npubEncode(stream.hostPubkey)}`;
     } catch {
@@ -183,11 +188,13 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   })();
   // The line that says what this is, in the words the moment calls for. A
   // stream shared after it ended should not announce itself as live.
-  const shareLead = stream.status === 'live'
-    ? '🔴 Live now with'
-    : stream.status === 'planned'
-      ? 'Coming up, with'
-      : 'Was live with';
+  const shareLead = sharingOwnStream
+    ? (stream.status === 'live'
+        ? '🔴 I am live now'
+        : stream.status === 'planned' ? 'Coming up' : 'This was live')
+    : (stream.status === 'live'
+        ? '🔴 Live now with'
+        : stream.status === 'planned' ? 'Coming up, with' : 'Was live with');
   // Two ways to the same stream, because they reach different readers. The
   // `nostr:` address is what other clients understand — Amethyst and the rest
   // draw their own player from it, where a link to this app's page was only
@@ -195,7 +202,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   // nostr client at all. This app shows one card for the two of them.
   const shareText = [
     stream.title,
-    hostMention ? `\n\n${shareLead} ${hostMention}` : '',
+    hostMention ? `\n\n${shareLead} ${hostMention}` : `\n\n${shareLead}`,
     `\n\nnostr:${naddrParam}`,
     `\n\n${window.location.origin}/live/${naddrParam}`
   ].join('');
