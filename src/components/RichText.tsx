@@ -3,8 +3,9 @@ import { nip19 } from 'nostr-tools';
 import { UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { formatAddress } from '../utils/helpers';
-import { splitContentTokens, extractImageUrls } from '../utils/media';
+import { splitContentTokens, extractImageUrls, extractVideoUrls } from '../utils/media';
 import { customEmojiMap, splitCustomEmoji } from '../utils/customEmoji';
+import InlineQuotedNote from './InlineQuotedNote';
 
 interface RichTextProps {
   content: string;
@@ -13,6 +14,8 @@ interface RichTextProps {
   onNavigateToTopic?: (topic: string) => void;
   /** Draw picture links as pictures — chat messages are mostly images */
   inlineImages?: boolean;
+  /** Show a referenced note as the note, not as a link to it */
+  inlineQuotes?: boolean;
   /** The event's tags, for the NIP-30 emoji its text may refer to */
   eventTags?: string[][];
   className?: string;
@@ -61,6 +64,7 @@ const RichText: React.FC<RichTextProps> = ({
   onNavigateToNote,
   onNavigateToTopic,
   inlineImages = false,
+  inlineQuotes = false,
   eventTags,
   className
 }) => {
@@ -145,6 +149,27 @@ const RichText: React.FC<RichTextProps> = ({
           );
           continue;
         }
+
+        // Same reasoning for a video someone drops in the chat: it was left
+        // as a link, so the one thing worth seeing needed a trip to another
+        // tab. Muted and not preloaded, so a busy chat does not start
+        // downloading every clip in it at once.
+        if (inlineImages && extractVideoUrls(token.value).length > 0) {
+          parts.push(
+            <video
+              key={key++}
+              src={token.value}
+              className="rich-video"
+              controls
+              muted
+              playsInline
+              preload="none"
+              onClick={(e) => e.stopPropagation()}
+            />
+          );
+          continue;
+        }
+
         parts.push(
           <a
             key={key++}
@@ -202,7 +227,14 @@ const RichText: React.FC<RichTextProps> = ({
           </button>
         );
       } else if (noteId) {
-        parts.push(
+        parts.push(inlineQuotes ? (
+          <InlineQuotedNote
+            key={key++}
+            noteId={noteId}
+            onNavigateToProfile={(pubkey) => onNavigateToProfile?.(pubkey)}
+            onNavigateToNote={onNavigateToNote}
+          />
+        ) : (
           <button
             key={key++}
             type="button"
@@ -211,7 +243,7 @@ const RichText: React.FC<RichTextProps> = ({
           >
             📝 View note
           </button>
-        );
+        ));
       } else {
         parts.push(ref);
       }

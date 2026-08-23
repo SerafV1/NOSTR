@@ -858,6 +858,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                 <span className="live-chat-text">
                   <RichText
                     inlineImages
+                    inlineQuotes
                     content={event.content}
                     eventTags={event.tags}
                     onNavigateToProfile={onNavigateToProfile}

@@ -5955,6 +5955,26 @@ a.capability-indicator.paid:hover {
   margin-top: var(--spacing-xs);
 }
 
+/* A note shared into the chat, kept narrow enough for the panel */
+.inline-quoted-note {
+  display: block;
+  margin-top: 4px;
+}
+
+.inline-quoted-note .quoted-note-card {
+  font-size: 0.85rem;
+}
+
+/* A clip posted in the chat, sized like the pictures beside it */
+.rich-video {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  margin-top: 4px;
+  border-radius: var(--border-radius);
+  background: #000;
+}
+
 .rich-image {
   display: block;
   max-width: 100%;
