@@ -78,8 +78,9 @@ const FollowButton: React.FC<FollowButtonProps> = ({ pubkey, className }) => {
       disabled={busy || following === null}
       title={error || (following ? 'Unfollow' : 'Follow')}
     >
-      {/* Until the answer is in, neither word is right */}
-      {following === null ? '…' : busy ? '…' : following ? 'Following' : 'Follow'}
+      {/* "Unfollow", as the hover card and the profile page both say — the
+          button names what pressing it does, not the state it reports */}
+      {following === null ? '…' : busy ? '…' : following ? 'Unfollow' : 'Follow'}
     </button>
   );
 };
