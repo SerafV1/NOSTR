@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 interface VideoPlayerProps {
   src: string;
@@ -13,6 +13,33 @@ interface VideoPlayerProps {
 const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, className }) => {
   const [audioOnly, setAudioOnly] = useState(false);
   const [failed, setFailed] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  /**
+   * Scrolling past a playing video stops it.
+   *
+   * A feed is read by scrolling, and a video left playing somewhere above
+   * carries on talking over whatever is being read now — with no way to find
+   * it again short of scrolling back. It is paused rather than reset, so
+   * coming back to it and pressing play continues from where it was.
+   *
+   * A live stream is the exception and has its own behaviour: it moves to
+   * the corner and keeps going, which is what a live thing is for.
+   */
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting && !video.paused) video.pause();
+      },
+      // Half out of sight is still being watched; gone is gone
+      { threshold: 0.1 }
+    );
+    observer.observe(video);
+    return () => observer.disconnect();
+  }, []);
 
   if (failed) {
     return (
@@ -36,6 +63,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, className }) => {
         </div>
       )}
       <video
+        ref={videoRef}
         className={className}
         src={src}
         controls
