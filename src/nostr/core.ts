@@ -563,6 +563,94 @@ export class NostrCore {
     return events.filter(e => !blocked.has(e.pubkey));
   }
 
+  // ---------------------------------------------------------------------
+  // Bookmarks (NIP-51, kind 10003)
+  //
+  // Public 'e' tags, for the same reason the mute list is public: a list
+  // written where only this client can read it is one that disappears the
+  // moment its owner opens another app.
+  // ---------------------------------------------------------------------
+
+  private static bookmarksCache: Set<string> | null = null;
+
+  /**
+   * Bookmarked note ids from local storage. The button on every card in a
+   * feed needs the answer without waiting for a relay.
+   */
+  static getBookmarkedIds(): Set<string> {
+    if (this.bookmarksCache) return this.bookmarksCache;
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey) return new Set();
+    const stored = PersistentCache.get<NostrEventSigned>(
+      this.listCacheKey(EVENT_KINDS.BOOKMARKS, ownPubkey)
+    );
+    this.bookmarksCache = new Set(
+      (stored?.tags || []).filter(t => t[0] === 'e' && t[1]).map(t => t[1])
+    );
+    return this.bookmarksCache;
+  }
+
+  static isBookmarked(eventId: string): boolean {
+    return this.getBookmarkedIds().has(eventId);
+  }
+
+  /** Read the list back from the relays, for another device's bookmarks */
+  static async fetchBookmarkedIds(): Promise<Set<string>> {
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey) return new Set();
+    await this.fetchReplaceableListEvent(EVENT_KINDS.BOOKMARKS, ownPubkey);
+    this.bookmarksCache = null;
+    return this.getBookmarkedIds();
+  }
+
+  static async addBookmark(eventId: string): Promise<boolean> {
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey) throw new Error('Public key not found');
+
+    const { event: existing, safe } = await this.resolveListBase(EVENT_KINDS.BOOKMARKS, ownPubkey);
+    // Publishing a fresh list over one the relays simply failed to hand back
+    // would erase every bookmark already in it
+    if (!existing && !safe) throw new Error(this.LIST_UNAVAILABLE);
+
+    const tags = existing ? [...existing.tags] : [];
+    if (tags.some(t => t[0] === 'e' && t[1] === eventId)) return true;
+    tags.push(['e', eventId]);
+
+    const published = await this.publishReplaceableList(EVENT_KINDS.BOOKMARKS, tags, existing?.content || '');
+    this.bookmarksCache = null;
+    return published;
+  }
+
+  static async removeBookmark(eventId: string): Promise<boolean> {
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey) throw new Error('Public key not found');
+
+    const { event: existing, safe } = await this.resolveListBase(EVENT_KINDS.BOOKMARKS, ownPubkey);
+    if (!existing) {
+      if (!safe) throw new Error(this.LIST_UNAVAILABLE);
+      return true; // nothing bookmarked
+    }
+
+    const tags = existing.tags.filter(t => !(t[0] === 'e' && t[1] === eventId));
+    const published = await this.publishReplaceableList(EVENT_KINDS.BOOKMARKS, tags, existing.content || '');
+    this.bookmarksCache = null;
+    return published;
+  }
+
+  /**
+   * The bookmarked notes themselves, newest first. Ids the relays no longer
+   * hold are left out rather than drawn as gaps.
+   */
+  static async fetchBookmarkedNotes(): Promise<NostrEventSigned[]> {
+    const ids = [...(await this.fetchBookmarkedIds())];
+    if (ids.length === 0) return [];
+
+    const relayPool = getRelayPool();
+    const events = this.dropBlocked(await relayPool.fetchEvents([{ ids }], true));
+    EventCache.addEvents(events);
+    return events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+  }
+
   /**
    * Refresh the block list from relays. Called on feed load so a block made
    * in another client (or on another device) takes effect here too.
@@ -673,7 +761,7 @@ export class NostrCore {
     'Could not load your follow list from any relay. Not publishing, because that would erase the list you already have — check your relay connections and try again.';
 
   private static readonly LIST_UNAVAILABLE =
-    'Could not load your block list from any relay. Not publishing, because that would erase the list you already have — check your relay connections and try again.';
+    'Could not load your list from any relay. Not publishing, because that would erase the list you already have — check your relay connections and try again.';
 
   /**
    * Thrown when no contact list could be found anywhere. Publishing one now

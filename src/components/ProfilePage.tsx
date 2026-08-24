@@ -67,7 +67,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const [reposts, setReposts] = useState<{ repost: NostrEventSigned; original: NostrEventSigned }[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
-  const [contentTab, setContentTab] = useState<'posts' | 'replies' | 'media' | 'zaps' | 'following' | 'followers'>('posts');
+  const [contentTab, setContentTab] = useState<'posts' | 'replies' | 'media' | 'zaps' | 'bookmarks' | 'following' | 'followers'>('posts');
+  // Only your own list is worth a tab: a bookmark list is published publicly,
+  // but it is a list of what you meant to come back to
+  const [bookmarks, setBookmarks] = useState<NostrEventSigned[]>([]);
+  const [bookmarksLoaded, setBookmarksLoaded] = useState(false);
   // Seeded from the follow list kept locally, so the button reads right at
   // once instead of after a relay answers — the relays are still asked below
   const [isFollowing, setIsFollowing] = useState<boolean | null>(
@@ -283,6 +287,23 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
 
   // Zap activity (sent + received) is only worth fetching once the Zaps
   // tab is actually opened
+  // Fetched when the tab is first opened, not on every profile visit
+  useEffect(() => {
+    if (contentTab !== 'bookmarks' || bookmarksLoaded || !relaysConnected) return;
+    let cancelled = false;
+    NostrCore.fetchBookmarkedNotes()
+      .then(notes => {
+        if (cancelled) return;
+        setBookmarks(notes);
+        setBookmarksLoaded(true);
+      })
+      .catch(error => {
+        console.error('Failed to load bookmarks:', error);
+        if (!cancelled) setBookmarksLoaded(true);
+      });
+    return () => { cancelled = true; };
+  }, [contentTab, bookmarksLoaded, relaysConnected]);
+
   useEffect(() => {
     if (contentTab !== 'zaps' || zapActivityLoaded || !relaysConnected) return;
     let cancelled = false;
@@ -617,6 +638,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
               >
                 Zaps
               </button>
+              {isOwnProfile && (
+                <button
+                  className={`feed-tab ${contentTab === 'bookmarks' ? 'active' : ''}`}
+                  onClick={() => setContentTab('bookmarks')}
+                >
+                  Bookmarks
+                </button>
+              )}
               <button
                 className={`feed-tab ${contentTab === 'following' ? 'active' : ''}`}
                 onClick={() => setContentTab('following')}
@@ -693,6 +722,27 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                       )}
                       {thumb.type === 'video' && <span className="media-grid-play">▶</span>}
                     </button>
+                  ))}
+                </div>
+              )
+            )}
+
+            {contentTab === 'bookmarks' && (
+              bookmarks.length === 0 ? (
+                <div className="empty-state">
+                  <p>{bookmarksLoaded ? 'Nothing bookmarked yet' : 'Loading bookmarks...'}</p>
+                </div>
+              ) : (
+                <div className="events-list">
+                  {bookmarks.map(note => (
+                    <EventCard
+                      key={note.id}
+                      event={note}
+                      onNavigateToProfile={onNavigateToProfile}
+                      onNavigateToNote={onNavigateToNote}
+                      onNavigateToTopic={onNavigateToTopic}
+                      onRefresh={loadProfileData}
+                    />
                   ))}
                 </div>
               )

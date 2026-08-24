@@ -2012,6 +2012,11 @@ button.poll-option-vote:disabled {
   flex-shrink: 0;
 }
 
+/* A kept post: the mark stays lit, the way a liked one does */
+.action-btn.bookmarked {
+  color: var(--primary-color);
+}
+
 .action-count {
   font-size: 0.875rem;
 }

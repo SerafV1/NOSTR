@@ -85,6 +85,12 @@ export const EVENT_KINDS = {
   CHANNEL_MUTE_USER: 44,
   // NIP-51 mute list — the accounts you've blocked, as public 'p' tags
   MUTE_LIST: 10000,
+  /**
+   * NIP-51 bookmarks (kind 10003) — notes kept to come back to. Public 'e'
+   * tags, like the mute list: a bookmark only this client can read is one
+   * that vanishes the moment its owner opens another.
+   */
+  BOOKMARKS: 10003,
   LONG_FORM: 30023,
   APP_SPECIFIC_DATA: 30078,
   POLL: 1068,

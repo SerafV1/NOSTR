@@ -28,7 +28,7 @@ import ZapButton from './ZapButton';
 import EmojiText from './EmojiText';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 import { customEmojiMap, splitCustomEmoji } from '../utils/customEmoji';
-import { ReplyIcon, RepostIcon, HeartIcon, ZapIcon, PersonIcon } from './Icons';
+import { ReplyIcon, RepostIcon, HeartIcon, ZapIcon, PersonIcon, BookmarkIcon } from './Icons';
 
 interface EventCardProps {
   event: NostrEventSigned;
@@ -56,6 +56,10 @@ const EventCard: React.FC<EventCardProps> = ({
   const [reposting, setReposting] = useState(false);
   const [reactionEmoji, setReactionEmoji] = useState('');
   const [showReactions, setShowReactions] = useState(false);
+  // Read from the list already held locally, so a feed of cards does not ask
+  // the relays once per card
+  const [bookmarked, setBookmarked] = useState(() => NostrCore.isBookmarked(event.id));
+  const [bookmarking, setBookmarking] = useState(false);
   // Closes on a click anywhere outside it, on Escape, and when another one
   // opens — a picker that only the same icon could dismiss stayed up while
   // you read the rest of the feed
@@ -500,6 +504,24 @@ const EventCard: React.FC<EventCardProps> = ({
     }
   };
 
+  const toggleBookmark = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (bookmarking) return;
+    setBookmarking(true);
+    // Shown as done straight away; put back if the relays refuse it
+    const wanted = !bookmarked;
+    setBookmarked(wanted);
+    try {
+      if (wanted) await NostrCore.addBookmark(event.id);
+      else await NostrCore.removeBookmark(event.id);
+    } catch (error) {
+      setBookmarked(!wanted);
+      alert(error instanceof Error ? error.message : 'Could not update your bookmarks');
+    } finally {
+      setBookmarking(false);
+    }
+  };
+
   const handleComposePublished = () => {
     if (composeMode === 'reply') {
       setReplyCount(count => count + 1);
@@ -879,6 +901,18 @@ const EventCard: React.FC<EventCardProps> = ({
           <ZapIcon className="action-icon" filled={zapSats > 0} />
           <span className="action-count">{formatSats(zapSats)}</span>
         </ZapButton>
+
+        {/* Only for someone with a list to keep it in */}
+        {CredentialManager.isLoggedIn() && (
+          <button
+            className={`action-btn ${bookmarked ? 'bookmarked' : ''}`}
+            onClick={toggleBookmark}
+            disabled={bookmarking}
+            title={bookmarked ? 'Remove from bookmarks' : 'Bookmark'}
+          >
+            <BookmarkIcon className="action-icon" filled={bookmarked} />
+          </button>
+        )}
       </div>
 
       {composeMode && (
