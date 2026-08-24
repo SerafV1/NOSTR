@@ -71,6 +71,11 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   // tab, interleaved with your own notes X-style (fetched once per feed
   // load, not part of the live-subscription/pending mechanism above)
   const [reposts, setReposts] = useState<{ repost: NostrEventSigned; original: NostrEventSigned }[]>([]);
+  // Reposts newer than what is on screen, waiting behind the same button new
+  // posts wait behind. Without this a background refresh slipped them into
+  // the top of the timeline on its own, which is the one thing that button
+  // exists to prevent.
+  const [pendingReposts, setPendingReposts] = useState<{ repost: NostrEventSigned; original: NostrEventSigned }[]>([]);
   // Seeded from cache so returning to Home shows the sidebar immediately.
   // It used to be filled inside an effect gated on hasFollows, which isn't
   // known until the whole feed has loaded — so the panel sat empty for
@@ -85,10 +90,12 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   // re-creating itself on every feed update
   const eventsRef = useRef<NostrEventSigned[]>([]);
   const pendingRef = useRef<NostrEventSigned[]>([]);
+  const repostsRef = useRef<{ repost: NostrEventSigned; original: NostrEventSigned }[]>([]);
   const followedRef = useRef<string[]>([]);
   const feedDropdownRef = useRef<HTMLDivElement>(null);
   eventsRef.current = events;
   pendingRef.current = pendingEvents;
+  repostsRef.current = reposts;
 
   // Close the feed dropdown on outside click
   useEffect(() => {
@@ -171,6 +178,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   useEffect(() => {
     setPendingEvents([]);
     setReposts([]);
+    setPendingReposts([]);
   }, [feedType, activeTopic]);
 
   // Home-feed-local cache of the last live-stream check, so navigating away
@@ -346,13 +354,28 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
 
   const showPendingPosts = () => {
     const pending = pendingRef.current;
-    if (pending.length === 0) return;
-    setEvents(prev => {
-      const ids = new Set(pending.map(e => e.id));
-      const merged = [...pending, ...prev.filter(e => !ids.has(e.id))];
-      PersistentCache.set(feedCacheKey(), merged.slice(0, 100));
-      return merged;
-    });
+    const waitingReposts = pendingReposts;
+    if (pending.length === 0 && waitingReposts.length === 0) return;
+
+    if (pending.length > 0) {
+      setEvents(prev => {
+        const ids = new Set(pending.map(e => e.id));
+        const merged = [...pending, ...prev.filter(e => !ids.has(e.id))];
+        PersistentCache.set(feedCacheKey(), merged.slice(0, 100));
+        return merged;
+      });
+    }
+
+    // The reposts held back with them go in at the same moment, or the
+    // button would leave half of what it counted behind
+    if (waitingReposts.length > 0) {
+      setReposts(prev => {
+        const ids = new Set(waitingReposts.map(r => r.repost.id));
+        return [...waitingReposts, ...prev.filter(r => !ids.has(r.repost.id))];
+      });
+      setPendingReposts([]);
+    }
+
     setPendingEvents([]);
     // .app-main is the actual scrolling element, not window — this page
     // never scrolls the window itself (.app is pinned to 100vh)
@@ -411,7 +434,12 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
           continue;
         }
 
-        let fresh = older.filter(e => !known.has(e.id));
+        // Older than what was asked for, and nothing else. Not every relay
+        // honours `until` — one that ignores it answers with its newest, and
+        // those posts then arrived at the top of the feed as if they had been
+        // scrolled to, which is exactly what the "show new posts" button
+        // exists to prevent.
+        let fresh = older.filter(e => !known.has(e.id) && (e.created_at || 0) <= until);
         // Same rule the feed itself keeps: a home feed holds followed authors
         if (feedType === 'home') {
           const allowed = homeAuthors();
@@ -586,9 +614,23 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
           repostResults = repostResults.filter(r => (r.repost.created_at || 0) >= oldestNote);
         }
         await NostrCore.fetchProfiles(repostResults.map(r => r.repost.pubkey));
-        setReposts(repostResults);
+
+        const shownNotes = eventsRef.current;
+        if (background && shownNotes.length > 0) {
+          // Anything newer than the timeline's own top is new, and waits
+          const newestShownNote = Math.max(...shownNotes.map(e => e.created_at || 0));
+          const known = new Set(repostsRef.current.map(r => r.repost.id));
+          setReposts(repostResults.filter(r => (r.repost.created_at || 0) <= newestShownNote));
+          setPendingReposts(
+            repostResults.filter(r => (r.repost.created_at || 0) > newestShownNote && !known.has(r.repost.id))
+          );
+        } else {
+          setReposts(repostResults);
+          setPendingReposts([]);
+        }
       } else {
         setReposts([]);
+        setPendingReposts([]);
       }
     } catch (error) {
       console.error('Failed to fetch feed:', error);
@@ -605,6 +647,8 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   // actually match the active tab, otherwise the "N new posts" button can
   // fire and merge in items the current filter hides, looking like a no-op
   const visiblePendingEvents = pendingEvents.filter(e => (contentTab === 'replies' ? isReply(e) : !isReply(e)));
+  // Reposts are only drawn on the posts tab, so they are only counted there
+  const waitingCount = visiblePendingEvents.length + (contentTab === 'replies' ? 0 : pendingReposts.length);
 
   // Posts tab interleaves your notes with what followed accounts have
   // reposted, X-style, sorted newest first by whichever action is newer
@@ -779,9 +823,9 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
             </button>
           </div>
 
-          {visiblePendingEvents.length > 0 && (
+          {waitingCount > 0 && (
             <button className="new-posts-btn" onClick={showPendingPosts}>
-              ↑ Show {visiblePendingEvents.length} new {visiblePendingEvents.length === 1 ? 'post' : 'posts'}
+              ↑ Show {waitingCount} new {waitingCount === 1 ? 'post' : 'posts'}
             </button>
           )}
 
