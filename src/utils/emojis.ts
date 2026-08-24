@@ -9,11 +9,14 @@ export const EMOJI_CATEGORIES: Record<string, string[]> = {
     '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '😣', '😖',
     '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯',
     '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔',
-    '🥹', '🥲', '🫠', '🫣', '🫡', '🫤', '🫥', '🫨', '😮‍💨', '🤯',
+    '🥹', '🥲', '🫠', '🫣', '🫡', '🫤', '🫥', '🫨', '😮‍💨',
     '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😮',
     '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮',
     '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '👻', '💀', '👽', '🤖',
-    '🎃', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾'
+    '🎃', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾',
+    // The three monkeys and the clown, all of them common as reactions and
+    // none of them reachable here before
+    '🙈', '🙉', '🙊', '🤡', '💩'
   ],
   Gestures: [
     '👍', '👎', '👌', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉',
@@ -21,7 +24,10 @@ export const EMOJI_CATEGORIES: Record<string, string[]> = {
     '🤝', '🙏', '✍️', '💪', '🦾', '🫡', '👊', '✊', '🤛', '🤜',
     '🫶', '🤲', '🫱', '🫲', '👐', '🫳', '🫴',
     // People, not only hands — 🫂 is asked for often and had nowhere to live
-    '🫂', '🫰', '🤌', '🫵', '🤏', '🙇', '🤦', '🤷', '💁', '🙋'
+    '🫂', '🫰', '🤌', '🫵', '🤏', '🙇', '🤦', '🤷', '💁', '🙋',
+    // Faces have parts too, and 👀 — "watching this" — is among the most
+    // used reactions there is; none of these were in the set at all
+    '👀', '👁️', '🧠', '👄', '👅', '👂', '👃'
   ],
   Hearts: [
     '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔',
