@@ -46,6 +46,24 @@ const reactionIcon = (content: string): string => {
   return content;
 };
 
+/**
+ * The note a reaction, repost or zap is actually about.
+ *
+ * These carry NIP-10 'e' tags, and a client that includes the thread's root
+ * alongside the note being reacted to writes the root first. Reading the
+ * first tag then named the wrong note — someone liking a reply showed up as
+ * liking the post it hung under, which is often their own.
+ *
+ * The marked tag wins where there is one; otherwise the last, which is what
+ * NIP-25 says the reaction is for.
+ */
+const reactedNoteId = (event: { tags: string[][] }): string | undefined => {
+  const eTags = event.tags.filter(t => t[0] === 'e' && t[1]);
+  if (eTags.length === 0) return undefined;
+  const marked = eTags.find(t => t[3] === 'reply') || eTags.find(t => t[3] === 'root');
+  return (marked || eTags[eTags.length - 1])[1];
+};
+
 const NotificationsPage: React.FC<NotificationsPageProps> = ({
   pubkey,
   relaysConnected,
@@ -101,7 +119,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
 
       const targetIds = fetched
         .filter(n => n.type === 'reaction' || n.type === 'repost' || n.type === 'zap')
-        .map(n => n.event.tags.find(t => t[0] === 'e')?.[1])
+        .map(n => reactedNoteId(n.event))
         .filter((id): id is string => !!id);
       if (targetIds.length > 0) {
         const targets = await NostrCore.fetchEventsByIds(targetIds);
@@ -166,7 +184,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
       onNavigateToNote(notification.event.id);
       return;
     }
-    const targetId = notification.event.tags.find(t => t[0] === 'e')?.[1];
+    const targetId = reactedNoteId(notification.event);
     if (targetId) {
       onNavigateToNote(targetId);
     } else {
@@ -186,7 +204,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
       rawContent = notification.event.content;
       sourceTags = notification.event.tags;
     } else {
-      const targetId = notification.event.tags.find(t => t[0] === 'e')?.[1];
+      const targetId = reactedNoteId(notification.event);
       // The note this is about is often already in memory — from the feed,
       // or from an earlier visit — so read it straight out rather than
       // showing an empty preview until the network answers
