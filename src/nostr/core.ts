@@ -34,7 +34,24 @@ export class NostrCore {
 
     const tags: string[][] = [];
 
-    if (replyTo) {
+    // Answering a NIP-22 comment has to be a comment as well, or the reply
+    // hangs outside the conversation for whoever wrote it: a client reading
+    // that thread looks for comments, not for kind 1 notes carrying 'e'
+    // tags. Replying to an ordinary note stays an ordinary note — that is
+    // still what every client understands.
+    const parent = replyTo ? await this.replyParent(replyTo) : null;
+    const asComment = parent?.kind === EVENT_KINDS.COMMENT;
+
+    if (asComment && parent) {
+      // The thread's root, carried by every comment in it. Taken from the
+      // parent, which already knows it; a comment with no root scope of its
+      // own is itself the top of the thread.
+      const rootId = parent.tags.find(t => t[0] === 'E')?.[1] || parent.id;
+      const rootKind = parent.tags.find(t => t[0] === 'K')?.[1] || String(parent.kind);
+      const rootAuthor = parent.tags.find(t => t[0] === 'P')?.[1] || parent.pubkey;
+      tags.push(['E', rootId], ['K', rootKind], ['P', rootAuthor]);
+      tags.push(['e', parent.id], ['k', String(parent.kind)], ['p', parent.pubkey]);
+    } else if (replyTo) {
       tags.push(['e', replyTo, '', 'reply']);
     }
 
@@ -47,7 +64,7 @@ export class NostrCore {
     });
 
     const event: NostrEvent = {
-      kind: EVENT_KINDS.TEXT_NOTE,
+      kind: asComment ? EVENT_KINDS.COMMENT : EVENT_KINDS.TEXT_NOTE,
       content,
       tags
     };
@@ -66,6 +83,23 @@ export class NostrCore {
     } catch (error) {
       console.error('Failed to publish note:', error);
       throw error;
+    }
+  }
+
+  /**
+   * The event being replied to, so a reply can be written in the same form.
+   * Whatever is on screen has just been rendered, so the cache almost always
+   * answers; the relays are only asked when it does not.
+   */
+  private static async replyParent(eventId: string): Promise<NostrEventSigned | null> {
+    const cached = EventCache.getEvent(eventId);
+    if (cached) return cached;
+    try {
+      return await this.fetchEventById(eventId);
+    } catch {
+      // A reply is worth publishing even when its parent cannot be read;
+      // it just goes out in the older form
+      return null;
     }
   }
 
@@ -721,7 +755,10 @@ export class NostrCore {
   ): Promise<NostrEventSigned[]> {
     const filters: NostrFilter[] = [
       {
-        kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.POLL],
+        // Comments belong here too: a profile's Replies tab is built from
+        // what this person wrote, and their replies are increasingly
+        // written as comments rather than as notes
+        kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.POLL, EVENT_KINDS.COMMENT],
         authors: [pubkey],
         limit
       }
@@ -1324,7 +1361,10 @@ export class NostrCore {
   static async fetchReplies(eventId: string, limit: number = 50): Promise<NostrEventSigned[]> {
     const filters: NostrFilter[] = [
       {
-        kinds: [EVENT_KINDS.TEXT_NOTE],
+        // Both ways of writing a reply: the older kind 1 carrying 'e' tags,
+        // and NIP-22 comments, which is what Amethyst now writes. The
+        // comment's parent is its lowercase 'e', so one filter finds both.
+        kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.COMMENT],
         '#e': [eventId],
         limit
       }
@@ -1542,7 +1582,13 @@ export class NostrCore {
       const relayPool = getRelayPool();
       const events = await relayPool.fetchEvents([
         {
-          kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.REPOST, EVENT_KINDS.REACTION, EVENT_KINDS.ZAP_RECEIPT],
+          kinds: [
+            EVENT_KINDS.TEXT_NOTE,
+            EVENT_KINDS.COMMENT,
+            EVENT_KINDS.REPOST,
+            EVENT_KINDS.REACTION,
+            EVENT_KINDS.ZAP_RECEIPT
+          ],
           '#e': [eventId],
           limit: 500
         }
@@ -1551,7 +1597,7 @@ export class NostrCore {
       const ownPubkey = CredentialManager.getPublicKey();
 
       for (const ev of events) {
-        if (ev.kind === EVENT_KINDS.TEXT_NOTE) {
+        if (ev.kind === EVENT_KINDS.TEXT_NOTE || ev.kind === EVENT_KINDS.COMMENT) {
           result.replies++;
         } else if (ev.kind === EVENT_KINDS.REPOST) {
           result.reposts++;

@@ -152,6 +152,10 @@ export class NotificationCore {
       {
         kinds: [
           EVENT_KINDS.TEXT_NOTE,
+          // A reply written the NIP-22 way. Without this, replies from
+          // Amethyst — which now writes every one of them like that — reach
+          // nobody here: no notification, and no sign anyone answered.
+          EVENT_KINDS.COMMENT,
           EVENT_KINDS.REPOST,
           EVENT_KINDS.REACTION,
           EVENT_KINDS.ZAP_RECEIPT,

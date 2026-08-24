@@ -170,7 +170,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     if (!relaysConnected) return;
 
     const buildFilters = (since: number): NostrFilter[] => [
-      { kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.POLL], authors: [pubkey], since }
+      // Same three kinds the first load asks for, so a reply written as a
+      // comment turns up live rather than only on the next visit
+      { kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.POLL, EVENT_KINDS.COMMENT], authors: [pubkey], since }
     ];
 
     const handleEvent = (event: NostrEventSigned) => {

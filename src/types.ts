@@ -57,6 +57,14 @@ export interface EventWithMetadata extends NostrEventSigned {
 // Event kinds
 export const EVENT_KINDS = {
   TEXT_NOTE: 1,
+  /**
+   * NIP-22 comment. A reply to a note, written as its own kind rather than
+   * as another kind 1 carrying 'e' tags — Amethyst writes every reply this
+   * way now, so a client that only knows kind 1 sees those conversations as
+   * empty. The parent is in lowercase 'e'/'k'/'p', the thread's root in
+   * uppercase 'E'/'K'/'P'.
+   */
+  COMMENT: 1111,
   SET_METADATA: 0,
   RECOMMENDED_RELAY: 2,
   CONTACTS: 3,
