@@ -6,6 +6,7 @@ import { formatAddress, formatDate, copyToClipboard, describeWebsite } from '../
 import { NO_CONTACT_LIST_PROMPT } from '../utils/followPrompt';
 import { extractImageUrls, extractVideoUrls, extractEmbeds } from '../utils/media';
 import EventCard from './EventCard';
+import RichText from './RichText';
 import QuotedNoteCard from './QuotedNoteCard';
 import EditProfileForm from './EditProfileForm';
 import ZapButton from './ZapButton';
@@ -560,7 +561,18 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                 </button>
               </p>
               {profile.about && (
-                <p className="profile-bio">{profile.about}</p>
+                // A bio is where people put their website, their other
+                // accounts and the topics they post about — as plain text
+                // none of it could be followed. Pictures stay links here:
+                // a bio is a paragraph, not a gallery.
+                <p className="profile-bio">
+                  <RichText
+                    content={profile.about}
+                    onNavigateToProfile={onNavigateToProfile}
+                    onNavigateToNote={onNavigateToNote}
+                    onNavigateToTopic={onNavigateToTopic}
+                  />
+                </p>
               )}
               {profile.website && (() => {
                 const site = describeWebsite(profile.website);
