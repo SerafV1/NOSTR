@@ -2013,6 +2013,55 @@ button.poll-option-vote:disabled {
 }
 
 /* A kept post: the mark stays lit, the way a liked one does */
+/* The relays a note was seen on, overlapped the way the faces on a stream
+   are — a row of marks reads as one thing, a row of separate tiles does not */
+.relay-badges {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--spacing-md) var(--spacing-sm);
+  padding-left: calc(var(--spacing-md) + 6px);
+}
+
+.relay-mark {
+  width: 18px;
+  height: 18px;
+  margin-left: -6px;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  background: var(--dark-bg);
+  overflow: hidden;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.75;
+  transition: var(--transition);
+}
+
+.relay-badges:hover .relay-mark {
+  opacity: 1;
+}
+
+.relay-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.relay-mark-letter {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  line-height: 1;
+}
+
+.relay-badges-more {
+  margin-left: 4px;
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+}
+
 .action-btn.bookmarked {
   color: var(--primary-color);
 }

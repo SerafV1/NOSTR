@@ -15,6 +15,7 @@ import {
   quoteRefRegex
 } from '../utils/media';
 import ComposeModal from './ComposeModal';
+import RelayBadges from './RelayBadges';
 import MediaEmbed from './MediaEmbed';
 import ProfileHoverCard from './ProfileHoverCard';
 import VideoPlayer from './VideoPlayer';
@@ -914,6 +915,11 @@ const EventCard: React.FC<EventCardProps> = ({
           </button>
         )}
       </div>
+
+      {/* Under the actions: where the note actually lives. A note is on
+          whichever relays happen to carry it, which is worth seeing rather
+          than guessing — and for one written here, this is where it landed. */}
+      <RelayBadges eventId={event.id} refreshKey={replyCount} />
 
       {composeMode && (
         <ComposeModal

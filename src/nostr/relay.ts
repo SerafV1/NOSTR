@@ -19,6 +19,19 @@ export class RelayPool {
   private subscriptions: Map<string, NostrSubscription> = new Map();
   private relayConfigs: RelayConfig[] = [];
   private relayConnectionState: Map<string, boolean> = new Map();
+
+  /**
+   * Which relays each event was seen on — filled as answers arrive, and when
+   * one is published. Nothing else in the app knows this: an event handed up
+   * from the pool carries no trace of where it came from, so a note could not
+   * say which relays actually have it.
+   *
+   * Bounded, because a feed left open all day would otherwise remember every
+   * id it ever saw. The oldest entries go first, which are the ones scrolled
+   * past long ago.
+   */
+  private seenOn: Map<string, Set<string>> = new Map();
+  private static readonly SEEN_LIMIT = 4000;
   private relayCapabilities: Map<string, any> = new Map();
   // Consecutive query timeouts per relay — readyState reports OPEN for a
   // "zombie" connection (server/proxy dropped it without a close
@@ -713,6 +726,9 @@ export class RelayPool {
             ]);
 
             results.set(url, true);
+            // A relay that took the note has it, which is what the note's own
+            // card goes on to show — so a post says where it landed
+            this.recordSeen(event.id, url);
             this.recordWriteOutcome(event.pubkey, url, true, '');
             console.log(`Event published to ${url}`);
           } catch (error) {
@@ -785,6 +801,7 @@ export class RelayPool {
       if (relay.sub && typeof relay.sub === 'function') {
         sub = relay.sub(filters);
         sub.on('event', (event: NostrEventSigned) => {
+          this.recordSeen(event.id, url);
           callback(event);
         });
         if (eoseCallback) {
@@ -860,6 +877,26 @@ export class RelayPool {
    * simply has other, unrelated matches (e.g. fetching one specific
    * addressable event by coordinate).
    */
+  /** Remember that this relay had this event */
+  private recordSeen(eventId: string, url: string): void {
+    let relays = this.seenOn.get(eventId);
+    if (!relays) {
+      if (this.seenOn.size >= RelayPool.SEEN_LIMIT) {
+        // Map iterates in insertion order, so this is the oldest id
+        const oldest = this.seenOn.keys().next().value;
+        if (oldest) this.seenOn.delete(oldest);
+      }
+      relays = new Set();
+      this.seenOn.set(eventId, relays);
+    }
+    relays.add(url);
+  }
+
+  /** The relays known to carry this event, in the order they answered */
+  getSeenOn(eventId: string): string[] {
+    return [...(this.seenOn.get(eventId) || [])];
+  }
+
   async fetchEvents(filters: NostrFilter[], waitForAll: boolean = false): Promise<NostrEventSigned[]> {
     const events: Map<string, NostrEventSigned> = new Map();
     const promises: Promise<void>[] = [];
@@ -959,6 +996,9 @@ export class RelayPool {
             }
 
             relayEvents.forEach(event => {
+              // Every relay that answered with it, not only the first: the
+              // point is to show where a note actually lives
+              this.recordSeen(event.id, url);
               if (!events.has(event.id)) {
                 events.set(event.id, event);
               }

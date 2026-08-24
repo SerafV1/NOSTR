@@ -1,0 +1,93 @@
+import React, { useEffect, useState } from 'react';
+import { getRelayPool } from '../nostr/relay';
+import { knownRelayIcon, loadRelayIcon, relayHost, relayIconSrc } from '../utils/relayIcons';
+
+interface RelayBadgesProps {
+  eventId: string;
+  /** Redrawn when this changes — a note just published gains its relays late */
+  refreshKey?: unknown;
+}
+
+/** How many to draw before the rest become a "+N" */
+const VISIBLE = 5;
+
+/**
+ * A relay's own icon, falling back to its first letter. Which picture that
+ * is — and why it is not simply the host's /favicon.ico — is decided in
+ * utils/relayIcons.
+ */
+const RelayMark: React.FC<{ url: string }> = ({ url }) => {
+  const host = relayHost(url);
+  const [named, setNamed] = useState<string | null>(() => knownRelayIcon(url));
+  const [failed, setFailed] = useState(false);
+
+  // Asked once per relay and remembered, so a feed of a hundred notes does
+  // not ask the same handful of relays a hundred times
+  useEffect(() => {
+    if (named !== null) return;
+    let cancelled = false;
+    loadRelayIcon(url).then(icon => { if (!cancelled) setNamed(icon); });
+    return () => { cancelled = true; };
+  }, [url, named]);
+
+  // What the relay named, when that is a format a browser will draw, and its
+  // favicon otherwise; a letter if even that fails
+  const src = relayIconSrc(url, named);
+
+  // A failure belongs to the address that failed. Without this the favicon
+  // falling through — which is what a relay serving a single-page site does,
+  // answering /favicon.ico with a web page — left the letter standing even
+  // after the relay's own icon arrived.
+  useEffect(() => { setFailed(false); }, [src]);
+
+  return (
+    <span className="relay-mark" title={host}>
+      {failed ? (
+        <span className="relay-mark-letter">{host.charAt(0).toUpperCase()}</span>
+      ) : (
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          onError={() => setFailed(true)}
+        />
+      )}
+    </span>
+  );
+};
+
+/**
+ * Which relays this note was seen on: the ones that answered with it, and —
+ * for a note written here — the ones that accepted it.
+ *
+ * Nostr has no single home for a note; it is on whichever relays happen to
+ * carry it, and that is worth being able to see rather than guess.
+ */
+const RelayBadges: React.FC<RelayBadgesProps> = ({ eventId, refreshKey }) => {
+  const [relays, setRelays] = useState<string[]>(() => getRelayPool().getSeenOn(eventId));
+
+  // A note's relays are learned as answers arrive, so a card drawn the moment
+  // the note appears often knows none yet
+  useEffect(() => {
+    setRelays(getRelayPool().getSeenOn(eventId));
+    const timer = setTimeout(() => setRelays(getRelayPool().getSeenOn(eventId)), 2000);
+    return () => clearTimeout(timer);
+  }, [eventId, refreshKey]);
+
+  if (relays.length === 0) return null;
+
+  const shown = relays.slice(0, VISIBLE);
+  const rest = relays.length - shown.length;
+
+  return (
+    <div
+      className="relay-badges"
+      title={`Seen on ${relays.length} relay${relays.length === 1 ? '' : 's'}:\n${relays.join('\n')}`}
+    >
+      {shown.map(url => <RelayMark key={url} url={url} />)}
+      {rest > 0 && <span className="relay-badges-more">+{rest}</span>}
+    </div>
+  );
+};
+
+export default RelayBadges;
