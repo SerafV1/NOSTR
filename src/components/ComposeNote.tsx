@@ -17,6 +17,8 @@ import MediaEmbed from './MediaEmbed';
 import LinkPreviewCard from './LinkPreviewCard';
 import InlineStreamPlayer from './InlineStreamPlayer';
 import InlineLiveStream from './InlineLiveStream';
+import { RelayMark } from './RelayBadges';
+import { getRelayPool } from '../nostr/relay';
 import { extractStreamRefs } from '../utils/liveStream';
 import VideoPlayer from './VideoPlayer';
 import EmojiPicker from './EmojiPicker';
@@ -51,6 +53,10 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
   const [referencedNames, setReferencedNames] = useState<Map<string, string>>(new Map());
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [publishing, setPublishing] = useState(false);
+  // Which relays are being written to, and how each answered. Publishing is
+  // the one moment a note's relays are not a matter of record but of what is
+  // happening right now, so it is worth watching rather than waiting through.
+  const [writing, setWriting] = useState<{ url: string; state: 'waiting' | 'took' | 'refused' }[]>([]);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const emojiPicker = useAnchoredPopup(showEmojiPicker, () => setShowEmojiPicker(false));
   const [showGifPicker, setShowGifPicker] = useState(false);
@@ -490,6 +496,7 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
     if (showPoll && trimmedOptions.length < 2) return;
 
     setPublishing(true);
+    setWriting(getRelayPool().getWriteRelayUrls().map(url => ({ url, state: 'waiting' as const })));
     try {
       let event: NostrEventSigned | null;
 
@@ -511,7 +518,12 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
           finalContent,
           replyTo,
           hashtags,
-          extractMentionPubkeys(finalContent)
+          extractMentionPubkeys(finalContent),
+          (url, accepted) => setWriting(prev =>
+            prev.map(relay => relay.url === url
+              ? { ...relay, state: accepted ? 'took' : 'refused' }
+              : relay)
+          )
         );
       }
 
@@ -533,6 +545,9 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
       alert(error instanceof Error ? error.message : `Error publishing ${showPoll ? 'poll' : 'note'}`);
     } finally {
       setPublishing(false);
+      // Left on screen a moment: the last relays answer as the box is
+      // closing, and a row that vanished on the same tick showed nothing
+      setTimeout(() => setWriting([]), 2500);
     }
   };
 
@@ -739,6 +754,21 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
               <span className="compose-upload-pct">{u.progress}%</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {writing.length > 0 && (
+        // Where the note is going, as it goes: each relay lights up when it
+        // takes it, and dims when it will not
+        <div className="compose-writing" title="Relays this is being written to">
+          {writing.map(relay => (
+            <span key={relay.url} className={`compose-writing-relay ${relay.state}`}>
+              <RelayMark url={relay.url} />
+            </span>
+          ))}
+          <span className="compose-writing-count">
+            {writing.filter(r => r.state === 'took').length}/{writing.length}
+          </span>
         </div>
       )}
 

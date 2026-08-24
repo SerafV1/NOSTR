@@ -680,7 +680,18 @@ export class RelayPool {
   /**
    * Publish an event to all write relays
    */
-  async publishEvent(event: NostrEventSigned): Promise<Map<string, boolean>> {
+  /** The relays this account would write to, in the order they are tried */
+  getWriteRelayUrls(): string[] {
+    return [...this.relays.keys()].filter(url =>
+      this.relayConfigs.find(config => config.url === url)?.write
+    );
+  }
+
+  async publishEvent(
+    event: NostrEventSigned,
+    /** Called as each relay answers, so a publish can be watched happening */
+    onRelayResult?: (url: string, accepted: boolean) => void
+  ): Promise<Map<string, boolean>> {
     const results = new Map<string, boolean>();
     const tasks: Promise<void>[] = [];
 
@@ -693,6 +704,7 @@ export class RelayPool {
           try {
             if (!relay.publish) {
               results.set(url, false);
+              onRelayResult?.(url, false);
               return;
             }
 
@@ -726,6 +738,7 @@ export class RelayPool {
             ]);
 
             results.set(url, true);
+            onRelayResult?.(url, true);
             // A relay that took the note has it, which is what the note's own
             // card goes on to show — so a post says where it landed
             this.recordSeen(event.id, url);
@@ -734,6 +747,7 @@ export class RelayPool {
           } catch (error) {
             console.error(`Failed to publish to ${url}:`, error);
             results.set(url, false);
+            onRelayResult?.(url, false);
             const reason = error instanceof Error ? error.message : String(error);
             // A silent relay proves nothing about whether this account may
             // write — only a relay that actually answered does

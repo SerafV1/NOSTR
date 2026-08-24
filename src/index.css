@@ -2015,6 +2015,48 @@ button.poll-option-vote:disabled {
 /* A kept post: the mark stays lit, the way a liked one does */
 /* The relays a note was seen on, overlapped the way the faces on a stream
    are — a row of marks reads as one thing, a row of separate tiles does not */
+/* The relays a note is being written to, while it is being written. Waiting
+   is dim and unhurried, a relay that took it comes up to full, and one that
+   refused it fades out — the row is a progress bar made of the places the
+   note is actually going. */
+.compose-writing {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--spacing-sm) var(--spacing-md) 0;
+}
+
+.compose-writing-relay {
+  display: inline-flex;
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.compose-writing-relay.waiting {
+  opacity: 0.35;
+  filter: grayscale(1);
+  animation: composeWritingPulse 1.2s ease-in-out infinite;
+}
+
+.compose-writing-relay.took {
+  opacity: 1;
+}
+
+.compose-writing-relay.refused {
+  opacity: 0.2;
+  filter: grayscale(1);
+}
+
+@keyframes composeWritingPulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.55; }
+}
+
+.compose-writing-count {
+  margin-left: var(--spacing-xs);
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
 .relay-badges {
   display: flex;
   align-items: center;

@@ -25,7 +25,9 @@ export class NostrCore {
     content: string,
     replyTo?: string,
     hashtags?: string[],
-    mentionPubkeys?: string[]
+    mentionPubkeys?: string[],
+    /** Called as each relay answers, so the composer can show it happening */
+    onRelayResult?: (url: string, accepted: boolean) => void
   ): Promise<NostrEventSigned | null> {
     if (!CredentialManager.canSign()) {
       console.error('No signing method available');
@@ -75,7 +77,7 @@ export class NostrCore {
       if (!signed) throw new Error('Failed to sign event');
 
       const relayPool = getRelayPool();
-      const results = await relayPool.publishEvent(signed);
+      const results = await relayPool.publishEvent(signed, onRelayResult);
       if (!Array.from(results.values()).some(Boolean)) {
         throw new Error('No relay accepted the note');
       }
