@@ -2022,6 +2022,26 @@ button.poll-option-vote:disabled {
   padding-left: calc(var(--spacing-md) + 6px);
 }
 
+/* Beside a relay's address in settings, at the size of the text it sits in */
+.relay-url {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.relay-url .relay-mark {
+  width: 20px;
+  height: 20px;
+  margin-left: 0;
+  opacity: 1;
+}
+
+/* Under a quoted note, indented with it rather than with the note quoting it */
+.inline-quoted-note .relay-badges {
+  padding: 4px 0 0 6px;
+}
+
 .relay-mark {
   width: 18px;
   height: 18px;

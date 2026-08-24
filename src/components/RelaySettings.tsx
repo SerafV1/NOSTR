@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { RelayMark } from './RelayBadges';
 import { getRelayPool } from '../nostr/relay';
 import { CredentialManager } from '../nostr/crypto';
 import { RelayConfig } from '../types';
@@ -251,7 +252,12 @@ const RelaySettings: React.FC = () => {
             return (
             <div key={relay.url} className="relay-card">
               <div className="relay-header">
-                <div className="relay-url">{relay.url}</div>
+                <div className="relay-url">
+                  {/* The same mark the notes carry, so a relay is recognised
+                      in both places by the same picture */}
+                  <RelayMark url={relay.url} />
+                  {relay.url}
+                </div>
                 <div className={`relay-status ${relay.connected ? 'connected' : 'disconnected'}`}>
                   <span className="relay-status-indicator"></span>
                   {relay.connected ? 'Connected' : 'Disconnected'}

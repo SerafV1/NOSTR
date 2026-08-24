@@ -16,7 +16,7 @@ const VISIBLE = 5;
  * is — and why it is not simply the host's /favicon.ico — is decided in
  * utils/relayIcons.
  */
-const RelayMark: React.FC<{ url: string }> = ({ url }) => {
+export const RelayMark: React.FC<{ url: string }> = ({ url }) => {
   const host = relayHost(url);
   const [named, setNamed] = useState<string | null>(() => knownRelayIcon(url));
   const [failed, setFailed] = useState(false);
@@ -63,16 +63,69 @@ const RelayMark: React.FC<{ url: string }> = ({ url }) => {
  * Nostr has no single home for a note; it is on whichever relays happen to
  * carry it, and that is worth being able to see rather than guess.
  */
+/** Notes already asked about, so a feed does not ask twice for the same one */
+const asked = new Set<string>();
+
+/**
+ * Asking where a note lives, in batches.
+ *
+ * A feed can mount a dozen of these at once — reposted and quoted notes all
+ * arrive embedded in something else, so none of them has been asked for.
+ * One query per card would be a dozen queries to every relay in the same
+ * moment; ids collected over a short pause go out as one.
+ */
+let pendingIds: string[] = [];
+let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+const waiting = new Set<() => void>();
+
+const askWhereItLives = (eventId: string, done: () => void): void => {
+  pendingIds.push(eventId);
+  waiting.add(done);
+  if (pendingTimer) return;
+
+  pendingTimer = setTimeout(() => {
+    const ids = pendingIds;
+    const listeners = [...waiting];
+    pendingIds = [];
+    waiting.clear();
+    pendingTimer = null;
+
+    getRelayPool()
+      // Asked for by name, so the answer is capped by how many were asked
+      // about rather than by whatever a relay's default happens to be
+      .fetchEvents([{ ids, limit: ids.length }], true)
+      .catch(() => { /* the rows simply stay empty */ })
+      .finally(() => listeners.forEach(listener => listener()));
+  }, 400);
+};
+
 const RelayBadges: React.FC<RelayBadgesProps> = ({ eventId, refreshKey }) => {
   const [relays, setRelays] = useState<string[]>(() => getRelayPool().getSeenOn(eventId));
 
   // A note's relays are learned as answers arrive, so a card drawn the moment
   // the note appears often knows none yet
   useEffect(() => {
-    setRelays(getRelayPool().getSeenOn(eventId));
-    const timer = setTimeout(() => setRelays(getRelayPool().getSeenOn(eventId)), 2000);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+    const look = () => {
+      if (!cancelled) setRelays(getRelayPool().getSeenOn(eventId));
+    };
+    look();
+    const timer = setTimeout(look, 2000);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [eventId, refreshKey]);
+
+  // A reposted or quoted note arrives inside the thing that carries it, so it
+  // was never asked for and nothing knows where it lives. Asking by id fills
+  // that in — once per note, however many cards show it.
+  useEffect(() => {
+    if (relays.length > 0 || asked.has(eventId)) return;
+    asked.add(eventId);
+    let cancelled = false;
+    askWhereItLives(eventId, () => {
+      if (!cancelled) setRelays(getRelayPool().getSeenOn(eventId));
+    });
+    return () => { cancelled = true; };
+  }, [eventId, relays.length]);
 
   if (relays.length === 0) return null;
 

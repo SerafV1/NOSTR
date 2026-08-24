@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { NostrEventSigned } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import QuotedNoteCard from './QuotedNoteCard';
+import RelayBadges from './RelayBadges';
 
 interface InlineQuotedNoteProps {
   noteId: string;
@@ -53,6 +54,7 @@ const InlineQuotedNote: React.FC<InlineQuotedNoteProps> = ({
         onNavigateToProfile={onNavigateToProfile}
         onNavigateToNote={onNavigateToNote}
       />
+      <RelayBadges eventId={note.id} />
     </span>
   );
 };
