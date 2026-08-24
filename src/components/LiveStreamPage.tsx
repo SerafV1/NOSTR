@@ -288,7 +288,6 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                   key="player"
                   src={stream.streamingUrl}
                   className="live-stream-video"
-                  liveMark="controls"
                   minimized={minimized}
                   onMinimize={() => setMinimized(open => !open)}
                 />

@@ -5817,25 +5817,17 @@ a.capability-indicator.paid:hover {
   opacity: 1;
 }
 
-/* A live stream has no position to show, only whether you are at the edge of
-   it — which is where this player always is. It sits on the picture rather
-   than in the control row: the row is where a phone ran out of width, and it
-   also hides itself until the picture is touched, taking the one thing worth
-   knowing at a glance with it. */
+/* In the control row, beside the buttons. It stays one line at any width:
+   squeezed, the word used to break apart, one letter under the next — and
+   the row makes the room for it by dropping the volume slider and the
+   spelled-out quality on a narrow player. */
 .live-video-live {
-  position: absolute;
-  top: var(--spacing-sm);
-  left: var(--spacing-sm);
-  z-index: 3;
-  padding: 2px 7px;
-  border-radius: 4px;
-  background: #ff4d4f;
-  color: #1a0000;
-  font-size: 0.68rem;
+  color: #ff4d4f;
+  font-size: 0.7rem;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   white-space: nowrap;
-  pointer-events: none;
+  flex-shrink: 0;
 }
 
 /* A player small enough that its controls have to choose what to keep: the
@@ -5851,17 +5843,6 @@ a.capability-indicator.paid:hover {
   .live-video-quality-label {
     display: none;
   }
-}
-
-/* In the control row it is a word among the buttons, not a badge on the
-   picture: no plate behind it, and it keeps the row's own colour scheme */
-.live-video-live.in-controls {
-  position: static;
-  padding: 0;
-  border-radius: 0;
-  background: none;
-  color: #ff4d4f;
-  font-size: 0.7rem;
 }
 
 /* The strip the small player is dragged by, and the way back to full size */

@@ -26,13 +26,6 @@ interface LiveVideoPlayerProps {
   onMinimize?: () => void;
   /** True while it is in that corner, so the button offers the way back */
   minimized?: boolean;
-  /**
-   * Where the LIVE mark goes. Over the picture where the picture is small —
-   * a note, the corner player — since the control row there has no width to
-   * spare and hides itself besides. On a page given over to the stream the
-   * row is roomy and always worth reading, so it belongs in it.
-   */
-  liveMark?: 'corner' | 'controls';
 }
 
 /**
@@ -41,13 +34,7 @@ interface LiveVideoPlayerProps {
  * into fragments MSE can play. hls.js is ~500KB, so it's dynamically
  * imported here rather than bundled into the main chunk every page pays for.
  */
-const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({
-  src,
-  className,
-  onMinimize,
-  minimized,
-  liveMark = 'corner'
-}) => {
+const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className, onMinimize, minimized }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [buffering, setBuffering] = useState(true);
@@ -311,7 +298,6 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({
 
   return (
     <div className={`live-video-wrapper ${menu !== 'closed' ? 'menu-open' : ''}`} ref={wrapperRef}>
-      {liveMark === 'corner' && <span className="live-video-live">● LIVE</span>}
 
       {buffering && (
         <div className="live-video-buffering">
@@ -358,7 +344,9 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({
           />
         </div>
 
-        {liveMark === 'controls' && <span className="live-video-live in-controls">● LIVE</span>}
+        {/* A live stream has no position to show, only whether you are at the
+            edge of it — which is where this player always is */}
+        <span className="live-video-live">● LIVE</span>
 
         <span className="live-video-spacer" />
 
