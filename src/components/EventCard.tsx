@@ -725,26 +725,47 @@ const EventCard: React.FC<EventCardProps> = ({
                       its own children without :has(), which the browser OBS
                       embeds may be too old for */}
                   <div className="event-images" data-count={Math.min(visibleImages.length, 4)}>
-                    {visibleImages.map((imageUrl, index) => (
-                      <button
-                        key={index}
-                        className="event-image-preview"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (isSensitive && !mediaRevealed) return;
-                          setEnlargedIndex(index);
-                        }}
-                        style={{ border: 'none', padding: 0, background: 'none', cursor: 'pointer' }}
-                      >
-                        <img
-                          src={imageUrl}
-                          alt={`Note image ${index + 1}`}
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = 'none';
+                    {visibleImages.map((imageUrl, index) => {
+                      // One picture is the post's body and takes the width of
+                      // the card, leaving barely a line of text to open the
+                      // post with — so clicking it opens the post, and the
+                      // corner button enlarges. Several are a set to choose
+                      // from, where picking one is the point.
+                      const single = visibleImages.length === 1;
+                      return (
+                        <button
+                          key={index}
+                          className="event-image-preview"
+                          onClick={(e) => {
+                            if (isSensitive && !mediaRevealed) {
+                              e.stopPropagation();
+                              return;
+                            }
+                            if (single) return; // the card's own click opens the post
+                            e.stopPropagation();
+                            setEnlargedIndex(index);
                           }}
-                        />
-                      </button>
-                    ))}
+                          style={{ border: 'none', padding: 0, background: 'none', cursor: 'pointer' }}
+                        >
+                          <img
+                            src={imageUrl}
+                            alt={`Note image ${index + 1}`}
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
+                          {single && (!isSensitive || mediaRevealed) && (
+                            <span
+                              className="event-image-zoom"
+                              title="Enlarge the picture"
+                              onClick={(e) => { e.stopPropagation(); setEnlargedIndex(index); }}
+                            >
+                              ⤢
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                   {hasMore && (!isSensitive || mediaRevealed) && (
                     <button
