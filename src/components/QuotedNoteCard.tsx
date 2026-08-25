@@ -3,6 +3,7 @@ import { NostrEventSigned, UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { formatDate, formatAddress } from '../utils/helpers';
 import { extractImageUrls, extractVideoUrls, extractEmbeds, stripMediaUrls } from '../utils/media';
+import RichText from './RichText';
 import MediaEmbed from './MediaEmbed';
 import VideoPlayer from './VideoPlayer';
 
@@ -108,7 +109,14 @@ const QuotedNoteCard: React.FC<QuotedNoteCardProps> = ({ event, repostedBy, dept
         <span className="quoted-note-time">{formatDate(new Date(event.created_at * 1000))}</span>
       </div>
 
-      {text && <p className="quoted-note-text">{text}</p>}
+      {/* Read the same way a note is anywhere else: a quoted post carries
+          mentions, links and hashtags too, and printed as plain text an
+          npub in one was sixty characters of bech32 */}
+      {text && (
+        <p className="quoted-note-text">
+          <RichText content={text} eventTags={event.tags} />
+        </p>
+      )}
 
       {images.length > 0 && (
         <div className="quoted-note-media">

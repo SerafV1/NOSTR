@@ -617,13 +617,13 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
 
         const shownNotes = eventsRef.current;
         if (background && shownNotes.length > 0) {
-          // Anything newer than the timeline's own top is new, and waits
-          const newestShownNote = Math.max(...shownNotes.map(e => e.created_at || 0));
-          const known = new Set(repostsRef.current.map(r => r.repost.id));
-          setReposts(repostResults.filter(r => (r.repost.created_at || 0) <= newestShownNote));
-          setPendingReposts(
-            repostResults.filter(r => (r.repost.created_at || 0) > newestShownNote && !known.has(r.repost.id))
-          );
+          // Anything not already on screen waits for the button, whatever its
+          // timestamp says. Holding back only what was newer than the top post
+          // still let an older repost — one a previous fetch had missed —
+          // appear in the middle of the timeline on its own.
+          const shownReposts = new Set(repostsRef.current.map(r => r.repost.id));
+          setReposts(repostResults.filter(r => shownReposts.has(r.repost.id)));
+          setPendingReposts(repostResults.filter(r => !shownReposts.has(r.repost.id)));
         } else {
           setReposts(repostResults);
           setPendingReposts([]);
