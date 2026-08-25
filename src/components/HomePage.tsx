@@ -6,6 +6,7 @@ import { CredentialManager } from '../nostr/crypto';
 import { formatAddress } from '../utils/helpers';
 import { loadCustomFeeds, saveCustomFeeds } from '../utils/customFeeds';
 import { parseLiveEvent, encodeLiveNaddr, LiveStreamInfo } from '../utils/liveStream';
+import { noteFeedChange } from '../utils/feedTrail';
 import EventCard from './EventCard';
 
 interface HomePageProps {
@@ -166,6 +167,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
       // Relays not ready yet — show the cached feed instantly if we have one
       const cached = readCachedFeed();
       if (cached && cached.length > 0) {
+        noteFeedChange('cache shown', `${cached.length} posts, relays not ready`);
         setEvents(cached);
         setLoading(false);
       } else {
@@ -287,6 +289,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
       // Prefetch the author's profile so the card renders instantly on click
       await NostrCore.fetchProfiles([event.pubkey]);
 
+      noteFeedChange('live arrival', `1 post from ${event.pubkey.slice(0, 8)}`);
       setPendingEvents(prev => {
         if (prev.some(e => e.id === event.id)) return prev;
         // Re-check against events too, not just at the top of this
@@ -357,6 +360,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     const waitingReposts = pendingReposts;
     if (pending.length === 0 && waitingReposts.length === 0) return;
 
+    noteFeedChange('button pressed', `${pending.length} posts, ${waitingReposts.length} reposts`);
     if (pending.length > 0) {
       setEvents(prev => {
         const ids = new Set(pending.map(e => e.id));
@@ -448,6 +452,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
 
         if (fresh.length > 0) {
           emptyRunsRef.current = 0;
+          noteFeedChange('older loaded', `${fresh.length} posts before ${new Date(until * 1000).toLocaleTimeString()}`);
           await NostrCore.fetchProfiles(fresh.map(e => e.pubkey));
           setEvents(prev => {
             const ids = new Set(prev.map(e => e.id));
@@ -497,13 +502,24 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   }, [feedType, activeTopic]);
 
   const fetchFeed = async ({ background = false }: { background?: boolean } = {}) => {
-    // Stale-while-revalidate: render the cached feed immediately, then
-    // fetch fresh events and silently replace it
+    // Stale-while-revalidate: render the cached feed immediately, then fetch
+    // fresh events behind it.
+    //
+    // A feed restored from the cache counts as a feed on screen, so what the
+    // fetch brings back waits behind the "show new posts" button like any
+    // other arrival. Without this a reload — which is what pulling down at
+    // the top of a phone screen does — replaced everything with the newest
+    // posts, and the feed looked as though it had moved on its own.
     const cached = readCachedFeed();
     if (!background) {
       if (cached && cached.length > 0) {
+        noteFeedChange('cache shown', `${cached.length} posts, refreshing behind it`);
         setEvents(cached);
+        // Assigned here as well as during render: the merge below reads this
+        // to decide what counts as new, and no render has happened yet
+        eventsRef.current = cached;
         setLoading(false);
+        background = true;
       } else {
         setLoading(true);
         setEvents([]); // Clear old events while loading new feed
@@ -572,6 +588,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
           e => !known.has(e.id) && (e.created_at || 0) > newestShown
         );
         if (arrived.length > 0) {
+          noteFeedChange('held back', `${arrived.length} posts waiting for the button`);
           setPendingEvents(prev => {
             const ids = new Set(prev.map(e => e.id));
             return [...arrived.filter(e => !ids.has(e.id)), ...prev]
@@ -580,6 +597,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
           });
         }
       } else {
+        noteFeedChange('feed replaced', `${merged.length} posts, was ${eventsRef.current.length}`);
         setEvents(merged);
       }
       // The global fallback shown to an account with no follows is not a
@@ -621,10 +639,22 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
           // timestamp says. Holding back only what was newer than the top post
           // still let an older repost — one a previous fetch had missed —
           // appear in the middle of the timeline on its own.
+          // Two ways a repost counts as already part of this feed: it is on
+          // screen, or it is older than the newest post on screen — which is
+          // what a feed restored from the cache looks like, since the cache
+          // keeps notes and no reposts at all. Anything newer than the top
+          // post is an arrival, and waits for the button.
           const shownReposts = new Set(repostsRef.current.map(r => r.repost.id));
-          setReposts(repostResults.filter(r => shownReposts.has(r.repost.id)));
-          setPendingReposts(repostResults.filter(r => !shownReposts.has(r.repost.id)));
+          const newestShownNote = Math.max(...shownNotes.map(e => e.created_at || 0));
+          const belongs = (r: { repost: NostrEventSigned }) =>
+            shownReposts.has(r.repost.id) || (r.repost.created_at || 0) <= newestShownNote;
+
+          const held = repostResults.filter(r => !belongs(r));
+          if (held.length > 0) noteFeedChange('reposts held', `${held.length} waiting`);
+          setReposts(repostResults.filter(belongs));
+          setPendingReposts(held);
         } else {
+          noteFeedChange('reposts shown', `${repostResults.length} with a fresh feed`);
           setReposts(repostResults);
           setPendingReposts([]);
         }
