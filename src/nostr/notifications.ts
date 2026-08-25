@@ -16,6 +16,21 @@ export interface NostrNotification {
 const NOTIFICATION_CACHE_LIMIT = 200;
 
 /**
+ * Relays asked for mentions on top of this account's own.
+ *
+ * A reply lives on the relays its author publishes to, which need not be any
+ * of the ones being read here — a comment answered on this very account was
+ * on premium.primal.net and nostr.wine and on none of its ten relays, so it
+ * existed everywhere except where anyone here could see it. These two carry
+ * a wide slice of the network and answer reads without an account, which
+ * turns a mention that would have been invisible into one that arrives.
+ *
+ * Read-only, and only for notifications: nothing is published to them, and
+ * they are not added to anyone's relay list.
+ */
+const WIDER_RELAYS = ['wss://nostr.wine', 'wss://premium.primal.net'];
+
+/**
  * How far back a browser's first look still counts as news for follows.
  * Long enough that opening the app on a new phone does not lose the people
  * who followed you yesterday, short enough that it is not a history dump.
@@ -189,7 +204,16 @@ export class NotificationCore {
       // could miss a notification that only a slower relay has. That
       // notification then never actually gets marked as seen, and
       // resurfaces as unread again on a later poll that does catch it.
-      const events = await relayPool.fetchEvents(filters, true);
+      // The account's own relays, plus a couple of wide ones: a mention only
+      // its author's relays hold is invisible otherwise
+      const [own, wider] = await Promise.all([
+        relayPool.fetchEvents(filters, true),
+        relayPool.fetchEventsFromExtraRelays(WIDER_RELAYS, filters).catch(() => [])
+      ]);
+
+      const byId = new Map<string, NostrEventSigned>();
+      for (const event of [...own, ...wider]) byId.set(event.id, event);
+      const events = [...byId.values()];
 
       // Drop future-dated spam (clock skew / bad actors) and your own
       // actions (you get #p'd on your own replies-to-self, reactions, etc.)

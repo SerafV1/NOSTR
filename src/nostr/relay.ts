@@ -1069,8 +1069,13 @@ export class RelayPool {
         if (!relay) {
           temporary = true;
           if (!(nostrTools as any).relayInit) return;
-          connectPromise = (nostrTools as any).relayInit(url);
-          relay = await Promise.race([
+          // relayInit only builds the object; nothing is open until connect()
+          // is called. Without that the query below waited out its own
+          // timeout and returned nothing — which is what this whole path had
+          // been quietly doing.
+          relay = (nostrTools as any).relayInit(url);
+          connectPromise = relay.connect();
+          await Promise.race([
             connectPromise,
             new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 5000))
           ]);
@@ -1091,10 +1096,11 @@ export class RelayPool {
         });
       } catch (error) {
         console.warn(`[Relay] Outbox lookup failed for ${url}:`, error);
-        if (temporary && connectPromise) {
-          connectPromise
-            .then((lateRelay: any) => { try { lateRelay?.close?.(); } catch { /* already gone */ } })
-            .catch(() => { /* never connected at all — nothing to close */ });
+        if (temporary && relay?.close) {
+          // A connection that arrives after we gave up still has to be closed,
+          // or it stays open with nothing referring to it
+          connectPromise?.catch(() => { /* never connected — nothing to close */ });
+          try { relay.close(); } catch { /* already gone */ }
         }
       } finally {
         if (temporary && relay?.close) {
