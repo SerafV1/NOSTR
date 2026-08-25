@@ -16,6 +16,13 @@ export interface NostrNotification {
 const NOTIFICATION_CACHE_LIMIT = 200;
 
 /**
+ * How far back a browser's first look still counts as news for follows.
+ * Long enough that opening the app on a new phone does not lose the people
+ * who followed you yesterday, short enough that it is not a history dump.
+ */
+const FIRST_LOOK_WINDOW_S = 2 * 24 * 60 * 60;
+
+/**
  * Who is known to follow you, so a contact list that arrives can be told
  * apart: a name that was not there before is a new follower, and one that
  * disappears from a list that used to carry you is someone leaving. Nostr
@@ -195,25 +202,31 @@ export class NotificationCore {
       // only the first sight of someone counts as them following you
       const stored = readKnownFollowers(pubkey);
       // Nothing recorded yet means this browser is seeing the followers for
-      // the first time — they are people who followed at some point in the
-      // past, not now, so they are remembered quietly. Announcing them would
-      // greet the first visit with every follower ever.
+      // the first time. Everyone who followed long ago is remembered quietly —
+      // a first visit greeting you with every follower you ever had is no
+      // use — but the last couple of days are still news, and were being
+      // swallowed: someone who followed an hour before this browser first
+      // looked showed up in other clients and never here.
       const firstLook = stored === null;
       const known = new Set(stored || []);
+      const now = Math.floor(Date.now() / 1000);
       // Relays answer partially, so a follower the first look missed turns up
       // on a later one and would read as brand new. Only a list published
-      // after this browser started watching can be news.
-      const since = firstLook ? Math.floor(Date.now() / 1000) : watchingSince(pubkey);
+      // after this browser started watching can be news — except on that
+      // first look, where the window is what is recent rather than nothing.
+      const since = firstLook ? now - FIRST_LOOK_WINDOW_S : watchingSince(pubkey);
       const follows: NostrNotification[] = [];
       for (const event of usable) {
         if (event.kind !== EVENT_KINDS.CONTACTS) continue;
         if (known.has(event.pubkey)) continue;
         known.add(event.pubkey);
-        if (!firstLook && (event.created_at || 0) > since) {
+        if ((event.created_at || 0) > since) {
           follows.push({ id: `follow-${event.pubkey}`, type: 'follow', event });
         }
       }
-      if (firstLook) PersistentCache.set(followersSinceKey(pubkey), since);
+      // Watching starts now, whatever was announced: the window above is for
+      // what to say on this first look, not for what counts as new later
+      if (firstLook) PersistentCache.set(followersSinceKey(pubkey), now);
       if (firstLook || follows.length || usable.some(e => e.kind === EVENT_KINDS.CONTACTS)) {
         writeKnownFollowers(pubkey, Array.from(known));
       }
