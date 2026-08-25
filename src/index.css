@@ -1564,15 +1564,15 @@ button.poll-option-vote:disabled {
   transition: transform var(--transition), box-shadow var(--transition);
 }
 
+/* No growing on hover. It was written for thumbnails; a picture the width of
+   the note has nowhere to grow into, so the 5% went under the frame's own
+   edge — taking the enlarge button in the corner with it. A picture that
+   lifts slightly says the same thing without moving anything. */
 .event-image-preview:hover {
-  transform: scale(1.05);
   box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
 }
 
-/* Inside a group there is no room to grow into — a cell lifting would climb
-   over the one next to it */
 .event-images:not([data-count="1"]) .event-image-preview:hover {
-  transform: none;
   box-shadow: none;
   opacity: 0.9;
 }
