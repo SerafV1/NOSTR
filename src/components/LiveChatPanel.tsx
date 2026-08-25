@@ -43,10 +43,21 @@ export interface PresentPerson {
   picture?: string;
 }
 
-/** When something was said, to the minute — seconds say nothing in a chat */
+/**
+ * When something was said, to the minute — seconds say nothing in a chat.
+ *
+ * On a 24-hour clock whatever the browser's language would prefer: in a
+ * column this narrow the "PM" is the first thing to be cut off, and half a
+ * 12-hour clock is worse than none — 6:30 read as morning where the person
+ * who said it saw 18:30.
+ */
 const atTime = (createdAt?: number): string =>
   createdAt
-    ? new Date(createdAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    ? new Date(createdAt * 1000).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23'
+      })
     : '';
 
 /** How many past zaps the chat keeps alongside the talk */
