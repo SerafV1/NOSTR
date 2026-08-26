@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NostrCore, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
 import { getRelayPool } from '../nostr/relay';
@@ -41,6 +41,14 @@ const BackupSettings: React.FC = () => {
   const awaiting = useRef<Part | null>(null);
 
   const pubkey = CredentialManager.getPublicKey();
+
+  // Escape closes the answer, as it closes everything else here
+  useEffect(() => {
+    if (!status) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setStatus(null); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [status]);
 
   /**
    * One file, holding whichever parts were asked for. A backup of everything
@@ -356,12 +364,26 @@ const BackupSettings: React.FC = () => {
         </div>
       )}
 
+      {/* Said in a window rather than a line on the page: an import publishes
+          to the relays, and the answer to "did that work" should not be
+          something to go looking for */}
       {status && (
-        <div className={`backup-status ${status.ok ? 'ok' : 'failed'}`}>
-          <span className="backup-status-mark">{status.ok ? '✓' : '✗'}</span>
-          {/* The parts read as a list when joined ("relays: …, follows: …")
-              and as a sentence when one stands alone */}
-          {status.text.charAt(0).toUpperCase() + status.text.slice(1)}
+        <div className="notice-overlay" onClick={() => setStatus(null)}>
+          <div
+            className={`notice-modal ${status.ok ? 'ok' : 'failed'}`}
+            role="alertdialog"
+            onClick={e => e.stopPropagation()}
+          >
+            <span className="notice-mark">{status.ok ? '✓' : '✗'}</span>
+            <p className="notice-text">
+              {/* The parts read as a list when joined ("relays: …, follows: …")
+                  and as a sentence when one stands alone */}
+              {status.text.charAt(0).toUpperCase() + status.text.slice(1)}
+            </p>
+            <button className="btn btn-primary btn-small" onClick={() => setStatus(null)} autoFocus>
+              OK
+            </button>
+          </div>
         </div>
       )}
     </section>

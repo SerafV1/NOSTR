@@ -2162,40 +2162,68 @@ button.poll-option-vote:disabled {
   cursor: default;
 }
 
-/* How the last export or import went: the same line either way, so there is
-   one place to look, with the mark and the colour saying which it was */
-.backup-status {
+/* How the last export or import went, said in a window: it is the answer to
+   "did that work", and an answer worth waiting for should not be a line
+   further down the page */
+.notice-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
   display: flex;
-  align-items: baseline;
-  gap: var(--spacing-sm);
-  margin: var(--spacing-md) 0 0;
-  padding: var(--spacing-sm) var(--spacing-md);
-  border-radius: var(--border-radius);
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-md);
+  background: rgba(0, 0, 0, 0.6);
+  animation: fadeIn 0.15s ease;
+}
+
+.notice-modal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md);
+  width: min(360px, 100%);
+  padding: var(--spacing-xl);
+  text-align: center;
+  border-radius: 16px;
+  background: var(--dark-bg);
   border: 1px solid var(--border-color);
-  background: var(--light-bg);
-  font-size: 0.9rem;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
 }
 
-.backup-status.ok {
-  border-color: rgba(74, 222, 128, 0.4);
-  color: var(--text-primary);
+.notice-modal.ok {
+  border-color: rgba(74, 222, 128, 0.45);
 }
 
-.backup-status.failed {
+.notice-modal.failed {
   border-color: rgba(248, 113, 113, 0.5);
-  color: var(--text-primary);
 }
 
-.backup-status-mark {
+.notice-mark {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 1.4rem;
   font-weight: 700;
 }
 
-.backup-status.ok .backup-status-mark {
+.notice-modal.ok .notice-mark {
   color: var(--success-color);
+  background: rgba(74, 222, 128, 0.12);
 }
 
-.backup-status.failed .backup-status-mark {
+.notice-modal.failed .notice-mark {
   color: var(--error-color);
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.notice-text {
+  margin: 0;
+  color: var(--text-primary);
+  line-height: 1.5;
 }
 
 .relay-url {
