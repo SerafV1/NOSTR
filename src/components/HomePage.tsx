@@ -92,6 +92,8 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   const eventsRef = useRef<NostrEventSigned[]>([]);
   const pendingRef = useRef<NostrEventSigned[]>([]);
   const repostsRef = useRef<{ repost: NostrEventSigned; original: NostrEventSigned }[]>([]);
+  // Which feed the last fetch was for, so a switch is told from a refresh
+  const lastFetchedFeed = useRef<string | null>(null);
   const followedRef = useRef<string[]>([]);
   const feedDropdownRef = useRef<HTMLDivElement>(null);
   eventsRef.current = events;
@@ -160,9 +162,22 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
 
   useEffect(() => {
     if (relaysConnected) {
-      // A feed already on screen is refreshed in the background; only an
-      // empty one, or a switch to another feed, replaces what is there
-      fetchFeed({ background: eventsRef.current.length > 0 });
+      // Refreshing the feed already on screen is one thing; switching to
+      // another is a different one. Only the first waits behind the button:
+      // a switch that "refreshed" left the old feed on screen and pushed the
+      // new one behind "show new posts", so choosing Global, or a hashtag of
+      // your own, appeared to do nothing at all.
+      const key = `${feedType}:${activeTopic || ''}`;
+      const firstLoad = lastFetchedFeed.current === null;
+      const sameFeed = lastFetchedFeed.current === key;
+      lastFetchedFeed.current = key;
+      // Kept behind the button in two cases: refreshing the feed already on
+      // screen, and the first load of a feed this browser has kept — which
+      // is what a reload is. A switch to another feed replaces.
+      const keepWhatIsThere = sameFeed
+        ? eventsRef.current.length > 0
+        : firstLoad && readCachedFeed().length > 0;
+      fetchFeed({ background: keepWhatIsThere });
     } else {
       // Relays not ready yet — show the cached feed instantly if we have one
       const cached = readCachedFeed();
@@ -512,18 +527,26 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     // posts, and the feed looked as though it had moved on its own.
     const cached = readCachedFeed();
     if (!background) {
+      // Arriving at this feed: whatever is on screen belongs to another one
       if (cached && cached.length > 0) {
-        noteFeedChange('cache shown', `${cached.length} posts, refreshing behind it`);
+        noteFeedChange('cache shown', `${cached.length} posts, replacing what was there`);
         setEvents(cached);
-        // Assigned here as well as during render: the merge below reads this
-        // to decide what counts as new, and no render has happened yet
         eventsRef.current = cached;
         setLoading(false);
-        background = true;
       } else {
         setLoading(true);
         setEvents([]); // Clear old events while loading new feed
+        eventsRef.current = [];
       }
+    } else if (eventsRef.current.length === 0 && cached && cached.length > 0) {
+      // Refreshing with nothing drawn yet — a reload. The kept feed goes up
+      // first, and what the fetch brings waits behind the button.
+      // Assigned to the ref as well: the merge below reads it to decide what
+      // counts as new, and no render has happened yet.
+      noteFeedChange('cache shown', `${cached.length} posts, refreshing behind it`);
+      setEvents(cached);
+      eventsRef.current = cached;
+      setLoading(false);
     }
     try {
       // Refresh the block list before the feed, so a block made in another
