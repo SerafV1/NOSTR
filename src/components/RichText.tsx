@@ -6,6 +6,7 @@ import { formatAddress } from '../utils/helpers';
 import { splitContentTokens, extractImageUrls, extractVideoUrls, extractStreamUrls } from '../utils/media';
 import InlineStreamPlayer from './InlineStreamPlayer';
 import InlineLiveStream from './InlineLiveStream';
+import { foldNostrWebLinks } from '../utils/nostrLinks';
 import { streamNaddrFromUrl } from '../utils/liveStream';
 import { customEmojiMap, splitCustomEmoji } from '../utils/customEmoji';
 import InlineQuotedNote from './InlineQuotedNote';
@@ -96,7 +97,7 @@ const decodeNoteRef = (ref: string): string | null => {
  * than as a raw "nostr:nprofile1…" string.
  */
 const RichText: React.FC<RichTextProps> = ({
-  content,
+  content: rawContent,
   onNavigateToProfile,
   onNavigateToNote,
   onNavigateToTopic,
@@ -106,6 +107,11 @@ const RichText: React.FC<RichTextProps> = ({
   eventTags,
   className
 }) => {
+  // A link that carries a note's or a person's nostr address — njump and the
+  // other web readers all hand those out — is read as that address, so it
+  // shows as the note or the mention instead of a bare URL
+  const content = foldNostrWebLinks(rawContent);
+
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
 
   // Resolve the people mentioned here, so they read as names. Whatever is

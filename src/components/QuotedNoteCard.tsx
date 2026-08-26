@@ -4,6 +4,7 @@ import { NostrCore, EventCache } from '../nostr/core';
 import { formatDate, formatAddress } from '../utils/helpers';
 import { extractImageUrls, extractVideoUrls, extractEmbeds, extractStreamUrls, stripMediaUrls } from '../utils/media';
 import { extractStreamRefs } from '../utils/liveStream';
+import { foldNostrWebLinks } from '../utils/nostrLinks';
 import RichText from './RichText';
 import MediaEmbed from './MediaEmbed';
 import VideoPlayer from './VideoPlayer';
@@ -59,30 +60,34 @@ const QuotedNoteCard: React.FC<QuotedNoteCardProps> = ({ event, repostedBy, dept
   useEffect(() => {
     setNested(null);
     if (depth >= MAX_QUOTE_DEPTH) return;
-    if (!/nostr:(?:note1|nevent1|naddr1)[a-z0-9]+/i.test(event.content)) return;
+    if (!/nostr:(?:note1|nevent1|naddr1)[a-z0-9]+/i.test(foldNostrWebLinks(event.content))) return;
     let cancelled = false;
-    NostrCore.resolveQuoteReference(event.content).then(resolved => {
+    NostrCore.resolveQuoteReference(foldNostrWebLinks(event.content)).then(resolved => {
       if (!cancelled && resolved) setNested(resolved);
     });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [event.id, depth]);
 
+  // Same reading as a note gets anywhere else: a web link to a note is that
+  // note, whichever site the link points at
+  const noteContent = foldNostrWebLinks(event.content);
+
   const displayName = profile?.display_name || profile?.name || formatAddress(event.pubkey);
   const handle = profile?.nip05 || formatAddress(event.pubkey);
   // Strip the embedded nostr: reference itself out of the displayed text —
   // otherwise the raw "nostr:nevent1qqs…" string shows up as garbage at
   // the end of the quote, on top of (or instead of) the nested card below
-  const text = stripMediaUrls(event.content).replace(/nostr:(?:note1|nevent1|naddr1)[a-z0-9]+/gi, '').trim();
-  const images = extractImageUrls(event.content);
-  const videos = extractVideoUrls(event.content);
-  const embeds = extractEmbeds(event.content);
+  const text = stripMediaUrls(noteContent).replace(/nostr:(?:note1|nevent1|naddr1)[a-z0-9]+/gi, '').trim();
+  const images = extractImageUrls(noteContent);
+  const videos = extractVideoUrls(noteContent);
+  const embeds = extractEmbeds(noteContent);
   // The reference to a live stream is taken out of the text above, the same
   // way a quoted note's reference is — so the quote has to show the stream
   // itself, or a post that shares one reads as a bare line of text once
   // somebody quotes it
-  const streamRefs = extractStreamRefs(event.content);
-  const streamUrls = extractStreamUrls(event.content);
+  const streamRefs = extractStreamRefs(noteContent);
+  const streamUrls = extractStreamUrls(noteContent);
 
   const reposterName = reposterProfile?.display_name || reposterProfile?.name || (repostedBy ? formatAddress(repostedBy) : '');
 

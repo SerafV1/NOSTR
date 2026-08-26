@@ -21,6 +21,7 @@ import ProfileHoverCard from './ProfileHoverCard';
 import VideoPlayer from './VideoPlayer';
 import InlineStreamPlayer from './InlineStreamPlayer';
 import InlineLiveStream from './InlineLiveStream';
+import { foldNostrWebLinks } from '../utils/nostrLinks';
 import { extractStreamRefs } from '../utils/liveStream';
 import QuotedNoteCard from './QuotedNoteCard';
 import LinkPreviewCard from './LinkPreviewCard';
@@ -46,6 +47,11 @@ const EventCard: React.FC<EventCardProps> = ({
   onNavigateToTopic,
   onRefresh
 }) => {
+  // A note pointed at through njump, primal, snort — anyone's web page —
+  // carries its nostr address inside the link. Read as that address, it shows
+  // as the note itself rather than as a line of URL nobody can follow here.
+  const noteContent = foldNostrWebLinks(event.content);
+
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [replyCount, setReplyCount] = useState(0);
   const [repostCount, setRepostCount] = useState(0);
@@ -111,7 +117,7 @@ const EventCard: React.FC<EventCardProps> = ({
   // Arrow keys step through the enlarged-image modal like a standard lightbox
   useEffect(() => {
     if (enlargedIndex === null) return;
-    const images = extractImageUrls(event.content);
+    const images = extractImageUrls(noteContent);
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setEnlargedIndex(null);
@@ -121,7 +127,7 @@ const EventCard: React.FC<EventCardProps> = ({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [enlargedIndex, event.content]);
+  }, [enlargedIndex, noteContent]);
 
   const loadPollResponses = async () => {
     try {
@@ -192,7 +198,7 @@ const EventCard: React.FC<EventCardProps> = ({
 
   const loadMentionedProfiles = async () => {
     try {
-      const mentions = extractMentions(event.content);
+      const mentions = extractMentions(noteContent);
       const profiles: Record<string, UserProfile> = {};
 
       for (const mention of mentions) {
@@ -224,9 +230,9 @@ const EventCard: React.FC<EventCardProps> = ({
     // be quoted as well as drawn: the card, and under it the live event
     // itself as a note — whose author is whatever service the stream runs
     // through. One stream, shown twice, the second time as a stranger.
-    const withoutStreams = extractStreamRefs(event.content).reduce(
+    const withoutStreams = extractStreamRefs(noteContent).reduce(
       (text, { naddr }) => text.replace(new RegExp(`(?:nostr:)?${naddr}`, 'gi'), ''),
-      event.content
+      noteContent
     );
 
     if (!quoteRefRegex('i').test(withoutStreams)) {
@@ -597,7 +603,7 @@ const EventCard: React.FC<EventCardProps> = ({
 
       <div className="event-content" onClick={() => onNavigateToNote?.(event.id)} style={{ cursor: 'pointer' }}>
         {(() => {
-          const stripped = stripMediaUrls(event.content);
+          const stripped = stripMediaUrls(noteContent);
           if (!stripped) return null;
           const isLong = stripped.length > CONTENT_TRUNCATE_LENGTH;
           const displayText = isLong && !expanded
@@ -695,11 +701,11 @@ const EventCard: React.FC<EventCardProps> = ({
               ))}
           </div>
         )}
-        {(extractImageUrls(event.content).length > 0 ||
-          extractVideoUrls(event.content).length > 0 ||
-          extractStreamUrls(event.content).length > 0 ||
-          extractStreamRefs(event.content).length > 0 ||
-          extractEmbeds(event.content).length > 0) && (
+        {(extractImageUrls(noteContent).length > 0 ||
+          extractVideoUrls(noteContent).length > 0 ||
+          extractStreamUrls(noteContent).length > 0 ||
+          extractStreamRefs(noteContent).length > 0 ||
+          extractEmbeds(noteContent).length > 0) && (
           <div className={`sensitive-media-wrapper ${isSensitive && !mediaRevealed ? 'blurred' : ''}`}>
             {isSensitive && !mediaRevealed && (
               <button
@@ -715,8 +721,8 @@ const EventCard: React.FC<EventCardProps> = ({
               </button>
             )}
 
-            {extractImageUrls(event.content).length > 0 && (() => {
-              const images = extractImageUrls(event.content);
+            {extractImageUrls(noteContent).length > 0 && (() => {
+              const images = extractImageUrls(noteContent);
               const hasMore = images.length > IMAGE_PREVIEW_LIMIT;
               const visibleImages = showAllImages ? images : images.slice(0, IMAGE_PREVIEW_LIMIT);
               return (
@@ -779,42 +785,42 @@ const EventCard: React.FC<EventCardProps> = ({
                 </>
               );
             })()}
-            {extractVideoUrls(event.content).length > 0 && (
+            {extractVideoUrls(noteContent).length > 0 && (
               <div className="event-videos" onClick={(e) => e.stopPropagation()}>
-                {extractVideoUrls(event.content).map((videoUrl) => (
+                {extractVideoUrls(noteContent).map((videoUrl) => (
                   <VideoPlayer key={videoUrl} src={videoUrl} className="event-video" />
                 ))}
               </div>
             )}
-            {extractStreamUrls(event.content).length > 0 && (
+            {extractStreamUrls(noteContent).length > 0 && (
               <div className="event-videos" onClick={(e) => e.stopPropagation()}>
-                {extractStreamUrls(event.content).map((streamUrl) => (
+                {extractStreamUrls(noteContent).map((streamUrl) => (
                   <InlineStreamPlayer key={streamUrl} src={streamUrl} className="event-video" />
                 ))}
               </div>
             )}
-            {extractStreamRefs(event.content).length > 0 && (
+            {extractStreamRefs(noteContent).length > 0 && (
               <div className="event-videos" onClick={(e) => e.stopPropagation()}>
-                {extractStreamRefs(event.content).map(({ url, naddr }) => (
+                {extractStreamRefs(noteContent).map(({ url, naddr }) => (
                   <InlineLiveStream key={naddr} naddr={naddr} href={url} />
                 ))}
               </div>
             )}
-            {extractEmbeds(event.content).length > 0 && (
+            {extractEmbeds(noteContent).length > 0 && (
               <div className="event-videos" onClick={(e) => e.stopPropagation()}>
-                {extractEmbeds(event.content).map((embed) => (
+                {extractEmbeds(noteContent).map((embed) => (
                   <MediaEmbed key={`${embed.kind}:${embed.id}`} embed={embed} />
                 ))}
               </div>
             )}
           </div>
         )}
-        {extractImageUrls(event.content).length === 0 &&
-          extractVideoUrls(event.content).length === 0 &&
-          extractEmbeds(event.content).length === 0 &&
-          extractPreviewLinkUrl(event.content) && (
+        {extractImageUrls(noteContent).length === 0 &&
+          extractVideoUrls(noteContent).length === 0 &&
+          extractEmbeds(noteContent).length === 0 &&
+          extractPreviewLinkUrl(noteContent) && (
             <div onClick={(e) => e.stopPropagation()}>
-              <LinkPreviewCard url={extractPreviewLinkUrl(event.content)!} />
+              <LinkPreviewCard url={extractPreviewLinkUrl(noteContent)!} />
             </div>
         )}
       </div>
@@ -947,14 +953,14 @@ const EventCard: React.FC<EventCardProps> = ({
           title={composeMode === 'reply' ? 'Reply' : 'Quote'}
           replyTo={composeMode === 'reply' ? event.id : undefined}
           quoteNoteId={composeMode === 'quote' ? event.id : undefined}
-          context={{ authorName: displayName, authorPicture: displayPicture, content: event.content }}
+          context={{ authorName: displayName, authorPicture: displayPicture, content: noteContent }}
           onClose={() => setComposeMode(null)}
           onPublished={handleComposePublished}
         />
       )}
 
       {enlargedIndex !== null && (() => {
-        const images = extractImageUrls(event.content);
+        const images = extractImageUrls(noteContent);
         const currentUrl = images[enlargedIndex];
         const hasPrev = enlargedIndex > 0;
         const hasNext = enlargedIndex < images.length - 1;
