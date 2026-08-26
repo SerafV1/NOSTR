@@ -2095,6 +2095,17 @@ button.poll-option-vote:disabled {
 }
 
 /* Beside a relay's address in settings, at the size of the text it sits in */
+/* What the last backup or import did */
+.relay-import-result {
+  margin: var(--spacing-sm) 0 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--border-radius);
+  background: var(--light-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
 .relay-url {
   display: flex;
   align-items: center;

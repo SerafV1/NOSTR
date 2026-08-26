@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { RelayMark } from './RelayBadges';
 import { getRelayPool } from '../nostr/relay';
 import { CredentialManager } from '../nostr/crypto';
@@ -50,6 +50,9 @@ const RelaySettings: React.FC = () => {
   const [newRelayUrl, setNewRelayUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // What a backup or an import just did, said once and plainly
+  const [importResult, setImportResult] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const [initialized, setInitialized] = useState(false);
 
   const loadRelays = async (fetchCapabilities: boolean = false) => {
@@ -103,6 +106,88 @@ const RelaySettings: React.FC = () => {
     const interval = setInterval(() => loadRelays(false), 5000);
     return () => clearInterval(interval);
   }, []);
+
+  /**
+   * A relay list is worth keeping: it is built up by hand over months, and a
+   * cleared browser or a second machine starts from the defaults. Written as
+   * a plain file rather than published to nostr — a relay list is how a
+   * client reaches nostr at all, and it should not need nostr to be restored.
+   */
+  const handleBackup = () => {
+    const backup = {
+      app: 'razr',
+      kind: 'relays',
+      savedAt: new Date().toISOString(),
+      relays: relays.map(relay => ({
+        url: relay.url,
+        read: relay.read !== false,
+        write: relay.write !== false
+      }))
+    };
+
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `razr-relays-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    // The blob stays in memory until this is dropped
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setImportResult(`Saved ${backup.relays.length} relays`);
+  };
+
+  /**
+   * Restoring adds what the file names and leaves everything already here
+   * alone: an import is nearly always "these as well", and a list that
+   * replaced the current one would take out the relay the file was copied
+   * from. Removing is what the Remove buttons are for.
+   */
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // so the same file can be chosen again
+    if (!file) return;
+
+    setLoading(true);
+    setError(null);
+    setImportResult(null);
+    try {
+      const parsed = JSON.parse(await file.text()) as {
+        relays?: { url?: string; read?: boolean; write?: boolean }[];
+      };
+      const wanted = (parsed.relays || []).filter(
+        r => typeof r.url === 'string' && /^wss?:\/\//i.test(r.url)
+      );
+      if (wanted.length === 0) {
+        setError('That file lists no relays');
+        return;
+      }
+
+      const relayPool = getRelayPool();
+      const already = new Set(relays.map(r => r.url.replace(/\/$/, '')));
+      let added = 0;
+      let updated = 0;
+
+      for (const relay of wanted) {
+        const url = relay.url!.replace(/\/$/, '');
+        const read = relay.read !== false;
+        const write = relay.write !== false;
+        if (already.has(url)) {
+          relayPool.updateRelayCapabilities(url, read, write);
+          updated++;
+        } else if (await relayPool.addRelay(url, { read, write })) {
+          added++;
+        }
+      }
+
+      loadRelays(true);
+      setImportResult(`${added} added, ${updated} already here`);
+    } catch (err) {
+      console.error('Error importing relays:', err);
+      setError('That file could not be read as a relay backup');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleAddRelay = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -216,7 +301,30 @@ const RelaySettings: React.FC = () => {
         >
           📋 Debug Console
         </button>
+        <button
+          className="btn btn-secondary"
+          onClick={handleBackup}
+          disabled={relays.length === 0}
+        >
+          ⬇ Back up
+        </button>
+        <button
+          className="btn btn-secondary"
+          onClick={() => importInputRef.current?.click()}
+          disabled={loading}
+        >
+          ⬆ Import
+        </button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onChange={handleImportFile}
+        />
       </div>
+
+      {importResult && <div className="relay-import-result">{importResult}</div>}
 
       <form className="add-relay-form" onSubmit={handleAddRelay}>
         <div className="relay-input-group">
