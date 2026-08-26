@@ -5,7 +5,7 @@ import { NostrCore, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
 import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr } from '../utils/liveStream';
 import { formatAddress } from '../utils/helpers';
-import LiveVideoPlayer from './LiveVideoPlayer';
+import StreamSurface from './StreamSurface';
 import LiveChatPanel, { PresentPerson } from './LiveChatPanel';
 import LiveZappersPanel from './LiveZappersPanel';
 import ZapButton from './ZapButton';
@@ -284,7 +284,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                     </button>
                   </div>
                 )}
-                <LiveVideoPlayer
+                <StreamSurface
                   key="player"
                   src={stream.streamingUrl}
                   className="live-stream-video"

@@ -2,8 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { NostrCore } from '../nostr/core';
 import { LiveStreamInfo, decodeLiveNaddr, parseLiveEvent, unplayableReason } from '../utils/liveStream';
+import { streamEmbed } from '../utils/streamEmbed';
 import { formatAddress } from '../utils/helpers';
-import LiveVideoPlayer from './LiveVideoPlayer';
+import StreamSurface from './StreamSurface';
 import { PlayIcon } from './Icons';
 
 /**
@@ -144,7 +145,9 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
   // a play button; the rest is a card that leads to the page
   const playable = stream.status === 'live'
     && !!stream.streamingUrl
-    && !unplayableReason(stream.streamingUrl);
+    // A twitch/kick/youtube address plays through that service's own player,
+    // so the checks a playlist has to pass don't apply to it
+    && (!!streamEmbed(stream.streamingUrl) || !unplayableReason(stream.streamingUrl));
 
   if (playing && playable) {
     return (
@@ -171,7 +174,7 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
               </button>
             </div>
           )}
-          <LiveVideoPlayer src={stream.streamingUrl} className="inline-stream-video" />
+          <StreamSurface src={stream.streamingUrl} className="inline-stream-video" />
         </div>
       </div>
     );
@@ -219,7 +222,7 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
             <button className="image-modal-close" onClick={() => setZoomed(false)}>✕</button>
             {playable ? (
               <div className="inline-stream-large">
-                <LiveVideoPlayer src={stream.streamingUrl} className="inline-stream-video" />
+                <StreamSurface src={stream.streamingUrl} className="inline-stream-video" />
               </div>
             ) : (
               <img src={stream.image} alt={stream.title} className="image-modal-img" />

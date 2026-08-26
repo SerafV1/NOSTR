@@ -7015,6 +7015,67 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   display: block;
 }
 
+/* A stream watched through the service's own player — twitch, kick, youtube.
+   The iframe fills the same frame our player would, so minimising, docking
+   and enlarging all keep working the way they do for a playlist. */
+.stream-embed {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+.stream-embed .stream-embed-frame {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+}
+
+.stream-embed .stream-embed-frame iframe {
+  border-radius: 0;
+}
+
+/* Sits over the other player's picture, so it must not swallow the presses
+   meant for the controls underneath — only its own buttons take them */
+.stream-embed-marks {
+  position: absolute;
+  top: var(--spacing-sm);
+  left: var(--spacing-sm);
+  right: var(--spacing-sm);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.stream-embed-live {
+  background: var(--error-color, #e0245e);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.stream-embed-minimize {
+  pointer-events: auto;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 4px 7px;
+}
+
+.stream-embed-minimize:hover {
+  background: rgba(0, 0, 0, 0.85);
+}
+
 /* A stream waits for a press before it starts pulling: shown as a plate with
    a play button and where the stream comes from, at the shape of the player
    that replaces it */

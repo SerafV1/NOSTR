@@ -33,6 +33,17 @@ export interface LiveStreamInfo {
 const LIVE_STALE_SECONDS = 3 * 60 * 60;
 
 /**
+ * A broadcast carried on twitch, kick or youtube rather than on a playlist of
+ * its own. Those events are usually published once when the channel goes on
+ * air and never touched again, so the freshness rule below — which is there to
+ * hide a playlist that has gone dead — would bury a broadcast that is running.
+ * There is nothing to go dead here: the service's own player says whether the
+ * channel is on air.
+ */
+const HOSTED_ELSEWHERE = /https?:\/\/(?:[\w-]+\.)*(?:twitch\.tv|kick\.com|youtube\.com|youtu\.be|vimeo\.com)\//i;
+const HOSTED_STALE_SECONDS = 7 * 24 * 60 * 60;
+
+/**
  * Why a stream cannot be played here, if it cannot. Two cases the browser
  * will never get past, and both look identical from inside the player: it
  * simply never receives a byte, and the page sits on "Connecting…" forever.
@@ -75,7 +86,9 @@ export function isEffectivelyLive(event: NostrEventSigned): boolean {
   const status = event.tags.find(t => t[0] === 'status')?.[1];
   if (status !== 'live') return false;
   const age = Math.floor(Date.now() / 1000) - (event.created_at || 0);
-  return age <= LIVE_STALE_SECONDS;
+  const streaming = event.tags.find(t => t[0] === 'streaming')?.[1] || '';
+  const window = HOSTED_ELSEWHERE.test(streaming) ? HOSTED_STALE_SECONDS : LIVE_STALE_SECONDS;
+  return age <= window;
 }
 
 // NIP-53 live event (kind 30311) is addressable — parse its tags into a

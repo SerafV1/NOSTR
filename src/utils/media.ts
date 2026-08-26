@@ -49,6 +49,7 @@ export type EmbedKind =
   | 'youtube'
   | 'vimeo'
   | 'twitch'
+  | 'kick'
   | 'spotify'
   | 'soundcloud'
   | 'applemusic'
@@ -146,6 +147,18 @@ const EMBED_PROVIDERS: EmbedProvider[] = [
         height: null,
       };
     },
+  },
+  {
+    kind: 'kick',
+    // Kick carries more of the live events on nostr than Twitch and YouTube
+    // together, and its player takes the channel name the same way
+    source: 'https?:\\/\\/(?:www\\.)?kick\\.com\\/([A-Za-z0-9_-]{2,32})[^\\s]*',
+    build: ([, channel]) => ({
+      id: `channel:${channel}`,
+      src: `https://player.kick.com/${channel}?autoplay=false`,
+      title: `Kick — ${channel}`,
+      height: null,
+    }),
   },
   {
     kind: 'spotify',
