@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import RelaySettings from './RelaySettings';
 import MediaServerSettings from './MediaServerSettings';
 import MutedSettings from './MutedSettings';
+import BackupSettings from './BackupSettings';
 
 interface SettingsPageProps {
   relaysConnected: boolean;
@@ -12,7 +13,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ relaysConnected }) => {
   const location = useLocation();
   const section = location.pathname.endsWith('/media')
     ? 'media'
-    : location.pathname.endsWith('/muted') ? 'muted' : 'relays';
+    : location.pathname.endsWith('/muted')
+      ? 'muted'
+      : location.pathname.endsWith('/backup') ? 'backup' : 'relays';
 
   return (
     <div className="settings-page">
@@ -38,11 +41,18 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ relaysConnected }) => {
           >
             Muted
           </Link>
+          <Link
+            to="/settings/backup"
+            className={`settings-tab ${section === 'backup' ? 'active' : ''}`}
+          >
+            Backup
+          </Link>
         </div>
 
         {section === 'relays' && <RelaySettings />}
         {section === 'media' && <MediaServerSettings />}
         {section === 'muted' && <MutedSettings relaysConnected={relaysConnected} />}
+        {section === 'backup' && <BackupSettings />}
       </div>
     </div>
   );

@@ -88,6 +88,84 @@ export class NostrCore {
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Backing an account up, and putting it back
+  //
+  // Everything below is the account's own lists: who it follows, who it has
+  // muted, what its profile says. All three are replaceable events, which
+  // means restoring one is publishing over whatever the relays hold — so
+  // restoring merges rather than replaces, and never builds from an empty
+  // base it could not read.
+  // ---------------------------------------------------------------------
+
+  /** The follow list as it stands, or null when the relays would not say */
+  static async readFollowList(): Promise<{ tags: string[][]; content: string } | null> {
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey) return null;
+    const { event, safe } = await this.resolveListBase(EVENT_KINDS.CONTACTS, ownPubkey);
+    if (!event && !safe) return null;
+    return { tags: event?.tags || [], content: event?.content || '' };
+  }
+
+  /** The mute list as it stands, or null when the relays would not say */
+  static async readMuteList(): Promise<{ tags: string[][]; content: string } | null> {
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey) return null;
+    const { event, safe } = await this.resolveListBase(EVENT_KINDS.MUTE_LIST, ownPubkey);
+    if (!event && !safe) return null;
+    return { tags: event?.tags || [], content: event?.content || '' };
+  }
+
+  /**
+   * Add these people to the follow list, keeping everyone already in it.
+   * Returns how many were not there before.
+   */
+  static async restoreFollows(pubkeys: string[]): Promise<number> {
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey) throw new Error('Public key not found');
+
+    const { event: existing, safe } = await this.resolveListBase(EVENT_KINDS.CONTACTS, ownPubkey);
+    if (!existing && !safe) throw new Error(this.CONTACT_LIST_UNAVAILABLE);
+
+    const tags = existing ? [...existing.tags] : [];
+    const already = new Set(tags.filter(t => t[0] === 'p').map(t => t[1]));
+    let added = 0;
+    for (const pubkey of pubkeys) {
+      if (!/^[0-9a-f]{64}$/i.test(pubkey) || already.has(pubkey)) continue;
+      tags.push(['p', pubkey]);
+      already.add(pubkey);
+      added++;
+    }
+
+    if (added > 0) await this.publishContactList(tags, existing?.content || '');
+    return added;
+  }
+
+  /** The same for the mute list */
+  static async restoreMutes(pubkeys: string[]): Promise<number> {
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey) throw new Error('Public key not found');
+
+    const { event: existing, safe } = await this.resolveListBase(EVENT_KINDS.MUTE_LIST, ownPubkey);
+    if (!existing && !safe) throw new Error(this.LIST_UNAVAILABLE);
+
+    const tags = existing ? [...existing.tags] : [];
+    const already = new Set(tags.filter(t => t[0] === 'p').map(t => t[1]));
+    let added = 0;
+    for (const pubkey of pubkeys) {
+      if (!/^[0-9a-f]{64}$/i.test(pubkey) || already.has(pubkey)) continue;
+      tags.push(['p', pubkey]);
+      already.add(pubkey);
+      added++;
+    }
+
+    if (added > 0) {
+      await this.publishReplaceableList(EVENT_KINDS.MUTE_LIST, tags, existing?.content || '');
+      this.mutedCache = null;
+    }
+    return added;
+  }
+
   /**
    * The event being replied to, so a reply can be written in the same form.
    * Whatever is on screen has just been rendered, so the cache almost always

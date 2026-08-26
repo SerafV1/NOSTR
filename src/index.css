@@ -2095,6 +2095,42 @@ button.poll-option-vote:disabled {
 }
 
 /* Beside a relay's address in settings, at the size of the text it sits in */
+/* A line of explanation under a settings heading */
+.settings-note {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin: 0 0 var(--spacing-md);
+}
+
+/* Choosing what to put back from a file */
+.backup-restore {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--light-bg);
+}
+
+.backup-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.backup-choice input {
+  width: auto;
+  margin: 0;
+}
+
+.backup-choice input:disabled + * ,
+.backup-choice:has(input:disabled) {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* What the last backup or import did */
 .relay-import-result {
   margin: var(--spacing-sm) 0 0;
