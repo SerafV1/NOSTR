@@ -71,12 +71,40 @@ export class RelayPool {
       if (stored) {
         this.relayConfigs = JSON.parse(stored);
         console.log(`[Relay] Loaded ${this.relayConfigs.length} relays from storage`);
+        this.secureSavedRelays();
       }
       this.migrateRetiredRelays();
       this.migrateBrokenZapStreamRelay();
     } catch (error) {
       console.error(`[Relay] Failed to load relay configs: ${error}`);
     }
+  }
+
+  /**
+   * A ws:// relay saved from before — typed in, or imported from someone
+   * else's list — cannot be reached from an https page at all: the browser
+   * blocks it and reports the page as insecure for as long as it is there.
+   * Kept as the same relay, asked for securely.
+   */
+  private secureSavedRelays(): void {
+    if (typeof location === 'undefined' || location.protocol !== 'https:') return;
+
+    let changed = false;
+    const seen = new Set<string>();
+    this.relayConfigs = this.relayConfigs.filter(config => {
+      const secure = config.url.replace(/^ws:\/\//i, 'wss://');
+      if (secure !== config.url) {
+        console.warn(`[Relay] ${config.url} upgraded to ${secure}: https pages cannot open ws://`);
+        config.url = secure;
+        changed = true;
+      }
+      // The upgrade can land on one already in the list
+      if (seen.has(config.url)) return false;
+      seen.add(config.url);
+      return true;
+    });
+
+    if (changed) localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.relayConfigs));
   }
 
   /**
@@ -155,6 +183,15 @@ export class RelayPool {
    */
   async addRelay(url: string, config?: Partial<RelayConfig>): Promise<boolean> {
     try {
+      // A plain ws:// relay cannot be reached from a page served over https:
+      // the browser blocks the connection as mixed content and reports the
+      // whole page as insecure. Asking for the secure form of the same relay
+      // is the only version that can work here at all.
+      if (typeof location !== 'undefined' && location.protocol === 'https:' && /^ws:\/\//i.test(url)) {
+        console.warn(`[Relay] ${url} cannot be reached over https — using wss instead`);
+        url = url.replace(/^ws:\/\//i, 'wss://');
+      }
+
       // Only check if relay is already actively connected (in relays Map)
       if (this.relays.has(url)) {
         console.log(`[Relay] ${url} already connected`);
