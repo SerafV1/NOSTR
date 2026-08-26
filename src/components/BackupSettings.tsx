@@ -32,8 +32,8 @@ interface AccountBackup {
  */
 const BackupSettings: React.FC = () => {
   const [busy, setBusy] = useState<'saving' | 'restoring' | null>(null);
-  const [said, setSaid] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // How the last export or import went — one line, and whether it worked
+  const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [file, setFile] = useState<AccountBackup | null>(null);
   const [restore, setRestore] = useState({ profile: true, follows: true, muted: true, relays: true });
   const fileInput = useRef<HTMLInputElement>(null);
@@ -51,8 +51,7 @@ const BackupSettings: React.FC = () => {
   const saveParts = async (parts: Part[], name: string) => {
     if (!pubkey) return;
     setBusy('saving');
-    setError(null);
-    setSaid(null);
+    setStatus(null);
     try {
       const wants = new Set(parts);
       const peopleIn = (list: { tags: string[][] } | null) =>
@@ -100,10 +99,13 @@ const BackupSettings: React.FC = () => {
         backup.muted ? `${backup.muted.length} muted` : null,
         backup.relays ? `${backup.relays.length} relays` : null
       ].filter(Boolean);
-      setSaid(`Saved: ${held.join(', ')}`);
+      setStatus({ ok: true, text: `Saved to your downloads — ${held.join(', ')}` });
     } catch (err) {
       console.error('Backup failed:', err);
-      setError(err instanceof Error ? err.message : 'Could not read your lists to save them');
+      setStatus({
+        ok: false,
+        text: err instanceof Error ? err.message : 'Could not read your lists to save them'
+      });
     } finally {
       setBusy(null);
     }
@@ -113,8 +115,7 @@ const BackupSettings: React.FC = () => {
     const chosen = e.target.files?.[0];
     e.target.value = '';
     if (!chosen) return;
-    setError(null);
-    setSaid(null);
+    setStatus(null);
 
     // One list at a time goes straight back; a whole account is offered as a
     // set of choices first, since it can carry four of them at once
@@ -128,17 +129,19 @@ const BackupSettings: React.FC = () => {
     try {
       const parsed = JSON.parse(await chosen.text()) as AccountBackup;
       if (parsed.kind !== 'account' || !parsed.pubkey) {
-        setError('That file is not an account backup');
+        setStatus({ ok: false, text: 'That file is not a backup from here' });
         return;
       }
       setFile(parsed);
     } catch {
-      setError('That file could not be read');
+      setStatus({ ok: false, text: 'That file could not be read' });
     }
   };
 
   /** Put one list back, and say what that did */
   const restorePart = async (part: Part, data: AccountBackup): Promise<string> => {
+    // Each says both halves: what changed, and what was already the same.
+    // "0 added" on its own reads like a failure when it is the opposite.
     if (part === 'profile') {
       if (!data.profile) throw new Error('That file holds no profile');
       await NostrCore.publishProfile(data.profile);
@@ -146,11 +149,13 @@ const BackupSettings: React.FC = () => {
     }
     if (part === 'follows') {
       if (!data.follows?.length) throw new Error('That file holds no follows');
-      return `${await NostrCore.restoreFollows(data.follows)} follows added`;
+      const added = await NostrCore.restoreFollows(data.follows);
+      return `follows: ${added} added, ${data.follows.length - added} already followed`;
     }
     if (part === 'muted') {
       if (!data.muted?.length) throw new Error('That file holds nobody muted');
-      return `${await NostrCore.restoreMutes(data.muted)} muted added`;
+      const added = await NostrCore.restoreMutes(data.muted);
+      return `muted: ${added} added, ${data.muted.length - added} already muted`;
     }
     if (!data.relays?.length) throw new Error('That file holds no relays');
     const pool = getRelayPool();
@@ -161,7 +166,7 @@ const BackupSettings: React.FC = () => {
       if (already.has(url)) pool.updateRelayCapabilities(url, relay.read, relay.write);
       else if (await pool.addRelay(url, { read: relay.read, write: relay.write })) added++;
     }
-    return `${added} relays added`;
+    return `relays: ${added} added, ${data.relays.length - added} already here`;
   };
 
   /**
@@ -171,15 +176,14 @@ const BackupSettings: React.FC = () => {
    */
   const importPart = async (part: Part, chosen: File) => {
     setBusy('restoring');
-    setError(null);
-    setSaid(null);
+    setStatus(null);
     try {
       const parsed = JSON.parse(await chosen.text()) as AccountBackup;
       if (parsed.kind !== 'account') throw new Error('That file is not a backup from here');
-      setSaid(await restorePart(part, parsed));
+      setStatus({ ok: true, text: await restorePart(part, parsed) });
     } catch (err) {
       console.error('Import failed:', err);
-      setError(err instanceof Error ? err.message : 'That file could not be read');
+      setStatus({ ok: false, text: err instanceof Error ? err.message : 'That file could not be read' });
     } finally {
       setBusy(null);
     }
@@ -188,8 +192,7 @@ const BackupSettings: React.FC = () => {
   const handleRestore = async () => {
     if (!file) return;
     setBusy('restoring');
-    setError(null);
-    setSaid(null);
+    setStatus(null);
     const done: string[] = [];
     try {
       const wanted: Part[] = [
@@ -200,11 +203,18 @@ const BackupSettings: React.FC = () => {
       ].filter(Boolean) as Part[];
 
       for (const part of wanted) done.push(await restorePart(part, file));
-      setSaid(done.length ? `Restored: ${done.join(', ')}` : 'Nothing was selected');
+      setStatus(
+        done.length
+          ? { ok: true, text: `Restored — ${done.join(', ')}` }
+          : { ok: false, text: 'Nothing was ticked, so nothing was restored' }
+      );
       setFile(null);
     } catch (err) {
       console.error('Restore failed:', err);
-      setError(err instanceof Error ? err.message : 'Could not restore from that file');
+      setStatus({
+        ok: false,
+        text: err instanceof Error ? err.message : 'Could not restore from that file'
+      });
     } finally {
       setBusy(null);
     }
@@ -346,8 +356,14 @@ const BackupSettings: React.FC = () => {
         </div>
       )}
 
-      {said && <div className="relay-import-result">{said}</div>}
-      {error && <div className="login-error">{error}</div>}
+      {status && (
+        <div className={`backup-status ${status.ok ? 'ok' : 'failed'}`}>
+          <span className="backup-status-mark">{status.ok ? '✓' : '✗'}</span>
+          {/* The parts read as a list when joined ("relays: …, follows: …")
+              and as a sentence when one stands alone */}
+          {status.text.charAt(0).toUpperCase() + status.text.slice(1)}
+        </div>
+      )}
     </section>
   );
 };

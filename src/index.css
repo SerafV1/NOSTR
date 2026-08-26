@@ -2162,15 +2162,40 @@ button.poll-option-vote:disabled {
   cursor: default;
 }
 
-/* What the last backup or import did */
-.relay-import-result {
-  margin: var(--spacing-sm) 0 0;
+/* How the last export or import went: the same line either way, so there is
+   one place to look, with the mark and the colour saying which it was */
+.backup-status {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  margin: var(--spacing-md) 0 0;
   padding: var(--spacing-sm) var(--spacing-md);
   border-radius: var(--border-radius);
-  background: var(--light-bg);
   border: 1px solid var(--border-color);
-  color: var(--text-secondary);
-  font-size: 0.85rem;
+  background: var(--light-bg);
+  font-size: 0.9rem;
+}
+
+.backup-status.ok {
+  border-color: rgba(74, 222, 128, 0.4);
+  color: var(--text-primary);
+}
+
+.backup-status.failed {
+  border-color: rgba(248, 113, 113, 0.5);
+  color: var(--text-primary);
+}
+
+.backup-status-mark {
+  font-weight: 700;
+}
+
+.backup-status.ok .backup-status-mark {
+  color: var(--success-color);
+}
+
+.backup-status.failed .backup-status-mark {
+  color: var(--error-color);
 }
 
 .relay-url {
