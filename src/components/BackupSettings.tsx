@@ -37,6 +37,8 @@ const BackupSettings: React.FC = () => {
   const [file, setFile] = useState<AccountBackup | null>(null);
   const [restore, setRestore] = useState({ profile: true, follows: true, muted: true, relays: true });
   const fileInput = useRef<HTMLInputElement>(null);
+  // Which row's Import is waiting for a file — null means the whole account
+  const awaiting = useRef<Part | null>(null);
 
   const pubkey = CredentialManager.getPublicKey();
 
@@ -113,6 +115,16 @@ const BackupSettings: React.FC = () => {
     if (!chosen) return;
     setError(null);
     setSaid(null);
+
+    // One list at a time goes straight back; a whole account is offered as a
+    // set of choices first, since it can carry four of them at once
+    const part = awaiting.current;
+    awaiting.current = null;
+    if (part) {
+      await importPart(part, chosen);
+      return;
+    }
+
     try {
       const parsed = JSON.parse(await chosen.text()) as AccountBackup;
       if (parsed.kind !== 'account' || !parsed.pubkey) {
@@ -125,6 +137,54 @@ const BackupSettings: React.FC = () => {
     }
   };
 
+  /** Put one list back, and say what that did */
+  const restorePart = async (part: Part, data: AccountBackup): Promise<string> => {
+    if (part === 'profile') {
+      if (!data.profile) throw new Error('That file holds no profile');
+      await NostrCore.publishProfile(data.profile);
+      return 'profile restored';
+    }
+    if (part === 'follows') {
+      if (!data.follows?.length) throw new Error('That file holds no follows');
+      return `${await NostrCore.restoreFollows(data.follows)} follows added`;
+    }
+    if (part === 'muted') {
+      if (!data.muted?.length) throw new Error('That file holds nobody muted');
+      return `${await NostrCore.restoreMutes(data.muted)} muted added`;
+    }
+    if (!data.relays?.length) throw new Error('That file holds no relays');
+    const pool = getRelayPool();
+    const already = new Set(pool.getRelayConfigs().map(c => c.url.replace(/\/$/, '')));
+    let added = 0;
+    for (const relay of data.relays) {
+      const url = relay.url.replace(/\/$/, '');
+      if (already.has(url)) pool.updateRelayCapabilities(url, relay.read, relay.write);
+      else if (await pool.addRelay(url, { read: relay.read, write: relay.write })) added++;
+    }
+    return `${added} relays added`;
+  };
+
+  /**
+   * Importing one list: the file is read and that part of it put back at
+   * once. Nothing else in the file is touched, so a whole-account backup can
+   * be used to restore only the relays from it.
+   */
+  const importPart = async (part: Part, chosen: File) => {
+    setBusy('restoring');
+    setError(null);
+    setSaid(null);
+    try {
+      const parsed = JSON.parse(await chosen.text()) as AccountBackup;
+      if (parsed.kind !== 'account') throw new Error('That file is not a backup from here');
+      setSaid(await restorePart(part, parsed));
+    } catch (err) {
+      console.error('Import failed:', err);
+      setError(err instanceof Error ? err.message : 'That file could not be read');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const handleRestore = async () => {
     if (!file) return;
     setBusy('restoring');
@@ -132,29 +192,14 @@ const BackupSettings: React.FC = () => {
     setSaid(null);
     const done: string[] = [];
     try {
-      if (restore.profile && file.profile) {
-        await NostrCore.publishProfile(file.profile);
-        done.push('profile');
-      }
-      if (restore.follows && file.follows?.length) {
-        const added = await NostrCore.restoreFollows(file.follows);
-        done.push(`${added} follows added`);
-      }
-      if (restore.muted && file.muted?.length) {
-        const added = await NostrCore.restoreMutes(file.muted);
-        done.push(`${added} muted added`);
-      }
-      if (restore.relays && file.relays?.length) {
-        const pool = getRelayPool();
-        const already = new Set(pool.getRelayConfigs().map(c => c.url.replace(/\/$/, '')));
-        let added = 0;
-        for (const relay of file.relays) {
-          const url = relay.url.replace(/\/$/, '');
-          if (already.has(url)) pool.updateRelayCapabilities(url, relay.read, relay.write);
-          else if (await pool.addRelay(url, { read: relay.read, write: relay.write })) added++;
-        }
-        done.push(`${added} relays added`);
-      }
+      const wanted: Part[] = [
+        restore.profile && file.profile ? 'profile' : null,
+        restore.follows && file.follows?.length ? 'follows' : null,
+        restore.muted && file.muted?.length ? 'muted' : null,
+        restore.relays && file.relays?.length ? 'relays' : null
+      ].filter(Boolean) as Part[];
+
+      for (const part of wanted) done.push(await restorePart(part, file));
       setSaid(done.length ? `Restored: ${done.join(', ')}` : 'Nothing was selected');
       setFile(null);
     } catch (err) {
@@ -182,21 +227,54 @@ const BackupSettings: React.FC = () => {
         Your key is not in it: a backup that could post as you is a backup worth stealing.
       </p>
 
-      <div className="relay-actions">
-        <button
-          className="btn btn-primary"
-          onClick={() => saveParts(['profile', 'follows', 'muted', 'relays'], 'account')}
-          disabled={busy !== null}
-        >
-          {busy === 'saving' ? 'Reading your lists…' : '⬇ Back up everything'}
-        </button>
-        <button
-          className="btn btn-secondary"
-          onClick={() => fileInput.current?.click()}
-          disabled={busy !== null}
-        >
-          ⬆ Import
-        </button>
+      {/* Each list on its own, for carrying one somewhere without the rest.
+          A row's Import takes that part out of whatever file it is given —
+          including a whole-account backup — and leaves the rest alone. */}
+      <div className="backup-rows">
+        {([
+          ['profile', 'Profile'],
+          ['follows', 'Follows'],
+          ['muted', 'Muted'],
+          ['relays', 'Relays']
+        ] as [Part, string][]).map(([part, label]) => (
+          <div className="backup-row" key={part}>
+            <span className="backup-row-name">{label}</span>
+            <button
+              className="btn btn-secondary btn-small"
+              onClick={() => saveParts([part], part)}
+              disabled={busy !== null}
+            >
+              ⬇ Export
+            </button>
+            <button
+              className="btn btn-secondary btn-small"
+              onClick={() => { awaiting.current = part; fileInput.current?.click(); }}
+              disabled={busy !== null}
+            >
+              ⬆ Import
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="backup-rows backup-rows-all">
+        <div className="backup-row">
+          <span className="backup-row-name">Everything</span>
+          <button
+            className="btn btn-secondary btn-small"
+            onClick={() => saveParts(['profile', 'follows', 'muted', 'relays'], 'account')}
+            disabled={busy !== null}
+          >
+            {busy === 'saving' ? 'Reading…' : '⬇ Export'}
+          </button>
+          <button
+            className="btn btn-secondary btn-small"
+            onClick={() => { awaiting.current = null; fileInput.current?.click(); }}
+            disabled={busy !== null}
+          >
+            ⬆ Import
+          </button>
+        </div>
         <input
           ref={fileInput}
           type="file"
@@ -204,24 +282,6 @@ const BackupSettings: React.FC = () => {
           hidden
           onChange={handleChosen}
         />
-      </div>
-
-      {/* And one at a time, for putting a single list back somewhere else
-          without carrying the rest of the account along with it */}
-      <div className="relay-actions backup-parts">
-        <span className="backup-parts-label">Or one at a time:</span>
-        <button className="btn btn-secondary btn-small" onClick={() => saveParts(['profile'], 'profile')} disabled={busy !== null}>
-          Profile
-        </button>
-        <button className="btn btn-secondary btn-small" onClick={() => saveParts(['follows'], 'follows')} disabled={busy !== null}>
-          Follows
-        </button>
-        <button className="btn btn-secondary btn-small" onClick={() => saveParts(['muted'], 'muted')} disabled={busy !== null}>
-          Muted
-        </button>
-        <button className="btn btn-secondary btn-small" onClick={() => saveParts(['relays'], 'relays')} disabled={busy !== null}>
-          Relays
-        </button>
       </div>
 
       {file && (
