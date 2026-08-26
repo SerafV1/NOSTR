@@ -4,6 +4,8 @@ import { CredentialManager } from '../nostr/crypto';
 import { getRelayPool } from '../nostr/relay';
 import { UserProfile } from '../types';
 
+type Part = 'profile' | 'follows' | 'muted' | 'relays';
+
 interface AccountBackup {
   app: string;
   kind: string;
@@ -38,20 +40,29 @@ const BackupSettings: React.FC = () => {
 
   const pubkey = CredentialManager.getPublicKey();
 
-  const handleBackup = async () => {
+  /**
+   * One file, holding whichever parts were asked for. A backup of everything
+   * and a backup of one list are the same shape — the parts not asked for
+   * are simply absent — so the same import reads either, and a file with only
+   * relays in it cannot touch a follow list by accident.
+   */
+  const saveParts = async (parts: Part[], name: string) => {
     if (!pubkey) return;
     setBusy('saving');
     setError(null);
     setSaid(null);
     try {
-      const [profile, follows, muted] = await Promise.all([
-        NostrCore.fetchUserProfile(pubkey).catch(() => EventCache.getProfile(pubkey) || null),
-        NostrCore.readFollowList(),
-        NostrCore.readMuteList()
-      ]);
-
+      const wants = new Set(parts);
       const peopleIn = (list: { tags: string[][] } | null) =>
         (list?.tags || []).filter(t => t[0] === 'p' && t[1]).map(t => t[1]);
+
+      const [profile, follows, muted] = await Promise.all([
+        wants.has('profile')
+          ? NostrCore.fetchUserProfile(pubkey).catch(() => EventCache.getProfile(pubkey) || null)
+          : null,
+        wants.has('follows') ? NostrCore.readFollowList() : null,
+        wants.has('muted') ? NostrCore.readMuteList() : null
+      ]);
 
       const backup: AccountBackup = {
         app: 'razr',
@@ -59,28 +70,35 @@ const BackupSettings: React.FC = () => {
         savedAt: new Date().toISOString(),
         pubkey,
         // The key itself is deliberately not here
-        profile: profile ? { ...profile, pubkey: undefined } : undefined,
-        follows: peopleIn(follows),
-        muted: peopleIn(muted),
-        relays: getRelayPool().getRelayConfigs().map(config => ({
-          url: config.url,
-          read: config.read !== false,
-          write: config.write !== false
-        }))
+        ...(wants.has('profile') && profile ? { profile: { ...profile, pubkey: undefined } } : {}),
+        ...(wants.has('follows') ? { follows: peopleIn(follows) } : {}),
+        ...(wants.has('muted') ? { muted: peopleIn(muted) } : {}),
+        ...(wants.has('relays')
+          ? {
+              relays: getRelayPool().getRelayConfigs().map(config => ({
+                url: config.url,
+                read: config.read !== false,
+                write: config.write !== false
+              }))
+            }
+          : {})
       };
 
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `razr-account-${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `razr-${name}-${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
 
-      setSaid(
-        `Saved: profile, ${backup.follows?.length ?? 0} follows, `
-        + `${backup.muted?.length ?? 0} muted, ${backup.relays?.length ?? 0} relays`
-      );
+      const held = [
+        backup.profile ? 'profile' : null,
+        backup.follows ? `${backup.follows.length} follows` : null,
+        backup.muted ? `${backup.muted.length} muted` : null,
+        backup.relays ? `${backup.relays.length} relays` : null
+      ].filter(Boolean);
+      setSaid(`Saved: ${held.join(', ')}`);
     } catch (err) {
       console.error('Backup failed:', err);
       setError(err instanceof Error ? err.message : 'Could not read your lists to save them');
@@ -165,8 +183,12 @@ const BackupSettings: React.FC = () => {
       </p>
 
       <div className="relay-actions">
-        <button className="btn btn-secondary" onClick={handleBackup} disabled={busy !== null}>
-          {busy === 'saving' ? 'Reading your lists…' : '⬇ Back up'}
+        <button
+          className="btn btn-primary"
+          onClick={() => saveParts(['profile', 'follows', 'muted', 'relays'], 'account')}
+          disabled={busy !== null}
+        >
+          {busy === 'saving' ? 'Reading your lists…' : '⬇ Back up everything'}
         </button>
         <button
           className="btn btn-secondary"
@@ -184,17 +206,37 @@ const BackupSettings: React.FC = () => {
         />
       </div>
 
+      {/* And one at a time, for putting a single list back somewhere else
+          without carrying the rest of the account along with it */}
+      <div className="relay-actions backup-parts">
+        <span className="backup-parts-label">Or one at a time:</span>
+        <button className="btn btn-secondary btn-small" onClick={() => saveParts(['profile'], 'profile')} disabled={busy !== null}>
+          Profile
+        </button>
+        <button className="btn btn-secondary btn-small" onClick={() => saveParts(['follows'], 'follows')} disabled={busy !== null}>
+          Follows
+        </button>
+        <button className="btn btn-secondary btn-small" onClick={() => saveParts(['muted'], 'muted')} disabled={busy !== null}>
+          Muted
+        </button>
+        <button className="btn btn-secondary btn-small" onClick={() => saveParts(['relays'], 'relays')} disabled={busy !== null}>
+          Relays
+        </button>
+      </div>
+
       {file && (
         <div className="backup-restore">
           <p className="settings-note">
             Saved {new Date(file.savedAt).toLocaleString()}
             {file.pubkey !== pubkey && ' — from a different account'}
+            {/* A file saved one part at a time holds only that part */}
+            {!file.profile && !file.follows && !file.muted ? ' — relays only' : ''}
           </p>
 
           <label className="backup-choice">
             <input
               type="checkbox"
-              checked={restore.profile}
+              checked={restore.profile && !!file.profile}
               onChange={e => setRestore(r => ({ ...r, profile: e.target.checked }))}
               disabled={!file.profile}
             />
@@ -203,7 +245,7 @@ const BackupSettings: React.FC = () => {
           <label className="backup-choice">
             <input
               type="checkbox"
-              checked={restore.follows}
+              checked={restore.follows && !!file.follows?.length}
               onChange={e => setRestore(r => ({ ...r, follows: e.target.checked }))}
               disabled={!file.follows?.length}
             />
@@ -212,7 +254,7 @@ const BackupSettings: React.FC = () => {
           <label className="backup-choice">
             <input
               type="checkbox"
-              checked={restore.muted}
+              checked={restore.muted && !!file.muted?.length}
               onChange={e => setRestore(r => ({ ...r, muted: e.target.checked }))}
               disabled={!file.muted?.length}
             />
@@ -221,7 +263,7 @@ const BackupSettings: React.FC = () => {
           <label className="backup-choice">
             <input
               type="checkbox"
-              checked={restore.relays}
+              checked={restore.relays && !!file.relays?.length}
               onChange={e => setRestore(r => ({ ...r, relays: e.target.checked }))}
               disabled={!file.relays?.length}
             />

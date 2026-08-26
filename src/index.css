@@ -2103,6 +2103,19 @@ button.poll-option-vote:disabled {
   margin: 0 0 var(--spacing-md);
 }
 
+/* The one-at-a-time row under the main backup button */
+.backup-parts {
+  margin-top: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.backup-parts-label {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  align-self: center;
+  margin-right: var(--spacing-xs);
+}
+
 /* Choosing what to put back from a file */
 .backup-restore {
   margin-top: var(--spacing-md);
