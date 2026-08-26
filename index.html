@@ -5,6 +5,15 @@
     <link rel="icon" type="image/svg+xml" href="/razr.svg" />
     <meta name="description" content="RAZR — a nostr client" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      What this page shows is other people's: a picture in a note, an avatar,
+      a link preview — any of them may be written as a plain http address.
+      One of those on an https page makes the whole page mixed, which a
+      browser reports as "not secure". This asks the browser to fetch every
+      such address over https instead, so nothing on the page can be the
+      exception.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests" />
     <title>RAZR</title>
   </head>
   <body>
