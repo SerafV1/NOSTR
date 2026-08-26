@@ -263,15 +263,6 @@ const RelaySettings: React.FC = () => {
     }
   };
 
-  const handleDebugConsole = () => {
-    const relayPool = getRelayPool();
-    console.log('=== RELAY DEBUG INFO ===');
-    console.log('Relay Configs:', relayPool.getRelayConfigs());
-    console.log('Relay Status:', relayPool.getStatus());
-    console.log('Relay Count:', relayPool.getRelayCount());
-    console.log('======================');
-  };
-
   return (
     <section className="settings-section">
       <h2>Relay Management</h2>
@@ -294,12 +285,6 @@ const RelaySettings: React.FC = () => {
           disabled={loading}
         >
           {loading ? 'Reconnecting...' : 'Reconnect All Relays'}
-        </button>
-        <button
-          className="btn btn-secondary"
-          onClick={handleDebugConsole}
-        >
-          📋 Debug Console
         </button>
         <button
           className="btn btn-secondary"

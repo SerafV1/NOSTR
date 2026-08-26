@@ -398,13 +398,6 @@ export class RelayPool {
   }
 
   /**
-   * Get relay count
-   */
-  getRelayCount(): number {
-    return this.relays.size;
-  }
-
-  /**
    * Check if we have at least one relay
    */
   hasRelays(): boolean {
