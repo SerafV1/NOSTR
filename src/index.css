@@ -7018,6 +7018,10 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
 /* A stream watched through the service's own player — twitch, kick, youtube.
    The iframe fills the same frame our player would, so minimising, docking
    and enlarging all keep working the way they do for a playlist. */
+.quoted-note-stream {
+  margin-top: var(--spacing-sm);
+}
+
 .stream-embed {
   position: relative;
   width: 100%;

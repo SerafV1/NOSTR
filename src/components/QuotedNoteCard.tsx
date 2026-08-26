@@ -2,10 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { NostrEventSigned, UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { formatDate, formatAddress } from '../utils/helpers';
-import { extractImageUrls, extractVideoUrls, extractEmbeds, stripMediaUrls } from '../utils/media';
+import { extractImageUrls, extractVideoUrls, extractEmbeds, extractStreamUrls, stripMediaUrls } from '../utils/media';
+import { extractStreamRefs } from '../utils/liveStream';
 import RichText from './RichText';
 import MediaEmbed from './MediaEmbed';
 import VideoPlayer from './VideoPlayer';
+import InlineLiveStream from './InlineLiveStream';
+import InlineStreamPlayer from './InlineStreamPlayer';
 
 // A quote can itself quote something — allow one nested level (a quote
 // inside the quote) rather than none, but stop there so a chain of many
@@ -74,6 +77,12 @@ const QuotedNoteCard: React.FC<QuotedNoteCardProps> = ({ event, repostedBy, dept
   const images = extractImageUrls(event.content);
   const videos = extractVideoUrls(event.content);
   const embeds = extractEmbeds(event.content);
+  // The reference to a live stream is taken out of the text above, the same
+  // way a quoted note's reference is — so the quote has to show the stream
+  // itself, or a post that shares one reads as a bare line of text once
+  // somebody quotes it
+  const streamRefs = extractStreamRefs(event.content);
+  const streamUrls = extractStreamUrls(event.content);
 
   const reposterName = reposterProfile?.display_name || reposterProfile?.name || (repostedBy ? formatAddress(repostedBy) : '');
 
@@ -116,6 +125,18 @@ const QuotedNoteCard: React.FC<QuotedNoteCardProps> = ({ event, repostedBy, dept
         <p className="quoted-note-text">
           <RichText content={text} eventTags={event.tags} />
         </p>
+      )}
+
+      {streamRefs.length > 0 && (
+        <div className="quoted-note-stream" onClick={(e) => e.stopPropagation()}>
+          <InlineLiveStream naddr={streamRefs[0].naddr} href={streamRefs[0].url} />
+        </div>
+      )}
+
+      {streamRefs.length === 0 && streamUrls.length > 0 && (
+        <div className="quoted-note-stream" onClick={(e) => e.stopPropagation()}>
+          <InlineStreamPlayer src={streamUrls[0]} className="quoted-note-video" />
+        </div>
       )}
 
       {images.length > 0 && (
