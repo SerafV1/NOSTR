@@ -49,6 +49,14 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className, onMin
   const [currentLevel, setCurrentLevel] = useState(-1);
   const hlsRef = useRef<Hls | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // How many times the player has been rebuilt since video last flowed. It
+  // resets on the first fragment that arrives, so a stream that comes back
+  // an hour later is picked up with the same budget as the first minute.
+  const remountsRef = useRef(0);
+  // Whether the picture is meant to be moving. Only a deliberate press of
+  // pause turns this off, so a player that stopped by itself can be told to
+  // carry on without overriding someone who paused it.
+  const wantsPlayRef = useRef(true);
 
   // The browser's own controls are switched off below, because its menu —
   // the one holding playback speed — is drawn in a closed shadow tree that a
@@ -176,6 +184,7 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className, onMin
       hls.on(Hls.Events.FRAG_LOADED, () => {
         networkRetries = 0;
         mediaRetries = 0;
+        remountsRef.current = 0;
       });
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -187,8 +196,9 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className, onMin
             if (networkRetries++ < MAX_RETRIES) {
               console.warn(`[LiveVideoPlayer] Retrying after network error (${networkRetries}/${MAX_RETRIES})`);
               hls.startLoad();
-            } else if (reinitKey < 3) {
+            } else if (remountsRef.current < 3) {
               console.warn('[LiveVideoPlayer] Network retries exhausted — remounting player');
+              remountsRef.current += 1;
               setReinitKey(k => k + 1);
             } else {
               setError('Stream unavailable — the broadcaster may not be live right now');
@@ -198,11 +208,12 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className, onMin
             if (mediaRetries++ < MAX_RETRIES) {
               console.warn(`[LiveVideoPlayer] Recovering from media error (${mediaRetries}/${MAX_RETRIES})`);
               hls.recoverMediaError();
-            } else if (reinitKey < 3) {
+            } else if (remountsRef.current < 3) {
               console.warn('[LiveVideoPlayer] Media retries exhausted — remounting player');
+              remountsRef.current += 1;
               setReinitKey(k => k + 1);
             } else {
-              setError('Playback error — try reloading the page');
+              setError('Playback error — the stream will be picked up again if it comes back');
             }
             break;
           default:
@@ -220,6 +231,93 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className, onMin
     };
   }, [src, reinitKey]);
 
+  // A live stream can stop moving without hls.js calling it an error: the
+  // playlist stops being updated, or a fragment never arrives, and the
+  // picture simply freezes. Nothing then asks for it to be fixed, which is
+  // why the page had to be reloaded to get the stream back.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || error) return;
+
+    let frozenAt: number | null = null;
+    let stalledSeconds = 0;
+    // How many times in a row the picture has been found standing still
+    let stalledRounds = 0;
+
+    const check = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      if (video.ended) return;
+
+      // Stopped without being asked to stop — which is what a player rebuilt
+      // after a break looks like: a brand-new element, at nought, playing
+      // nothing, with nobody left to press play
+      if (video.paused) {
+        if (!wantsPlayRef.current) {
+          frozenAt = null;
+          stalledSeconds = 0;
+          return;
+        }
+        video.play().catch(() => undefined);
+      }
+
+      if (frozenAt !== null && video.currentTime === frozenAt) {
+        stalledSeconds += 5;
+        if (stalledSeconds < 15) return;
+
+        stalledSeconds = 0;
+        stalledRounds += 1;
+        const hls = hlsRef.current;
+
+        // Asking it to load again is cheap and is what hls.js offers for
+        // exactly this, so it is not rationed — it is only the rebuilding
+        // of the whole player that has to be
+        if (hls) {
+          console.warn('[LiveVideoPlayer] Picture has not moved for 15s — reaching for the live edge');
+          hls.startLoad();
+          const edge = (hls as unknown as { liveSyncPosition?: number }).liveSyncPosition;
+          if (typeof edge === 'number' && edge > video.currentTime) video.currentTime = edge;
+        }
+
+        // Half a minute of asking and still nothing: start the player over.
+        // The
+        // budget is cleared with it — a stream that has been gone this long
+        // and comes back is a fresh attempt, not another retry in a storm.
+        if (stalledRounds >= 2) {
+          console.warn('[LiveVideoPlayer] Half a minute without a picture — building the player again');
+          stalledRounds = 0;
+          remountsRef.current = 0;
+          setReinitKey(k => k + 1);
+        }
+        return;
+      }
+
+      frozenAt = video.currentTime;
+      stalledSeconds = 0;
+      stalledRounds = 0;
+    }, 5000);
+
+    return () => clearInterval(check);
+  }, [error, reinitKey]);
+
+  // Having given up, keep looking: a broadcaster who drops off for a few
+  // minutes and comes back used to need the page reloading to be seen again
+  useEffect(() => {
+    if (!error) return;
+    // Only the errors that a stream coming back would cure — an address this
+    // browser cannot play is not one of them
+    if (!/unavailable|Playback error/i.test(error)) return;
+
+    const retry = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      console.warn('[LiveVideoPlayer] Looking for the stream again');
+      remountsRef.current = 0;
+      setError(null);
+      setReinitKey(k => k + 1);
+    }, 30000);
+
+    return () => clearInterval(retry);
+  }, [error]);
+
   // Fullscreen can also be left with Escape or the browser's own gesture, so
   // the button follows the document rather than its own last click
   useEffect(() => {
@@ -231,8 +329,13 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className, onMin
   const togglePlay = () => {
     const video = videoRef.current;
     if (!video) return;
-    if (video.paused) video.play().catch(() => undefined);
-    else video.pause();
+    if (video.paused) {
+      wantsPlayRef.current = true;
+      video.play().catch(() => undefined);
+    } else {
+      wantsPlayRef.current = false;
+      video.pause();
+    }
   };
 
   const toggleMute = () => {
