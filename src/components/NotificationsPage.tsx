@@ -14,6 +14,8 @@ import {
 } from '../nostr/notifications';
 import { formatDate, formatAddress } from '../utils/helpers';
 import RichText from './RichText';
+import EmojiText from './EmojiText';
+import { customEmojiMap } from '../utils/customEmoji';
 import { stripMediaUrls } from '../utils/media';
 
 interface NotificationsPageProps {
@@ -290,7 +292,14 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
               className={`notification-item ${isNew ? 'unread' : ''}`}
               onClick={() => handleClick(notification)}
             >
-              <span className="notification-icon">{icon}</span>
+              {/* A reaction can be a picture rather than an emoji — NIP-30
+                  names it in the content as :shortcode: and gives its address
+                  in the event's own tags. Printed as text it read ":flame:" */}
+              <span className="notification-icon">
+                {notification.type === 'reaction'
+                  ? <EmojiText text={icon} emojis={customEmojiMap(notification.event.tags)} />
+                  : icon}
+              </span>
               {profile?.picture ? (
                 <img
                   src={profile.picture}
