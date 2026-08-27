@@ -38,6 +38,13 @@ interface EventCardProps {
   onNavigateToNote?: (noteId: string) => void;
   onNavigateToTopic?: (topic: string) => void;
   onRefresh?: () => void;
+  /**
+   * The post being read, rather than one card among many. Its counts are
+   * gathered from every relay instead of from whichever answers first —
+   * slower, but a post opened to read its replies must not say there are
+   * none because one relay was a second late.
+   */
+  focused?: boolean;
 }
 
 const EventCard: React.FC<EventCardProps> = ({
@@ -45,7 +52,8 @@ const EventCard: React.FC<EventCardProps> = ({
   onNavigateToProfile,
   onNavigateToNote,
   onNavigateToTopic,
-  onRefresh
+  onRefresh,
+  focused = false
 }) => {
   // A note pointed at through njump, primal, snort — anyone's web page —
   // carries its nostr address inside the link. Read as that address, it shows
@@ -182,7 +190,7 @@ const EventCard: React.FC<EventCardProps> = ({
 
   const loadEngagement = async () => {
     try {
-      const engagement = await NostrCore.fetchEngagement(event.id);
+      const engagement = await NostrCore.fetchEngagement(event.id, focused);
       setReplyCount(engagement.replies);
       setRepostCount(engagement.reposts);
       setReposted(engagement.myRepost);

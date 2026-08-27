@@ -76,7 +76,17 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
         // Replies don't depend on the ancestor walk below, so they're
         // started here and land whenever they land — chaining them after it
         // meant waiting out up to twenty sequential parent lookups first
-        NostrCore.fetchReplies(noteId, 100)
+        // Every relay is waited for here, and asked twice if the first round
+        // comes back empty: arriving from the notifications page, the pool
+        // is still busy with that page's own queries, and a conversation
+        // that is merely late reads exactly like a conversation that is not
+        // there.
+        NostrCore.fetchReplies(noteId, 100, true)
+          .then(async found => {
+            if (found.length > 0) return found;
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            return NostrCore.fetchReplies(noteId, 100, true);
+          })
           .then(setReplies)
           .catch(error => {
             console.error('Failed to fetch replies:', error);
@@ -186,6 +196,7 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
             <div className="thread-focus">
               <EventCard
                 event={note}
+                focused
                 onNavigateToProfile={onNavigateToProfile}
                 onNavigateToNote={onNavigateToNote}
                 onNavigateToTopic={onNavigateToTopic}

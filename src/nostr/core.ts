@@ -1527,7 +1527,17 @@ export class NostrCore {
   /**
    * Fetch replies to an event
    */
-  static async fetchReplies(eventId: string, limit: number = 50): Promise<NostrEventSigned[]> {
+  static async fetchReplies(
+    eventId: string,
+    limit: number = 50,
+    /**
+     * Wait for every relay rather than stopping shortly after the first one
+     * answers. The quick way is right for a feed, where a card is one of a
+     * hundred; it is wrong for the post someone opened, where a relay that
+     * was a second slow means the conversation reads as empty.
+     */
+    thorough: boolean = false
+  ): Promise<NostrEventSigned[]> {
     const filters: NostrFilter[] = [
       {
         // Both ways of writing a reply: the older kind 1 carrying 'e' tags,
@@ -1541,7 +1551,7 @@ export class NostrCore {
 
     try {
       const relayPool = getRelayPool();
-      const events = this.dropBlocked(await relayPool.fetchEvents(filters));
+      const events = this.dropBlocked(await relayPool.fetchEvents(filters, thorough));
       EventCache.addEvents(events);
       return events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
@@ -1730,7 +1740,7 @@ export class NostrCore {
     PersistentCache.set(this.ownActionsKey(kind), Object.fromEntries(trimmed));
   }
 
-  static async fetchEngagement(eventId: string): Promise<{
+  static async fetchEngagement(eventId: string, thorough: boolean = false): Promise<{
     replies: number;
     reposts: number;
     likes: number;
@@ -1761,7 +1771,7 @@ export class NostrCore {
           '#e': [eventId],
           limit: 500
         }
-      ]);
+      ], thorough);
 
       const ownPubkey = CredentialManager.getPublicKey();
 
