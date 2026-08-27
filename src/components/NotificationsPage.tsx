@@ -83,10 +83,28 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
   // viewing even after the seen marker below advances past them
   const initialLastSeenRef = useRef(NotificationStore.getLastSeen(pubkey));
 
+  /**
+   * Nothing already on the page is ever taken off it. What is kept between
+   * visits is capped, and a busy account fills that cap in minutes — so an
+   * older notification would drop out of the store while it was still on
+   * screen being read, and come back when a later fetch returned it again.
+   * The page holds the union of everything this visit has seen.
+   */
+  const mergeIntoView = (incoming: NostrNotification[]) => {
+    setNotifications(prev => {
+      const byId = new Map(prev.map(n => [n.id, n]));
+      for (const notification of incoming) byId.set(notification.id, notification);
+      return dropMuted(
+        Array.from(byId.values())
+          .sort((a, b) => (b.event.created_at || 0) - (a.event.created_at || 0))
+      );
+    });
+  };
+
   const loadNotifications = async () => {
     const cached = readCachedNotifications(pubkey);
     if (cached.length > 0) {
-      setNotifications(dropMuted(cached));
+      mergeIntoView(cached);
       setLoading(false);
     } else {
       setLoading(true);
@@ -107,7 +125,9 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
       // Filtered on the way to the screen rather than out of the cache, so
       // unmuting brings someone's notifications back rather than losing them
       const shown = cacheNotifications(pubkey, fetched);
-      setNotifications(dropMuted(shown));
+      // Both what the store keeps and what this fetch found: the store's cap
+      // may already have dropped something that is still on screen
+      mergeIntoView([...shown, ...fetched]);
 
       // Every name on the page, not only the ones this fetch returned. A
       // follow is announced once — by whichever poll saw it first, often the
@@ -139,7 +159,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
     } else {
       const cached = readCachedNotifications(pubkey);
       if (cached.length > 0) {
-        setNotifications(cached);
+        mergeIntoView(cached);
         setLoading(false);
       }
     }
