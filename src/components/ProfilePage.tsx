@@ -378,18 +378,21 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     // ever wrote to count it is not a thing a page can do. Following is
     // exact — it is one list, the person's own.
     const askAround = async (attempt: number) => {
-      const [list, noteCount, followerCount] = await Promise.all([
+      const raiseNotes = (found: number) =>
+        setNoteTotal(prev => Math.max(prev ?? 0, found));
+
+      const [list] = await Promise.all([
         NostrCore.fetchFollowingList(pubkey),
-        NostrCore.countUserNotes(pubkey),
-        NostrCore.countFollowers(pubkey)
+        // Each relay's answer is shown the moment it lands, so the number
+        // climbs as they come in rather than waiting on the slowest
+        NostrCore.countUserNotes(pubkey, found => { if (!cancelled) raiseNotes(found); }),
+        NostrCore.countFollowers(pubkey, found => { if (!cancelled) raiseFollowers(found); })
       ]);
       if (cancelled) return;
 
       if (list) {
         setFollowingList(prev => (prev && prev.length >= list.length ? prev : list));
       }
-      if (noteCount !== null) setNoteTotal(prev => Math.max(prev ?? 0, noteCount));
-      if (followerCount !== null) raiseFollowers(followerCount);
 
       if (attempt < 2) {
         setTimeout(() => { if (!cancelled) askAround(attempt + 1); }, attempt === 0 ? 6000 : 14000);

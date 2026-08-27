@@ -1089,7 +1089,15 @@ export class RelayPool {
    * the highest number any of them gives is the closest thing to a true
    * total — and null means not one of them would say.
    */
-  async countEvents(filters: NostrFilter[]): Promise<number | null> {
+  async countEvents(
+    filters: NostrFilter[],
+    /**
+     * Called with each relay's answer as it arrives, rather than only with
+     * the best one at the end. A page showing a running total does not have
+     * to wait for the slowest relay to learn what the fastest already said.
+     */
+    onAnswer?: (count: number) => void
+  ): Promise<number | null> {
     const answers = await Promise.all(
       Array.from(this.relays).map(async ([url, relay]) => {
         const config = this.relayConfigs.find(c => c.url === url);
@@ -1116,7 +1124,9 @@ export class RelayPool {
             new Promise<null>(resolve => setTimeout(() => resolve(null), 10000))
           ]);
           const count = (payload as { count?: number } | null)?.count;
-          return typeof count === 'number' ? count : null;
+          if (typeof count !== 'number') return null;
+          onAnswer?.(count);
+          return count;
         } catch {
           return null;
         }

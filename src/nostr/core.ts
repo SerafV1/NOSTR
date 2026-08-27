@@ -494,16 +494,24 @@ export class NostrCore {
    * Null when no relay in the pool answers that question, which is when the
    * page falls back to saying how much it has read itself.
    */
-  static async countUserNotes(pubkey: string): Promise<number | null> {
-    return getRelayPool().countEvents([
-      { kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.COMMENT], authors: [pubkey] }
-    ]);
+  static async countUserNotes(
+    pubkey: string,
+    onAnswer?: (count: number) => void
+  ): Promise<number | null> {
+    return getRelayPool().countEvents(
+      [{ kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.COMMENT], authors: [pubkey] }],
+      onAnswer
+    );
   }
 
-  static async countFollowers(pubkey: string): Promise<number | null> {
-    return getRelayPool().countEvents([
-      { kinds: [EVENT_KINDS.CONTACTS], '#p': [pubkey] }
-    ]);
+  static async countFollowers(
+    pubkey: string,
+    onAnswer?: (count: number) => void
+  ): Promise<number | null> {
+    return getRelayPool().countEvents(
+      [{ kinds: [EVENT_KINDS.CONTACTS], '#p': [pubkey] }],
+      onAnswer
+    );
   }
 
   static async fetchFollowersCount(pubkey: string, limit: number = 1000): Promise<{ count: number; capped: boolean }> {
