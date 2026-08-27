@@ -920,7 +920,12 @@ export class NostrCore {
    */
   static async fetchUserNotes(
     pubkey: string,
-    limit: number = 100
+    limit: number = 100,
+    /** Only what they wrote before this, for reading further back */
+    until?: number,
+    /** Hear out every relay — reading back through a profile, the first
+     *  answer must not decide that a person's history has run out */
+    thorough: boolean = false
   ): Promise<NostrEventSigned[]> {
     const filters: NostrFilter[] = [
       {
@@ -929,13 +934,14 @@ export class NostrCore {
         // written as comments rather than as notes
         kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.POLL, EVENT_KINDS.COMMENT],
         authors: [pubkey],
-        limit
+        limit,
+        ...(until ? { until } : {})
       }
     ];
 
     try {
       const relayPool = getRelayPool();
-      const events = this.dropFutureEvents(await relayPool.fetchEvents(filters));
+      const events = this.dropFutureEvents(await relayPool.fetchEvents(filters, thorough));
       EventCache.addEvents(events);
       return events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {

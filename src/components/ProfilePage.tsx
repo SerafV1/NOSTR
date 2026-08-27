@@ -67,6 +67,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const [notes, setNotes] = useState<NostrEventSigned[]>([]);
   const [reposts, setReposts] = useState<{ repost: NostrEventSigned; original: NostrEventSigned }[]>([]);
   const [loading, setLoading] = useState(true);
+  // Reading back through what this person wrote. Fifty notes was everything
+  // a profile ever showed, which for anyone busy is a few days.
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [reachedEnd, setReachedEnd] = useState(false);
+  const loadingOlderRef = useRef(false);
+  const emptyRunsRef = useRef(0);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState(false);
   const [contentTab, setContentTab] = useState<'posts' | 'replies' | 'media' | 'zaps' | 'bookmarks' | 'following' | 'followers'>('posts');
   // Only your own list is worth a tab: a bookmark list is published publicly,
@@ -125,6 +132,80 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     }
   }, [pubkey, relaysConnected]);
 
+  // Another person's page starts again from their newest
+  useEffect(() => {
+    setReachedEnd(false);
+    emptyRunsRef.current = 0;
+  }, [pubkey]);
+
+  const loadOlderNotes = async () => {
+    const shown = notesRef.current;
+    if (loadingOlderRef.current || reachedEnd || shown.length === 0) return;
+
+    let until = Math.min(...shown.map(e => e.created_at || 0)) - 1;
+    if (until <= 0) return;
+
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const known = new Set(shown.map(e => e.id));
+
+      for (let attempt = 0; attempt < 3; attempt++) {
+        // Every relay is heard out: one with a short memory answering first
+        // would end a person's history for all of them
+        const older = await NostrCore.fetchUserNotes(pubkey, 50, until, true);
+
+        if (older.length === 0) {
+          // A quiet stretch is not the end of a life on nostr — step back a
+          // day and ask again
+          until -= 86400;
+          continue;
+        }
+
+        // Not every relay honours `until`; one that ignores it answers with
+        // its newest, which would drop today's posts in at the bottom
+        const fresh = older.filter(e => !known.has(e.id) && (e.created_at || 0) <= until);
+        if (fresh.length > 0) {
+          emptyRunsRef.current = 0;
+          setNotes(prev => {
+            const ids = new Set(prev.map(e => e.id));
+            return [...prev, ...fresh.filter(e => !ids.has(e.id))]
+              .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+          });
+          return;
+        }
+
+        const oldestSeen = Math.min(...older.map(e => e.created_at || 0));
+        until = !oldestSeen || oldestSeen - 1 >= until ? until - 86400 : oldestSeen - 1;
+      }
+
+      // One thin answer can be a gap; two running is the end of what the
+      // relays still keep
+      emptyRunsRef.current += 1;
+      if (emptyRunsRef.current >= 2) setReachedEnd(true);
+    } catch (error) {
+      console.error('Failed to load older notes:', error);
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  };
+
+  // The end of the page coming into view asks for more, with a margin ahead
+  // of it so the next page is already arriving
+  useEffect(() => {
+    const sentinel = bottomRef.current;
+    if (!sentinel || loading || reachedEnd) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) loadOlderNotes(); },
+      { rootMargin: '600px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, reachedEnd, loadingOlder, contentTab, pubkey]);
+
   const loadProfileData = async (background: boolean = false) => {
     if (!background) setLoading(true);
     try {
@@ -141,7 +222,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
         setProfile({ pubkey });
       }
       if (userNotes.length > 0 || !background) {
-        setNotes(userNotes);
+        // Whatever was already read further back stays: a refresh brings the
+        // newest fifty, and dropping the rest would send the reader back to
+        // the top of a page they had walked down
+        setNotes(prev => {
+          const ids = new Set(userNotes.map(e => e.id));
+          return [...userNotes, ...prev.filter(e => !ids.has(e.id))]
+            .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        });
         PersistentCache.set(`notes_${pubkey}`, userNotes.slice(0, 30));
         // The live subscription below can flag a note as "new" while this
         // fetch was still in flight and it already picked the same note up
@@ -589,7 +677,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
               )}
               <div className="profile-stats">
                 <div className="stat">
-                  <span className="stat-value">{notes.length}</span>
+                  {/* What has been read so far, not a claim about a life's
+                      work: relays cannot be asked how many notes a person
+                      has, so a bare number would just be the page size */}
+                  <span className="stat-value">{notes.length}{reachedEnd ? '' : '+'}</span>
                   <span className="stat-label">Notes</span>
                 </div>
                 {followingList !== null && (
@@ -711,6 +802,16 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                   ))}
                 </div>
               )
+            )}
+
+            {(contentTab === 'posts' || contentTab === 'replies') && timelineItems.length > 0 && (
+              <div className="feed-end" ref={bottomRef}>
+                {loadingOlder
+                  ? 'Loading older posts…'
+                  : reachedEnd
+                    ? 'That is as far back as the relays go'
+                    : ''}
+              </div>
             )}
 
             {contentTab === 'media' && (
