@@ -488,6 +488,24 @@ export class NostrCore {
    * happen to have indexed, same tradeoff every Nostr client makes since
    * there's no authoritative global follower count.
    */
+  /**
+   * How much this person has written, and how many people follow them — asked
+   * of the relays as a count rather than gathered by fetching everything.
+   * Null when no relay in the pool answers that question, which is when the
+   * page falls back to saying how much it has read itself.
+   */
+  static async countUserNotes(pubkey: string): Promise<number | null> {
+    return getRelayPool().countEvents([
+      { kinds: [EVENT_KINDS.TEXT_NOTE, EVENT_KINDS.COMMENT], authors: [pubkey] }
+    ]);
+  }
+
+  static async countFollowers(pubkey: string): Promise<number | null> {
+    return getRelayPool().countEvents([
+      { kinds: [EVENT_KINDS.CONTACTS], '#p': [pubkey] }
+    ]);
+  }
+
   static async fetchFollowersCount(pubkey: string, limit: number = 1000): Promise<{ count: number; capped: boolean }> {
     const { pubkeys, capped } = await this.fetchFollowers(pubkey, limit);
     return { count: pubkeys.length, capped };

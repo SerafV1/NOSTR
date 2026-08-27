@@ -207,7 +207,10 @@ export class RelayPool {
         if ((nostrTools as any).relayInit) {
           console.log(`[Relay] Using nostr-tools relayInit for ${url}`);
           relayType = 'relayInit';
-          relay = await (nostrTools as any).relayInit(url);
+          // countTimeout: a relay busy with this page's other queries often
+          // takes longer than the three seconds nostr-tools waits by default
+          // before giving up on a NIP-45 count
+          relay = await (nostrTools as any).relayInit(url, { countTimeout: 9000 });
         } else if ((nostrTools as any).Relay) {
           console.log(`[Relay] Using nostr-tools Relay for ${url}`);
           relayType = 'Relay';
@@ -1080,6 +1083,50 @@ export class RelayPool {
    * our default set, so their events (e.g. a live stream) would otherwise
    * never be found even though they're publishing correctly.
    */
+  /**
+   * NIP-45: ask the relays to count rather than to send. A relay answers for
+   * its own shelf, and several cap the answer (10000 is a common ceiling), so
+   * the highest number any of them gives is the closest thing to a true
+   * total — and null means not one of them would say.
+   */
+  async countEvents(filters: NostrFilter[]): Promise<number | null> {
+    const answers = await Promise.all(
+      Array.from(this.relays).map(async ([url, relay]) => {
+        const config = this.relayConfigs.find(c => c.url === url);
+        if (!config?.read || typeof (relay as any).count !== 'function') return null;
+
+        // A profile is often opened while the pool is still coming up, and a
+        // relay that is not connected yet has no answer rather than no count
+        if (!this.isActuallyConnected(relay) && typeof relay.connect === 'function') {
+          try {
+            await Promise.race([
+              relay.connect(),
+              new Promise<void>((_, reject) => setTimeout(() => reject(new Error('connect timeout')), 3000))
+            ]);
+          } catch {
+            return null;
+          }
+        }
+
+        try {
+          // Relays that do not implement COUNT answer with a notice, or with
+          // nothing at all — neither should hold the page up
+          const payload = await Promise.race([
+            (relay as any).count(filters),
+            new Promise<null>(resolve => setTimeout(() => resolve(null), 10000))
+          ]);
+          const count = (payload as { count?: number } | null)?.count;
+          return typeof count === 'number' ? count : null;
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    const numbers = answers.filter((n): n is number => typeof n === 'number');
+    return numbers.length > 0 ? Math.max(...numbers) : null;
+  }
+
   async fetchEventsFromExtraRelays(urls: string[], filters: NostrFilter[]): Promise<NostrEventSigned[]> {
     const events: Map<string, NostrEventSigned> = new Map();
 

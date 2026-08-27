@@ -94,6 +94,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   // opened — it's a scan across every contact list the relays have indexed
   const [followingList, setFollowingList] = useState<string[] | null>(null);
   const [followersCount, setFollowersCount] = useState<number | null>(null);
+  // What the relays say the totals are (NIP-45), rather than how much of it
+  // this page has managed to fetch. Null while unasked or unanswered.
+  const [noteTotal, setNoteTotal] = useState<number | null>(null);
   const [followersList, setFollowersList] = useState<string[] | null>(null);
   const [followersCapped, setFollowersCapped] = useState(false);
   const [peopleProfiles, setPeopleProfiles] = useState<Map<string, UserProfile>>(new Map());
@@ -137,6 +140,12 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     setReachedEnd(false);
     emptyRunsRef.current = 0;
   }, [pubkey]);
+
+  // Three separate ways of learning how many followers there are — a relay's
+  // count, a bounded scan, the named list — and each is a floor, never a
+  // ceiling. Whichever knows of the most people is the one to believe.
+  const raiseFollowers = (found: number) =>
+    setFollowersCount(prev => (prev === null ? found : Math.max(prev, found)));
 
   const loadOlderNotes = async () => {
     const shown = notesRef.current;
@@ -359,11 +368,36 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     if (!relaysConnected) return;
     let cancelled = false;
 
-    NostrCore.fetchFollowingList(pubkey).then(list => {
-      if (!cancelled) setFollowingList(list);
-    });
+    // All three numbers, asked three times over the first half-minute, each
+    // answer only ever raising what is shown. A profile is usually opened
+    // while the pool is still coming up, and every relay that joins knows of
+    // more than the last — one asking round shows whichever few were ready.
+    //
+    // Notes and followers are counted by the relays themselves (NIP-45),
+    // which is the only way to learn a total: fetching everything a person
+    // ever wrote to count it is not a thing a page can do. Following is
+    // exact — it is one list, the person's own.
+    const askAround = async (attempt: number) => {
+      const [list, noteCount, followerCount] = await Promise.all([
+        NostrCore.fetchFollowingList(pubkey),
+        NostrCore.countUserNotes(pubkey),
+        NostrCore.countFollowers(pubkey)
+      ]);
+      if (cancelled) return;
+
+      if (list) {
+        setFollowingList(prev => (prev && prev.length >= list.length ? prev : list));
+      }
+      if (noteCount !== null) setNoteTotal(prev => Math.max(prev ?? 0, noteCount));
+      if (followerCount !== null) raiseFollowers(followerCount);
+
+      if (attempt < 2) {
+        setTimeout(() => { if (!cancelled) askAround(attempt + 1); }, attempt === 0 ? 6000 : 14000);
+      }
+    };
+    askAround(0);
     NostrCore.fetchFollowersCount(pubkey).then(({ count }) => {
-      if (!cancelled) setFollowersCount(count);
+      if (!cancelled) raiseFollowers(count);
     });
     NostrCore.fetchAccountCreatedAt(pubkey).then(timestamp => {
       if (!cancelled && timestamp) {
@@ -421,6 +455,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     setZapNotes({});
     setFollowingList(null);
     setFollowersCount(null);
+    setNoteTotal(null);
     setFollowersList(null);
     setFollowersCapped(false);
     setPeopleProfiles(new Map());
@@ -454,7 +489,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
         // Both this and the header count are samples of whatever relays
         // answered in time, so two separate queries disagree. Once we have
         // names on screen, that list is the number to show.
-        setFollowersCount(pubkeys.length);
+        raiseFollowers(pubkeys.length);
         loadNames(pubkeys);
       });
     } else {
@@ -677,10 +712,19 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
               )}
               <div className="profile-stats">
                 <div className="stat">
-                  {/* What has been read so far, not a claim about a life's
-                      work: relays cannot be asked how many notes a person
-                      has, so a bare number would just be the page size */}
-                  <span className="stat-value">{notes.length}{reachedEnd ? '' : '+'}</span>
+                  {/* What the relays count, where they will count (NIP-45).
+                      Where none will, what this page has read so far, marked
+                      as the floor it is rather than passed off as a total */}
+                  <span
+                    className="stat-value"
+                    title={noteTotal !== null
+                      ? 'The most any relay reports — relays count only their own shelf'
+                      : 'How much has been read so far; no relay would say the total'}
+                  >
+                    {noteTotal !== null
+                      ? noteTotal.toLocaleString()
+                      : `${notes.length}${reachedEnd ? '' : '+'}`}
+                  </span>
                   <span className="stat-label">Notes</span>
                 </div>
                 {followingList !== null && (
@@ -689,7 +733,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                     className="stat stat-clickable"
                     onClick={() => setContentTab('following')}
                   >
-                    <span className="stat-value">{followingList.length}</span>
+                    <span className="stat-value">{followingList.length.toLocaleString()}</span>
                     <span className="stat-label">Following</span>
                   </button>
                 )}
@@ -699,7 +743,12 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                     className="stat stat-clickable"
                     onClick={() => setContentTab('followers')}
                   >
-                    <span className="stat-value">{followersCount}</span>
+                    <span
+                      className="stat-value"
+                      title="The most any relay reports — relays count only their own shelf"
+                    >
+                      {followersCount.toLocaleString()}
+                    </span>
                     <span className="stat-label">Followers</span>
                   </button>
                 )}
