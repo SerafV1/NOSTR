@@ -8,7 +8,7 @@ import InlineStreamPlayer from './InlineStreamPlayer';
 import InlineLiveStream from './InlineLiveStream';
 import { foldNostrWebLinks } from '../utils/nostrLinks';
 import { streamNaddrFromUrl } from '../utils/liveStream';
-import { customEmojiMap, splitCustomEmoji } from '../utils/customEmoji';
+import { CustomEmojiMap, customEmojiMap, splitCustomEmoji } from '../utils/customEmoji';
 import InlineQuotedNote from './InlineQuotedNote';
 
 interface RichTextProps {
@@ -24,6 +24,11 @@ interface RichTextProps {
   inlineQuotes?: boolean;
   /** The event's tags, for the NIP-30 emoji its text may refer to */
   eventTags?: string[][];
+  /**
+   * Custom emoji already worked out elsewhere — a profile's, say, which come
+   * from its kind 0 rather than from the event being drawn here
+   */
+  emojis?: CustomEmojiMap;
   className?: string;
 }
 
@@ -105,6 +110,7 @@ const RichText: React.FC<RichTextProps> = ({
   inlineImages = false,
   inlineQuotes = false,
   eventTags,
+  emojis: givenEmojis,
   className
 }) => {
   // A link that carries a note's or a person's nostr address — njump and the
@@ -147,7 +153,7 @@ const RichText: React.FC<RichTextProps> = ({
 
   const parts: React.ReactNode[] = [];
   let key = 0;
-  const emojis = customEmojiMap(eventTags);
+  const emojis = { ...customEmojiMap(eventTags), ...(givenEmojis || {}) };
 
   /** Plain text, with any :shortcode: the event defines drawn as a picture */
   const pushText = (text: string) => {

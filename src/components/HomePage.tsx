@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { NostrEventSigned, NostrFilter, EVENT_KINDS, UserProfile } from '../types';
 import { NostrCore, PersistentCache, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
+import EmojiText from './EmojiText';
 import { formatAddress } from '../utils/helpers';
 import { loadCustomFeeds, saveCustomFeeds } from '../utils/customFeeds';
 import { parseLiveEvent, encodeLiveNaddr, LiveStreamInfo } from '../utils/liveStream';
@@ -976,7 +977,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
                       <span className="live-banner-badge">LIVE</span>
                       {profile?.picture && <img src={profile.picture} alt="" className="live-banner-avatar" />}
                       <span className="live-banner-text">
-                        <strong>{name}</strong> {isGuest ? 'is a guest on' : 'is live now —'} {info.title}
+                        <strong><EmojiText text={name} emojis={profile?.emojis} /></strong> {isGuest ? 'is a guest on' : 'is live now —'} {info.title}
                       </span>
                     </button>
                   );

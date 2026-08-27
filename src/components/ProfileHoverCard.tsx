@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import EmojiText from './EmojiText';
 import { UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
@@ -216,7 +217,7 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
               <span className="hover-card-avatar-placeholder">{displayName.charAt(0).toUpperCase()}</span>
             )}
             <span className="hover-card-names">
-              <span className="hover-card-name">{displayName}</span>
+              <span className="hover-card-name"><EmojiText text={displayName} emojis={profile?.emojis} /></span>
               <span className="hover-card-handle">{handle}</span>
             </span>
           </button>

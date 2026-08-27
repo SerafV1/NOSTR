@@ -6,6 +6,7 @@ import { extractImageUrls, extractVideoUrls, extractEmbeds, extractStreamUrls, s
 import { extractStreamRefs } from '../utils/liveStream';
 import { foldNostrWebLinks } from '../utils/nostrLinks';
 import RichText from './RichText';
+import EmojiText from './EmojiText';
 import MediaEmbed from './MediaEmbed';
 import VideoPlayer from './VideoPlayer';
 import InlineLiveStream from './InlineLiveStream';
@@ -116,7 +117,7 @@ const QuotedNoteCard: React.FC<QuotedNoteCardProps> = ({ event, repostedBy, dept
           className="quoted-note-name"
           onClick={(e) => { e.stopPropagation(); onNavigateToProfile(event.pubkey); }}
         >
-          {displayName}
+          <EmojiText text={displayName} emojis={profile?.emojis} />
         </button>
         <span className="quoted-note-handle">@{handle}</span>
         <span className="quoted-note-dot">·</span>

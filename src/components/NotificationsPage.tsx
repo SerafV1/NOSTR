@@ -318,7 +318,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
                     className="notification-actor"
                     onClick={(e) => { e.stopPropagation(); onNavigateToProfile(notification.event.pubkey); }}
                   >
-                    {displayName}
+                    <EmojiText text={displayName} emojis={profile?.emojis} />
                   </button>{' '}
                   {meta.verb}
                   {notification.type === 'zap' && amountSats > 0 ? ` (${amountSats.toLocaleString()} sats)` : ''}

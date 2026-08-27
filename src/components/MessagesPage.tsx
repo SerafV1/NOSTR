@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import EmojiText from './EmojiText';
 import { UserProfile } from '../types';
 import { NostrCore, PersistentCache } from '../nostr/core';
 import { DirectMessageCore, DirectMessageStore, DirectMessage, Conversation } from '../nostr/dm';
@@ -151,7 +152,7 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
                 {nameFor(selectedPubkey).charAt(0).toUpperCase()}
               </div>
             )}
-            <span>{nameFor(selectedPubkey)}</span>
+            <span><EmojiText text={nameFor(selectedPubkey)} emojis={profile?.emojis} /></span>
           </button>
         </div>
 
@@ -238,7 +239,7 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
                 </div>
               )}
               <div className="notification-body">
-                <div className="notification-text">{displayName}</div>
+                <div className="notification-text"><EmojiText text={displayName} emojis={profile?.emojis} /></div>
                 <div className="notification-preview">
                   {conversation.lastMessage.isOwn ? 'You: ' : ''}
                   {conversation.lastMessage.content}

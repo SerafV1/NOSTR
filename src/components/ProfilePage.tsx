@@ -694,6 +694,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                 <p className="profile-bio">
                   <RichText
                     content={profile.about}
+                    emojis={profile.emojis}
                     onNavigateToProfile={onNavigateToProfile}
                     onNavigateToNote={onNavigateToNote}
                     onNavigateToTopic={onNavigateToTopic}
@@ -832,7 +833,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                     <div key={item.key} className="reposted-item">
                       <div className="reposted-label">
                         {profile.picture && <img src={profile.picture} alt="" className="reposted-avatar" />}
-                        {displayName} Reposted
+                        <EmojiText text={displayName} emojis={profile.emojis} /> Reposted
                       </div>
                       <EventCard
                         event={item.original}
@@ -1011,9 +1012,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                             <div className="person-avatar-placeholder">{name.charAt(0).toUpperCase()}</div>
                           )}
                           <div className="person-info">
-                            <div className="person-name">{name}</div>
+                            <div className="person-name"><EmojiText text={name} emojis={person?.emojis} /></div>
                             <div className="person-handle">{handle}</div>
-                            {person?.about && <div className="person-bio">{person.about}</div>}
+                            {person?.about && (
+                              <div className="person-bio">
+                                <EmojiText text={person.about} emojis={person.emojis} />
+                              </div>
+                            )}
                           </div>
                         </button>
                       );
