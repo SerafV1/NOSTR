@@ -9,6 +9,7 @@ import {
 import { nip19 } from 'nostr-tools';
 import { NostrCrypto, CredentialManager, ExtensionManager } from './crypto';
 import { getRelayPool } from './relay';
+import { replyTags } from './replyTags';
 import { bunkerSignEvent } from './bunker';
 import { isEffectivelyLive } from '../utils/liveStream';
 import { quoteRefRegex } from '../utils/media';
@@ -35,6 +36,8 @@ export class NostrCore {
     }
 
     const tags: string[][] = [];
+    // Everyone this reply is addressed to, so a mention cannot repeat them
+    const replyPeople = new Set<string>();
 
     // Answering a NIP-22 comment has to be a comment as well, or the reply
     // hangs outside the conversation for whoever wrote it: a client reading
@@ -44,16 +47,13 @@ export class NostrCore {
     const parent = replyTo ? await this.replyParent(replyTo) : null;
     const asComment = parent?.kind === EVENT_KINDS.COMMENT;
 
-    if (asComment && parent) {
-      // The thread's root, carried by every comment in it. Taken from the
-      // parent, which already knows it; a comment with no root scope of its
-      // own is itself the top of the thread.
-      const rootId = parent.tags.find(t => t[0] === 'E')?.[1] || parent.id;
-      const rootKind = parent.tags.find(t => t[0] === 'K')?.[1] || String(parent.kind);
-      const rootAuthor = parent.tags.find(t => t[0] === 'P')?.[1] || parent.pubkey;
-      tags.push(['E', rootId], ['K', rootKind], ['P', rootAuthor]);
-      tags.push(['e', parent.id], ['k', String(parent.kind)], ['p', parent.pubkey]);
+    if (parent) {
+      const { tags: threadTags, people } = replyTags(parent, CredentialManager.getPublicKey());
+      tags.push(...threadTags);
+      people.forEach((pubkey: string) => replyPeople.add(pubkey));
     } else if (replyTo) {
+      // The note answered could not be read, so there is nobody to name —
+      // still better a reply the relays carry than no reply at all
       tags.push(['e', replyTo, '', 'reply']);
     }
 
@@ -62,7 +62,8 @@ export class NostrCore {
     });
 
     mentionPubkeys?.forEach(pubkey => {
-      tags.push(['p', pubkey]);
+      // Whoever the reply already names is not named twice
+      if (!replyPeople.has(pubkey)) tags.push(['p', pubkey]);
     });
 
     const event: NostrEvent = {
