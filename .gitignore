@@ -20,3 +20,6 @@ pnpm-debug.log*
 .jshintrc
 .eslintcache
 coverage/
+
+# Scratch relays and probes used while testing, never part of the app
+.*.mjs
