@@ -50,9 +50,10 @@ function encodeNoteParam(noteId: string): string {
   return NostrCrypto.encodeNote(noteId) || noteId;
 }
 
-function GroupsRoute({ onNavigateToProfile, onNavigateToNote, onNavigateToTopic }: RouteCallbacks) {
+function GroupsRoute({ relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }: RouteCallbacks) {
   return (
     <GroupsPage
+      relaysConnected={relaysConnected}
       onNavigateToProfile={onNavigateToProfile}
       onNavigateToNote={onNavigateToNote}
       onNavigateToTopic={onNavigateToTopic}

@@ -25,6 +25,8 @@ import RichText from './RichText';
 import EmojiText from './EmojiText';
 
 interface GroupsPageProps {
+  /** The account's own relays, which is where the shared list of groups lives */
+  relaysConnected: boolean;
   onNavigateToProfile: (pubkey: string) => void;
   onNavigateToNote?: (noteId: string) => void;
   onNavigateToTopic?: (topic: string) => void;
@@ -37,7 +39,7 @@ const relayLabel = (url: string): string => url.replace(/^wss:\/\//, '').replace
  * groups each one holds, and the conversation inside one of them. The same
  * groups people are in through Armada, Chachi or 0xchat.
  */
-const GroupsPage: React.FC<GroupsPageProps> = ({ onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
+const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
   const [relays, setRelays] = useState<string[]>(getGroupRelays);
   const [activeRelay, setActiveRelay] = useState<string>(() => getGroupRelays()[0] || '');
   const [groupsByRelay, setGroupsByRelay] = useState<Record<string, GroupInfo[]>>({});
@@ -98,12 +100,27 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ onNavigateToProfile, onNavigate
     return () => { cancelled = true; };
   }, [activeRelay, groupsByRelay]);
 
-  // The groups this account is in, as other clients know them
+  // The groups this account is in, as other clients know them. Asked once the
+  // account's own relays are up: asked before that, the pool has nobody to
+  // ask and answers with nothing — which read as "you are in no groups".
   useEffect(() => {
+    if (!relaysConnected) return;
     let cancelled = false;
-    fetchJoinedGroups().then(found => { if (!cancelled) setJoined(found); });
+
+    const ask = async (attempt: number) => {
+      const found = await fetchJoinedGroups();
+      if (cancelled) return;
+      if (found.length > 0) {
+        setJoined(found);
+        return;
+      }
+      // An empty answer this early is more often a slow relay than an empty list
+      if (attempt < 2) setTimeout(() => { if (!cancelled) void ask(attempt + 1); }, 4000);
+    };
+    void ask(0);
+
     return () => { cancelled = true; };
-  }, []);
+  }, [relaysConnected]);
 
   // And as the relays themselves know them
   useEffect(() => {
@@ -255,6 +272,20 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ onNavigateToProfile, onNavigate
       setNotice(error instanceof Error ? error.message : String(error));
     }
   };
+
+  // A relay this account has groups on but has never been told about — the
+  // usual way that happens is joining somewhere else, in 0xchat or Chachi,
+  // which writes the relay into the shared list. It takes its place beside
+  // the built-in ones rather than leaving the group unreachable.
+  useEffect(() => {
+    const known = new Set(relays);
+    const found = mine.map(g => g.relay).filter(url => url && !known.has(url));
+    if (found.length === 0) return;
+    const next = [...relays, ...Array.from(new Set(found))];
+    setRelays(next);
+    setGroupRelays(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mine.map(g => g.relay).join(',')]);
 
   const addRelay = () => {
     const url = newRelay.trim();
