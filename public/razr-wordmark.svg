@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="400" height="120" fill="none" role="img" aria-label="RAZR">
+  <!-- RAZR, cut: the same mark the app draws in its header, as a file.
+       Colours are fixed here rather than taken from the page's own. -->
+  <defs>
+    <linearGradient id="ink" x1="0" y1="0" x2="200" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#667eea"/>
+      <stop offset="1" stop-color="#c07be0"/>
+    </linearGradient>
+    <clipPath id="above"><polygon points="0,0 200,0 200,17 0,33"/></clipPath>
+    <clipPath id="below"><polygon points="0,37 200,21 200,60 0,60"/></clipPath>
+    <linearGradient id="glint" x1="0" y1="0" x2="200" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.12" stop-color="#fff" stop-opacity="0.75"/>
+      <stop offset="0.82" stop-color="#fff" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <g fill="url(#ink)" font-family="Carlito, Calibri, Helvetica, Arial, sans-serif" font-weight="700" font-size="52" letter-spacing="5">
+    <text x="2" y="45" clip-path="url(#above)" transform="translate(6 -1)">RAZR</text>
+    <text x="2" y="45" clip-path="url(#below)">RAZR</text>
+  </g>
+
+  <path d="M0 34.6 L200 18.6 L200 20.2 L0 36.2 Z" fill="url(#glint)"/>
+</svg>

@@ -3,7 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/razr.svg" />
+    <!-- Added to a phone's home screen, a site with none of this gets a
+         screenshot of itself in a white rounded box. These give it the mark. -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/razr-icon-180.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0d0d18" />
+    <meta name="apple-mobile-web-app-title" content="RAZR" />
     <meta name="description" content="RAZR — a nostr client" />
+
+    <!-- What another client draws when someone shares a link to this one -->
+    <meta property="og:title" content="RAZR" />
+    <meta property="og:description" content="A nostr client" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://razr.social/" />
+    <meta property="og:image" content="https://razr.social/razr-og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://razr.social/razr-og.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!--
       What this page shows is other people's: a picture in a note, an avatar,
