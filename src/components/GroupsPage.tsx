@@ -10,6 +10,7 @@ import {
   fetchGroupMembers,
   fetchGroups,
   fetchMyGroupsOn,
+  discoverGroupRelays,
   getGroupRelays,
   groupKey,
   KNOWN_GROUP_RELAYS,
@@ -132,6 +133,16 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     return () => { cancelled = true; };
   }, [relaysConnected]);
 
+  // Which relays are worth asking at all — the well-known ones, and whatever
+  // the network itself is using
+  const [aroundTheNetwork, setAroundTheNetwork] = useState<string[]>([]);
+  useEffect(() => {
+    if (!relaysConnected) return;
+    let cancelled = false;
+    discoverGroupRelays().then(found => { if (!cancelled) setAroundTheNetwork(found); });
+    return () => { cancelled = true; };
+  }, [relaysConnected]);
+
   // And as the relays themselves know them
   useEffect(() => {
     if (!ownPubkey) return;
@@ -139,7 +150,12 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     // Every relay this account might be known at, not only the ones being
     // browsed: a group joined in another client leaves its trace on the relay
     // that holds it and nowhere else
-    const asked = Array.from(new Set([...relays, ...joined.map(g => g.relay), ...KNOWN_GROUP_RELAYS]));
+    const asked = Array.from(new Set([
+      ...relays,
+      ...joined.map(g => g.relay),
+      ...KNOWN_GROUP_RELAYS,
+      ...aroundTheNetwork
+    ]));
     setLookingForMine(true);
     let outstanding = asked.length;
 
@@ -156,7 +172,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     }
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [relays.join(','), joined.length, ownPubkey]);
+  }, [relays.join(','), joined.length, aroundTheNetwork.join(','), ownPubkey]);
 
   // A group of one's own on a relay whose list has not been read carries no
   // name yet, and a row of hex is not a group anybody recognises

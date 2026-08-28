@@ -367,6 +367,41 @@ export function getGroupRelays(): string[] {
   return [];
 }
 
+/**
+ * Which relays anyone's groups are on, learned from the network rather than
+ * written down here: the shared group lists people publish name the relay
+ * holding each group. Whatever is in use out there is worth asking whether it
+ * holds anything of this account's — which is how a group joined in another
+ * app, on a relay nobody here has heard of, is found at all.
+ */
+export async function discoverGroupRelays(limit = 200): Promise<string[]> {
+  try {
+    const lists = await getRelayPool().fetchEvents([
+      { kinds: [EVENT_KINDS.GROUP_LIST], limit }
+    ]);
+
+    const seen = new Map<string, number>();
+    for (const list of lists) {
+      for (const t of list.tags) {
+        if (t[0] !== 'group' || !t[2]) continue;
+        const url = t[2].replace(/\/$/, '');
+        if (!/^wss?:\/\//i.test(url)) continue;
+        seen.set(url, (seen.get(url) || 0) + 1);
+      }
+    }
+
+    // The busiest first, and not too many of them: each one costs a
+    // connection to ask
+    return Array.from(seen.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([url]) => url);
+  } catch (error) {
+    console.warn('[Groups] Could not look around for group relays:', error);
+    return [];
+  }
+}
+
 export function setGroupRelays(urls: string[]): void {
   const cleaned = Array.from(new Set(urls.map(u => u.trim()).filter(Boolean)));
   localStorage.setItem(GROUP_RELAYS_KEY, JSON.stringify(cleaned));
