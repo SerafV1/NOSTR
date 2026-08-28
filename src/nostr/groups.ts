@@ -15,11 +15,36 @@ import { CredentialManager } from './crypto';
  * feed, and the feed's relays know nothing about groups.
  */
 
-/** Where to look before anyone has added a relay of their own */
-export const DEFAULT_GROUP_RELAYS = [
+/**
+ * Not shown as servers — nobody wants a list of places they have never been.
+ * These are only asked whether this account is a member of anything of
+ * theirs; whatever answers yes becomes a server of one's own.
+ */
+const WELL_KNOWN = [
   'wss://groups.0xchat.com',
   'wss://groups.hzrd149.com',
+  'wss://relay.zap.stream',
   'wss://relay.damus.io'
+];
+
+/**
+ * Relays worth asking "is this account in anything of yours?", even when
+ * nobody has added them. A group joined in another client is often the only
+ * record there is — that client need not have written it to the shared list,
+ * and Armada, for one, does not — so the relay's own member list is where
+ * such a group is found. Only asked about membership; browsing still starts
+ * from the relays above.
+ */
+export const KNOWN_GROUP_RELAYS = [
+  ...WELL_KNOWN,
+  'wss://chat.wisp.talk',
+  'wss://groups.libernet.app',
+  'wss://groups.fiatjaf.com',
+  'wss://pyramid.fiatjaf.com',
+  'wss://basspistol.org',
+  'wss://spatia-arcana.com',
+  'wss://group.einundzwanzig.space',
+  'wss://communities.nos.social'
 ];
 
 const GROUP_RELAYS_KEY = 'nostr_group_relays';
@@ -77,6 +102,9 @@ class GroupRelay {
   private subs = new Map<string, Waiting>();
   private publishes = new Map<string, (accepted: boolean, reason: string) => void>();
   private nextId = 0;
+  /** Resolves once the relay has accepted who we say we are */
+  private known: Promise<boolean> | null = null;
+  private admitKnown: ((accepted: boolean) => void) | null = null;
 
   constructor(private readonly url: string) {}
 
@@ -163,17 +191,40 @@ class GroupRelay {
 
   /** NIP-42, which is how a group relay decides what it will show and take */
   private async proveWhoWeAre(challenge: string): Promise<void> {
-    if (!CredentialManager.canSign()) return;
+    if (!CredentialManager.canSign()) {
+      this.admitKnown?.(false);
+      return;
+    }
     try {
       const proof = await NostrCore.signAnyMode({
         kind: EVENT_KINDS.CLIENT_AUTH,
         content: '',
         tags: [['relay', this.url], ['challenge', challenge]]
       } as NostrEvent);
+
+      // The relay answers an auth event with an OK, like any other
+      this.publishes.set(proof.id, accepted => this.admitKnown?.(accepted));
       this.send(['AUTH', proof]);
     } catch (error) {
       console.warn(`[Groups] Could not prove who we are to ${this.url}:`, error);
+      this.admitKnown?.(false);
     }
+  }
+
+  /**
+   * Whether the relay knows who is asking. A private group is not shown to a
+   * stranger, and the challenge often arrives after the first question has
+   * already gone out — so a refused question is worth asking again once this
+   * has settled.
+   */
+  private whenKnown(waitMs = 4000): Promise<boolean> {
+    if (!this.known) {
+      this.known = new Promise<boolean>(resolve => {
+        this.admitKnown = resolve;
+        setTimeout(() => resolve(false), waitMs);
+      });
+    }
+    return this.known;
   }
 
   private send(message: unknown[]): void {
@@ -190,6 +241,22 @@ class GroupRelay {
   async readWithReason(
     filters: NostrFilter[],
     waitMs = 5000
+  ): Promise<{ events: NostrEventSigned[]; refusal: string | null }> {
+    const first = await this.askOnce(filters, waitMs);
+    const worthRetrying = first.refusal && /auth|restricted|private|not a member/i.test(first.refusal);
+    if (!worthRetrying || !CredentialManager.canSign()) return first;
+
+    // Turned away for not being known: wait for the introduction to land and
+    // ask again, which is the difference between a private group one is a
+    // member of showing and not showing at all
+    const admitted = await this.whenKnown();
+    if (!admitted) return first;
+    return this.askOnce(filters, waitMs);
+  }
+
+  private async askOnce(
+    filters: NostrFilter[],
+    waitMs: number
   ): Promise<{ events: NostrEventSigned[]; refusal: string | null }> {
     try {
       await this.open();
@@ -282,6 +349,11 @@ function read(url: string, filters: NostrFilter[], waitMs = 5000): Promise<Nostr
 // Which relays to look at
 // ---------------------------------------------------------------------------
 
+/**
+ * The servers this account actually has: the ones it was found to be a member
+ * of, and the ones it was told about by hand. Empty to begin with, which is
+ * the truth — a stranger's relay is not one of your servers.
+ */
 export function getGroupRelays(): string[] {
   try {
     const stored = localStorage.getItem(GROUP_RELAYS_KEY);
@@ -290,9 +362,9 @@ export function getGroupRelays(): string[] {
       if (Array.isArray(parsed)) return parsed;
     }
   } catch {
-    // Unreadable — fall back to the built-in set
+    // Unreadable — start from nothing rather than from someone else's list
   }
-  return [...DEFAULT_GROUP_RELAYS];
+  return [];
 }
 
 export function setGroupRelays(urls: string[]): void {

@@ -12,6 +12,7 @@ import {
   fetchMyGroupsOn,
   getGroupRelays,
   groupKey,
+  KNOWN_GROUP_RELAYS,
   joinGroup,
   joinedGroupsFromCache,
   fetchJoinedGroups,
@@ -42,6 +43,10 @@ const relayLabel = (url: string): string => url.replace(/^wss:\/\//, '').replace
 const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
   const [relays, setRelays] = useState<string[]>(getGroupRelays);
   const [activeRelay, setActiveRelay] = useState<string>(() => getGroupRelays()[0] || '');
+  // The first server to turn up — found or added — is the one opened
+  useEffect(() => {
+    if (!activeRelay && relays.length > 0) setActiveRelay(relays[0]);
+  }, [relays, activeRelay]);
   const [groupsByRelay, setGroupsByRelay] = useState<Record<string, GroupInfo[]>>({});
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [search, setSearch] = useState('');
@@ -51,6 +56,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
   // joined in another app was invisible here until it was asked for: the
   // list a client keeps is one thing, being in the group is another.
   const [memberOf, setMemberOf] = useState<Record<string, string[]>>({});
+  const [lookingForMine, setLookingForMine] = useState(false);
   const [active, setActive] = useState<GroupAddress | null>(null);
   const [messages, setMessages] = useState<NostrEventSigned[]>([]);
   const [members, setMembers] = useState<string[]>([]);
@@ -130,13 +136,23 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
   useEffect(() => {
     if (!ownPubkey) return;
     let cancelled = false;
-    const asked = Array.from(new Set([...relays, ...joined.map(g => g.relay)]));
+    // Every relay this account might be known at, not only the ones being
+    // browsed: a group joined in another client leaves its trace on the relay
+    // that holds it and nowhere else
+    const asked = Array.from(new Set([...relays, ...joined.map(g => g.relay), ...KNOWN_GROUP_RELAYS]));
+    setLookingForMine(true);
+    let outstanding = asked.length;
 
     for (const relay of asked) {
-      fetchMyGroupsOn(relay, ownPubkey).then(ids => {
-        if (cancelled || ids.length === 0) return;
-        setMemberOf(prev => (prev[relay]?.length === ids.length ? prev : { ...prev, [relay]: ids }));
-      });
+      fetchMyGroupsOn(relay, ownPubkey)
+        .then(ids => {
+          if (cancelled || ids.length === 0) return;
+          setMemberOf(prev => (prev[relay]?.length === ids.length ? prev : { ...prev, [relay]: ids }));
+        })
+        .finally(() => {
+          outstanding -= 1;
+          if (!cancelled && outstanding <= 0) setLookingForMine(false);
+        });
     }
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -326,6 +342,12 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
       {/* The relays, which is to say the servers */}
       <aside className="groups-relays">
         <h2>Servers</h2>
+        {relays.length === 0 && (
+          <div className="groups-empty">
+            None yet. Join a group in any nostr app and its server turns up
+            here, or add one below.
+          </div>
+        )}
         {relays.map(url => (
           <button
             key={url}
@@ -351,9 +373,16 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
 
       {/* What that server holds */}
       <nav className="groups-list">
+        <h3>Yours</h3>
+        {mine.length === 0 && (
+          <div className="groups-empty">
+            {lookingForMine
+              ? 'Looking for the groups you are in…'
+              : 'None yet — join one below, and groups joined in other apps show up here too.'}
+          </div>
+        )}
         {mine.length > 0 && (
           <>
-            <h3>Yours</h3>
             {mine.map(address => {
               const info = (groupsByRelay[address.relay] || []).find(g => g.id === address.id);
               return (
@@ -371,17 +400,21 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
           </>
         )}
 
-        <h3>On {relayLabel(activeRelay)}</h3>
-        <input
-          className="groups-search"
-          type="text"
-          value={search}
-          placeholder="search groups…"
-          onChange={e => setSearch(e.target.value)}
-        />
-        {loadingGroups && <div className="groups-empty">Looking…</div>}
-        {!loadingGroups && shownGroups.length === 0 && (
-          <div className="groups-empty">Nothing here to read.</div>
+        {activeRelay && (
+          <>
+            <h3>On {relayLabel(activeRelay)}</h3>
+            <input
+              className="groups-search"
+              type="text"
+              value={search}
+              placeholder="search groups…"
+              onChange={e => setSearch(e.target.value)}
+            />
+            {loadingGroups && <div className="groups-empty">Looking…</div>}
+            {!loadingGroups && shownGroups.length === 0 && (
+              <div className="groups-empty">Nothing here to read.</div>
+            )}
+          </>
         )}
         {shownGroups.slice(0, 200).map(group => (
           <button
