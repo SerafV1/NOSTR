@@ -7405,6 +7405,11 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   white-space: nowrap;
 }
 
+.groups-item-in {
+  color: var(--success-color, #2ecc71);
+  font-size: 0.8rem;
+}
+
 .groups-item-count,
 .groups-item-relay {
   font-size: 0.72rem;

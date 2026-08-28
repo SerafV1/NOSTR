@@ -342,6 +342,24 @@ export async function fetchGroup(address: GroupAddress): Promise<GroupInfo | nul
   return parseGroup(address.relay, metadata[0], count);
 }
 
+/**
+ * The groups on this relay whose member list names you — which is what the
+ * relay itself considers you a member of, whatever any client wrote down. A
+ * group joined through another app, or one an admin added you to, is only
+ * knowable this way.
+ */
+export async function fetchMyGroupsOn(relay: string, pubkey: string): Promise<string[]> {
+  const lists = await read(relay, [
+    { kinds: [EVENT_KINDS.GROUP_MEMBERS], '#p': [pubkey], limit: 100 }
+  ]);
+  const ids = new Set<string>();
+  for (const list of lists) {
+    const id = tag(list, 'd');
+    if (id) ids.add(id);
+  }
+  return Array.from(ids);
+}
+
 /** Who is in it */
 export async function fetchGroupMembers(address: GroupAddress): Promise<string[]> {
   const lists = await read(address.relay, [

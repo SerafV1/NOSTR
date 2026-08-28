@@ -6,8 +6,10 @@ import {
   GroupAddress,
   GroupInfo,
   fetchGroupChat,
+  fetchGroup,
   fetchGroupMembers,
   fetchGroups,
+  fetchMyGroupsOn,
   getGroupRelays,
   groupKey,
   joinGroup,
@@ -43,6 +45,10 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ onNavigateToProfile, onNavigate
   const [search, setSearch] = useState('');
 
   const [joined, setJoined] = useState<GroupAddress[]>(joinedGroupsFromCache);
+  // Which groups each relay considers this account a member of. A group
+  // joined in another app was invisible here until it was asked for: the
+  // list a client keeps is one thing, being in the group is another.
+  const [memberOf, setMemberOf] = useState<Record<string, string[]>>({});
   const [active, setActive] = useState<GroupAddress | null>(null);
   const [messages, setMessages] = useState<NostrEventSigned[]>([]);
   const [members, setMembers] = useState<string[]>([]);
@@ -62,7 +68,21 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ onNavigateToProfile, onNavigate
     () => (active ? (groupsByRelay[active.relay] || []).find(g => g.id === active.id) || null : null),
     [active, groupsByRelay]
   );
-  const isJoined = active ? joined.some(g => groupKey(g) === groupKey(active)) : false;
+  const inGroup = (address: GroupAddress): boolean =>
+    joined.some(g => groupKey(g) === groupKey(address)) ||
+    (memberOf[address.relay] || []).includes(address.id);
+
+  const isJoined = active ? inGroup(active) : false;
+
+  /** Everything this account is in, from both what it wrote down and what the relays say */
+  const mine: GroupAddress[] = useMemo(() => {
+    const all = new Map<string, GroupAddress>();
+    for (const address of joined) all.set(groupKey(address), address);
+    for (const [relay, ids] of Object.entries(memberOf)) {
+      for (const id of ids) all.set(groupKey({ relay, id }), { relay, id });
+    }
+    return Array.from(all.values());
+  }, [joined, memberOf]);
 
   // The groups a relay holds
   useEffect(() => {
@@ -84,6 +104,42 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ onNavigateToProfile, onNavigate
     fetchJoinedGroups().then(found => { if (!cancelled) setJoined(found); });
     return () => { cancelled = true; };
   }, []);
+
+  // And as the relays themselves know them
+  useEffect(() => {
+    if (!ownPubkey) return;
+    let cancelled = false;
+    const asked = Array.from(new Set([...relays, ...joined.map(g => g.relay)]));
+
+    for (const relay of asked) {
+      fetchMyGroupsOn(relay, ownPubkey).then(ids => {
+        if (cancelled || ids.length === 0) return;
+        setMemberOf(prev => (prev[relay]?.length === ids.length ? prev : { ...prev, [relay]: ids }));
+      });
+    }
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [relays.join(','), joined.length, ownPubkey]);
+
+  // A group of one's own on a relay whose list has not been read carries no
+  // name yet, and a row of hex is not a group anybody recognises
+  useEffect(() => {
+    let cancelled = false;
+    for (const address of mine) {
+      const known = (groupsByRelay[address.relay] || []).some(g => g.id === address.id);
+      if (known) continue;
+      fetchGroup(address).then(info => {
+        if (cancelled || !info) return;
+        setGroupsByRelay(prev => {
+          const held = prev[address.relay] || [];
+          if (held.some(g => g.id === info.id)) return prev;
+          return { ...prev, [address.relay]: [...held, info] };
+        });
+      });
+    }
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mine.map(groupKey).join(',')]);
 
   // A group's conversation, and whatever is said while it is open
   useEffect(() => {
@@ -184,6 +240,10 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ onNavigateToProfile, onNavigate
       if (isJoined) {
         await leaveGroup(active);
         setJoined(prev => prev.filter(g => groupKey(g) !== groupKey(active)));
+        setMemberOf(prev => ({
+          ...prev,
+          [active.relay]: (prev[active.relay] || []).filter(id => id !== active.id)
+        }));
       } else {
         await joinGroup(active);
         setJoined(prev => [...prev, active]);
@@ -237,10 +297,10 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ onNavigateToProfile, onNavigate
 
       {/* What that server holds */}
       <nav className="groups-list">
-        {joined.length > 0 && (
+        {mine.length > 0 && (
           <>
             <h3>Yours</h3>
-            {joined.map(address => {
+            {mine.map(address => {
               const info = (groupsByRelay[address.relay] || []).find(g => g.id === address.id);
               return (
                 <button
@@ -277,6 +337,9 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ onNavigateToProfile, onNavigate
             onClick={() => openGroup({ relay: group.relay, id: group.id })}
           >
             <span className="groups-item-name">{group.name}</span>
+            {inGroup({ relay: group.relay, id: group.id }) && (
+              <span className="groups-item-in" title="You are in this group">✓</span>
+            )}
             {group.members !== undefined && (
               <span className="groups-item-count">{group.members}</span>
             )}
