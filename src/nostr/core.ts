@@ -326,29 +326,69 @@ export class NostrCore {
   /**
    * Fetch user profile from relays
    */
+  // The same idea as the engagement batch below: every card asks for the
+  // person who wrote it, and asking one at a time meant 1,102 queries to the
+  // relays for a single screen of a feed — measured — which is what the posts
+  // themselves were queuing behind.
+  private static profileWaiting = new Map<string, ((profile: UserProfile | null) => void)[]>();
+  private static profileTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly PROFILE_BATCH = 40;
+
   static async fetchUserProfile(pubkey: string): Promise<UserProfile | null> {
-    const filters: NostrFilter[] = [
-      {
-        kinds: [EVENT_KINDS.SET_METADATA],
-        authors: [pubkey],
-        limit: 10
-      }
-    ];
+    return new Promise(resolve => {
+      const waiting = this.profileWaiting.get(pubkey) || [];
+      waiting.push(resolve);
+      this.profileWaiting.set(pubkey, waiting);
 
+      if (this.profileWaiting.size >= this.PROFILE_BATCH) {
+        void this.askAboutWaitingPeople();
+      } else if (!this.profileTimer) {
+        this.profileTimer = setTimeout(() => { void this.askAboutWaitingPeople(); }, 200);
+      }
+    });
+  }
+
+  private static async askAboutWaitingPeople(): Promise<void> {
+    if (this.profileTimer) {
+      clearTimeout(this.profileTimer);
+      this.profileTimer = null;
+    }
+
+    const asked = this.profileWaiting;
+    this.profileWaiting = new Map();
+    const pubkeys = Array.from(asked.keys());
+    if (pubkeys.length === 0) return;
+
+    const found = new Map<string, UserProfile>();
     try {
-      const relayPool = getRelayPool();
-      const events = await relayPool.fetchEvents(filters);
+      const events = await getRelayPool().fetchEvents([
+        {
+          kinds: [EVENT_KINDS.SET_METADATA],
+          authors: pubkeys,
+          // Several relays may hold several copies each, and the newest of
+          // them wins below
+          limit: pubkeys.length * 10
+        }
+      ]);
 
-      if (events.length === 0) {
-        return null;
+      const byAuthor = new Map<string, NostrEventSigned[]>();
+      for (const event of events) {
+        const held = byAuthor.get(event.pubkey) || [];
+        held.push(event);
+        byAuthor.set(event.pubkey, held);
       }
-
-      const profile = this.mergeMetadataEvents(pubkey, events);
-      EventCache.addProfile(profile);
-      return profile;
+      for (const [author, metadata] of byAuthor) {
+        const profile = this.mergeMetadataEvents(author, metadata);
+        EventCache.addProfile(profile);
+        found.set(author, profile);
+      }
     } catch (error) {
       console.error('Failed to fetch profile:', error);
-      return null;
+    }
+
+    for (const [pubkey, resolvers] of asked) {
+      const profile = found.get(pubkey) || null;
+      for (const resolve of resolvers) resolve(profile);
     }
   }
 
@@ -1772,6 +1812,111 @@ export class NostrCore {
     PersistentCache.set(this.ownActionsKey(kind), Object.fromEntries(trimmed));
   }
 
+  /**
+   * The last numbers seen under a post, kept so that a reader coming back to
+   * the feed reads them straight away instead of watching a row of noughts
+   * until the relays answer. Four numbers per post, so the whole page's worth
+   * costs less than one of the posts it belongs to.
+   */
+  private static readonly ENGAGEMENT_MEMORY_KEY = 'engagement_counts';
+  private static readonly ENGAGEMENT_MEMORY_LIMIT = 400;
+  private static engagementMemory: Map<string, EngagementCounts> | null = null;
+
+  private static engagementCounts(): Map<string, EngagementCounts> {
+    if (!this.engagementMemory) {
+      const stored = PersistentCache.get<[string, EngagementCounts][]>(this.ENGAGEMENT_MEMORY_KEY);
+      this.engagementMemory = new Map(stored || []);
+    }
+    return this.engagementMemory;
+  }
+
+  /** What was last counted under this post, if it has been seen before */
+  static rememberedEngagement(eventId: string): EngagementCounts | null {
+    return this.engagementCounts().get(eventId) || null;
+  }
+
+  private static rememberEngagement(eventId: string, counts: EngagementCounts): void {
+    const memory = this.engagementCounts();
+    // Re-inserted so the most recently read posts are the ones kept
+    memory.delete(eventId);
+    memory.set(eventId, counts);
+    while (memory.size > this.ENGAGEMENT_MEMORY_LIMIT) {
+      const oldest = memory.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      memory.delete(oldest);
+    }
+    PersistentCache.set(this.ENGAGEMENT_MEMORY_KEY, Array.from(memory.entries()));
+  }
+
+  // Cards ask about their own post; the relays are asked about fifty at a
+  // time. Whoever asks first waits a fifth of a second for the rest of the
+  // page to join them — long enough for a screenful of cards to be drawn,
+  // short enough not to be seen.
+  private static engagementWaiting = new Map<string, ((events: NostrEventSigned[]) => void)[]>();
+  private static engagementTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly ENGAGEMENT_BATCH = 50;
+
+  private static engagementFor(eventId: string): Promise<NostrEventSigned[]> {
+    return new Promise(resolve => {
+      const waiting = this.engagementWaiting.get(eventId) || [];
+      waiting.push(resolve);
+      this.engagementWaiting.set(eventId, waiting);
+
+      if (this.engagementWaiting.size >= this.ENGAGEMENT_BATCH) {
+        void this.askAboutWaitingPosts();
+      } else if (!this.engagementTimer) {
+        this.engagementTimer = setTimeout(() => { void this.askAboutWaitingPosts(); }, 200);
+      }
+    });
+  }
+
+  private static async askAboutWaitingPosts(): Promise<void> {
+    if (this.engagementTimer) {
+      clearTimeout(this.engagementTimer);
+      this.engagementTimer = null;
+    }
+
+    const asked = this.engagementWaiting;
+    this.engagementWaiting = new Map();
+    const ids = Array.from(asked.keys());
+    if (ids.length === 0) return;
+
+    let events: NostrEventSigned[] = [];
+    try {
+      events = await getRelayPool().fetchEvents([
+        {
+          kinds: [
+            EVENT_KINDS.TEXT_NOTE,
+            EVENT_KINDS.COMMENT,
+            EVENT_KINDS.REPOST,
+            EVENT_KINDS.REACTION,
+            EVENT_KINDS.ZAP_RECEIPT
+          ],
+          '#e': ids,
+          limit: 2000
+        }
+      ]);
+    } catch (error) {
+      console.error('Failed to fetch engagement:', error);
+    }
+
+    // An answer can belong to more than one of them — a reply carries the
+    // thread's root as well as the post it answers
+    const wanted = new Set(ids);
+    const perPost = new Map<string, NostrEventSigned[]>(ids.map(id => [id, []]));
+    for (const event of events) {
+      const named = new Set(
+        event.tags.filter(t => t[0] === 'e' && wanted.has(t[1])).map(t => t[1])
+      );
+      for (const id of named) perPost.get(id)!.push(event);
+    }
+
+    for (const [id, resolvers] of asked) {
+      const found = perPost.get(id) || [];
+      for (const resolve of resolvers) resolve(found);
+    }
+  }
+
   static async fetchEngagement(eventId: string, thorough: boolean = false): Promise<{
     replies: number;
     reposts: number;
@@ -1790,20 +1935,27 @@ export class NostrCore {
     };
 
     try {
-      const relayPool = getRelayPool();
-      const events = await relayPool.fetchEvents([
-        {
-          kinds: [
-            EVENT_KINDS.TEXT_NOTE,
-            EVENT_KINDS.COMMENT,
-            EVENT_KINDS.REPOST,
-            EVENT_KINDS.REACTION,
-            EVENT_KINDS.ZAP_RECEIPT
-          ],
-          '#e': [eventId],
-          limit: 500
-        }
-      ], thorough);
+      // One post on its own where it is the post being read; otherwise the
+      // question is asked for a page of them at once. A feed of a hundred
+      // cards each asking on its own was a hundred queries to every relay —
+      // measured at 1,272 of them in forty seconds, which is why the numbers
+      // took so long to appear and why the posts themselves were slow behind
+      // them.
+      const events = thorough
+        ? await getRelayPool().fetchEvents([
+            {
+              kinds: [
+                EVENT_KINDS.TEXT_NOTE,
+                EVENT_KINDS.COMMENT,
+                EVENT_KINDS.REPOST,
+                EVENT_KINDS.REACTION,
+                EVENT_KINDS.ZAP_RECEIPT
+              ],
+              '#e': [eventId],
+              limit: 500
+            }
+          ], true)
+        : await this.engagementFor(eventId);
 
       const ownPubkey = CredentialManager.getPublicKey();
 
@@ -1840,6 +1992,13 @@ export class NostrCore {
       result.myRepost = true;
       result.reposts += 1;
     }
+
+    this.rememberEngagement(eventId, {
+      replies: result.replies,
+      reposts: result.reposts,
+      likes: result.likes,
+      zapSats: result.zapSats
+    });
 
     return result;
   }
@@ -2528,6 +2687,14 @@ export interface ZapActivity {
  * Small localStorage-backed store for stale-while-revalidate rendering:
  * cached data is shown instantly while fresh data loads in the background
  */
+/** The four numbers under a post, as last counted */
+export interface EngagementCounts {
+  replies: number;
+  reposts: number;
+  likes: number;
+  zapSats: number;
+}
+
 export class PersistentCache {
   private static readonly PREFIX = 'nostr_cache_';
 

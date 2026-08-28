@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { nip19 } from 'nostr-tools';
 import { NostrEventSigned, UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
@@ -61,11 +61,16 @@ const EventCard: React.FC<EventCardProps> = ({
   const noteContent = foldNostrWebLinks(event.content);
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [replyCount, setReplyCount] = useState(0);
-  const [repostCount, setRepostCount] = useState(0);
+  // What these numbers were the last time this post was read. Starting at
+  // nought meant a feed of noughts until the relays answered, which on a busy
+  // page is several seconds of a post looking as if nobody had touched it.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const remembered = NostrCore.rememberedEngagement(event.id);
+  const [replyCount, setReplyCount] = useState(remembered?.replies ?? 0);
+  const [repostCount, setRepostCount] = useState(remembered?.reposts ?? 0);
   const [reposted, setReposted] = useState(false);
-  const [likeCount, setLikeCount] = useState(0);
-  const [zapSats, setZapSats] = useState(0);
+  const [likeCount, setLikeCount] = useState(remembered?.likes ?? 0);
+  const [zapSats, setZapSats] = useState(remembered?.zapSats ?? 0);
   const [showRepostOptions, setShowRepostOptions] = useState(false);
   const [composeMode, setComposeMode] = useState<'reply' | 'quote' | null>(null);
   const [reposting, setReposting] = useState(false);
@@ -104,9 +109,31 @@ const EventCard: React.FC<EventCardProps> = ({
   const CONTENT_TRUNCATE_LENGTH = 500;
   const IMAGE_PREVIEW_LIMIT = 4;
 
+  // The numbers are asked for when the card comes near the screen, not when
+  // it is created. A hundred cards asking at once had them all queuing behind
+  // each other, and the ones being read waited on the ninety nobody had
+  // scrolled to yet.
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    let asked = false;
+    const ask = () => {
+      if (asked) return;
+      asked = true;
+      loadEngagement();
+    };
+
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { ask(); observer.disconnect(); } },
+      { rootMargin: '400px' }
+    );
+    observer.observe(card);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id]);
+
   useEffect(() => {
     loadProfile();
-    loadEngagement();
     loadMentionedProfiles();
     loadQuotedNote();
     if (event.kind === EVENT_KINDS.POLL) loadPollResponses();
@@ -561,7 +588,7 @@ const EventCard: React.FC<EventCardProps> = ({
   const displayPicture = profile?.picture || '';
 
   return (
-    <div className="event-card">
+    <div className="event-card" ref={cardRef}>
       <div className="event-header">
         <div className="event-author-info">
           <ProfileHoverCard
