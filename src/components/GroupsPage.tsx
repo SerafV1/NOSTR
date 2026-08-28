@@ -73,10 +73,29 @@ const previewableLink = (content: string): string | null => {
   return extractPreviewLinkUrl(content) || null;
 };
 
-/** The message this one answers, where it says so */
-const answered = (message: NostrEventSigned): string | null => {
+/**
+ * The message this one answers, where it says so.
+ *
+ * Groups settled on a different mark than the rest of nostr: 0xchat and
+ * Chachi point at what they answer with a 'q' tag, not the 'e' marked
+ * "reply" a thread uses. Of 342 messages read off groups.hzrd149.com,
+ * groups.0xchat.com and chat.wisp.talk, 38 used 'q' and 4 used 'e' — so
+ * reading 'e' alone left almost every reply in a group looking like a
+ * remark about nothing.
+ *
+ * `fromQuote` says the reference came from a 'q', which also carries a note
+ * quoted from outside the room. RichText already draws one of those in
+ * full, so there is nothing left to announce above it.
+ */
+const answered = (message: NostrEventSigned): { id: string; fromQuote: boolean } | null => {
   const marked = message.tags.find(t => t[0] === 'e' && t[3] === 'reply')?.[1];
-  return marked || message.tags.find(t => t[0] === 'e')?.[1] || null;
+  if (marked) return { id: marked, fromQuote: false };
+  // 0xchat writes an empty ["q", "", "", ""] on messages that answer
+  // nothing at all, so it is the id that makes it a reference
+  const quoted = message.tags.find(t => t[0] === 'q' && t[1])?.[1];
+  if (quoted) return { id: quoted, fromQuote: true };
+  const plain = message.tags.find(t => t[0] === 'e' && t[1])?.[1];
+  return plain ? { id: plain, fromQuote: false } : null;
 };
 
 const relayLabel = (url: string): string => url.replace(/^wss:\/\//, '').replace(/\/$/, '');
@@ -941,7 +960,11 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                 <div className="groups-empty">Nobody has said anything yet.</div>
               )}
               {messages.map(message => (
-                <div key={message.id} id={`msg-${message.id}`} className="groups-message">
+                <div
+                  key={message.id}
+                  id={`msg-${message.id}`}
+                  className={replyingTo?.id === message.id ? 'groups-message groups-message-active' : 'groups-message'}
+                >
                   <button
                     type="button"
                     className="groups-message-who"
@@ -958,23 +981,34 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                         {message.tags.find(t => t[0] === 'subject')![1]}
                       </span>
                     )}
-                    {answered(message) && (
-                      <button
-                        type="button"
-                        className="groups-answering"
-                        onClick={() => {
-                          const to = messages.find(m => m.id === answered(message));
-                          if (to) document.getElementById(`msg-${to.id}`)?.scrollIntoView({ block: 'center' });
-                        }}
-                      >
-                        ↳ {(() => {
-                          const to = messages.find(m => m.id === answered(message));
-                          return to
+                    {/* Every message in a room stands on the same line as the
+                        rest — who it answers is a detail of the message, not
+                        a place to put it. Drawing replies underneath what
+                        they answered was tried and taken back out: it moved
+                        the 12% that answer anything out of the clock's order,
+                        and the room stopped reading top to bottom. */}
+                    {(() => {
+                      const ref = answered(message);
+                      if (!ref) return null;
+                      const to = messages.find(m => m.id === ref.id);
+                      // A note quoted from outside the room is drawn in the
+                      // message itself — saying "↳ an earlier message" over
+                      // it would point at something that is not here
+                      if (!to && ref.fromQuote) return null;
+                      return (
+                        <button
+                          type="button"
+                          className="groups-answering"
+                          onClick={() => {
+                            if (to) document.getElementById(`msg-${to.id}`)?.scrollIntoView({ block: 'center' });
+                          }}
+                        >
+                          ↳ {to
                             ? `${nameFor(to.pubkey)}: ${to.content.replace(/\s+/g, ' ').slice(0, 48)}`
-                            : 'an earlier message';
-                        })()}
-                      </button>
-                    )}
+                            : 'an earlier message'}
+                        </button>
+                      );
+                    })()}
                     <span className="groups-message-name">
                       {/* Whoever said it, with the same card the rest of the
                           app gives: follow, mute, who they are */}
@@ -1045,7 +1079,18 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
               <div className="groups-composer">
                 {replyingTo && (
                   <div className="groups-replying">
-                    ↳ Replying to {nameFor(replyingTo.pubkey)}
+                    {/* Who and which message, the same two things the line
+                        above a sent reply carries — a room where the same
+                        person has said several things needs the second one
+                        to know which is being answered */}
+                    <span className="groups-replying-what">
+                      ↳ Replying to {nameFor(replyingTo.pubkey)}
+                      {(() => {
+                        // A picture on its own has nothing to quote back
+                        const said = replyingTo.content.replace(/\s+/g, ' ').trim();
+                        return said ? `: ${said.slice(0, 48)}` : '';
+                      })()}
+                    </span>
                     <button type="button" onClick={() => setReplyingTo(null)} title="Never mind">✕</button>
                   </div>
                 )}

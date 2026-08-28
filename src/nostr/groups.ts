@@ -692,9 +692,13 @@ export function replyInGroup(
 ): Promise<NostrEventSigned> {
   const tags: string[][] = [
     ['h', address.id],
-    // Marked the way a thread is marked everywhere else, so a client that
-    // does not know groups can still see what answers what
-    ['e', to.id, '', 'reply'],
+    // What the group clients read: 0xchat and Chachi mark the message being
+    // answered with 'q', and show nothing at all for an 'e' — so a reply
+    // sent from here used to arrive there as an unattached remark
+    ['q', to.id, address.relay, to.pubkey],
+    // Kept alongside it, marked the way a thread is marked everywhere else,
+    // so a client that does not know groups can still see what answers what
+    ['e', to.id, address.relay, 'reply'],
     ['p', to.pubkey]
   ];
   return publishToGroup(address, { kind: EVENT_KINDS.GROUP_CHAT, content, tags });

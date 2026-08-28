@@ -7615,6 +7615,24 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   display: flex;
   gap: var(--spacing-sm);
   align-items: flex-start;
+  /* Room for the two states below without the text moving when they come
+     and go: the rail is always there, only its colour is not */
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-left: 2px solid transparent;
+  border-radius: var(--border-radius);
+  transition: var(--transition);
+}
+
+/* The row under the pointer, lifted the one step a post is lifted by — far
+   enough to pick it out, not so far that it reads as chosen */
+.groups-message:hover { background: var(--card-hover-bg); }
+
+/* The message being answered, which is chosen: it carries the same rail in
+   the same colour as the line above the box where the answer is typed, so
+   the two ends of the reply are visibly one thing */
+.groups-message-active {
+  background: var(--card-hover-bg);
+  border-left-color: var(--primary-color);
 }
 
 .groups-message-who,
