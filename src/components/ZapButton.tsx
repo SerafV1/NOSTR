@@ -169,7 +169,7 @@ const ZapButton: React.FC<ZapButtonProps> = ({
               {(recipientName || recipientPicture) && (
                 <div className="zap-menu-recipient">
                   {recipientPicture ? (
-                    <img src={recipientPicture} alt="" className="zap-menu-avatar" />
+                    <img src={recipientPicture} alt="" className="zap-menu-avatar"  loading="lazy" decoding="async" />
                   ) : (
                     <div className="zap-menu-avatar-placeholder">
                       {(recipientName || '?').charAt(0).toUpperCase()}

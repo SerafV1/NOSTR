@@ -123,7 +123,7 @@ const LiveZappersPanel: React.FC<LiveZappersPanelProps> = ({
             <div key={zapper.pubkey} className="live-zapper">
               <span className="live-zapper-rank">{index + 1}</span>
               {profile?.picture ? (
-                <img src={profile.picture} alt="" className="live-chat-avatar" />
+                <img src={profile.picture} alt="" className="live-chat-avatar"  loading="lazy" decoding="async" />
               ) : (
                 <div className="live-chat-avatar-placeholder">{name.charAt(0).toUpperCase()}</div>
               )}

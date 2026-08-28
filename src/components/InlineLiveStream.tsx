@@ -225,7 +225,7 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
                 <StreamSurface src={stream.streamingUrl} className="inline-stream-video" />
               </div>
             ) : (
-              <img src={stream.image} alt={stream.title} className="image-modal-img" />
+              <img src={stream.image} alt={stream.title} className="image-modal-img"  loading="lazy" decoding="async" />
             )}
           </div>
         </div>

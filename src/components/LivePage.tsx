@@ -150,7 +150,7 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
               >
                 <div className="live-stream-thumb">
                   {stream.image ? (
-                    <img src={stream.image} alt={stream.title} />
+                    <img src={stream.image} alt={stream.title}  loading="lazy" decoding="async" />
                   ) : (
                     <div className="live-stream-thumb-placeholder" />
                   )}
@@ -162,7 +162,7 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
                 <div className="live-stream-info">
                   <div className="live-stream-title">{stream.title}</div>
                   <div className="live-stream-host">
-                    {profile?.picture && <img src={profile.picture} alt="" className="live-stream-host-avatar" />}
+                    {profile?.picture && <img src={profile.picture} alt="" className="live-stream-host-avatar"  loading="lazy" decoding="async" />}
                     {hostName}
                   </div>
                 </div>

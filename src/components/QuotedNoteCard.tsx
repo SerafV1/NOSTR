@@ -108,7 +108,7 @@ const QuotedNoteCard: React.FC<QuotedNoteCardProps> = ({ event, repostedBy, dept
           onClick={(e) => { e.stopPropagation(); onNavigateToProfile(event.pubkey); }}
         >
           {profile?.picture ? (
-            <img src={profile.picture} alt="" />
+            <img src={profile.picture} alt=""  loading="lazy" decoding="async" />
           ) : (
             <span className="quoted-note-avatar-placeholder">{displayName.charAt(0).toUpperCase()}</span>
           )}
@@ -147,7 +147,7 @@ const QuotedNoteCard: React.FC<QuotedNoteCardProps> = ({ event, repostedBy, dept
 
       {images.length > 0 && (
         <div className="quoted-note-media">
-          <img src={images[0]} alt="" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          <img src={images[0]} alt="" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}  loading="lazy" decoding="async" />
         </div>
       )}
 

@@ -2743,10 +2743,19 @@ export class EventCache {
   private static readonly MAX_PERSISTED_PROFILES = 500;
   private static persistTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /** Bounded like the events are: an hour's reading meets a lot of people */
+  private static readonly MAX_PROFILES = 1500;
+
   private static profiles(): Map<string, UserProfile> {
     if (!this.profileCache) {
       const stored = PersistentCache.get<UserProfile[]>(this.PROFILES_KEY);
       this.profileCache = new Map((stored || []).map(p => [p.pubkey, p]));
+    }
+    if (this.profileCache.size > this.MAX_PROFILES) {
+      for (const pubkey of this.profileCache.keys()) {
+        this.profileCache.delete(pubkey);
+        if (this.profileCache.size <= this.MAX_PROFILES) break;
+      }
     }
     return this.profileCache;
   }

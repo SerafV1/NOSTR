@@ -302,7 +302,7 @@ const SearchPage: React.FC<SearchPageProps> = ({ relaysConnected, onNavigateToPr
                         onClick={() => selectPersonSuggestion(profile)}
                       >
                         {profile.picture ? (
-                          <img src={profile.picture} alt="" className="suggestion-avatar" />
+                          <img src={profile.picture} alt="" className="suggestion-avatar"  loading="lazy" decoding="async" />
                         ) : (
                           <span className="suggestion-avatar-placeholder">
                             {(profile.display_name || profile.name || '?').charAt(0).toUpperCase()}
@@ -416,7 +416,7 @@ const SearchPage: React.FC<SearchPageProps> = ({ relaysConnected, onNavigateToPr
                     onClick={() => onNavigateToProfile(profile.pubkey)}
                   >
                     {profile.picture ? (
-                      <img src={profile.picture} alt="" className="person-avatar" />
+                      <img src={profile.picture} alt="" className="person-avatar"  loading="lazy" decoding="async" />
                     ) : (
                       <div className="person-avatar-placeholder">
                         {(profile.display_name || profile.name || '?').charAt(0).toUpperCase()}

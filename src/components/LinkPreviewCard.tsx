@@ -55,13 +55,15 @@ const LinkPreviewCard: React.FC<LinkPreviewCardProps> = ({ url }) => {
           alt=""
           className="link-preview-image"
           onError={() => setImageFailed(true)}
+                  loading="lazy"
+          decoding="async"
         />
       )}
       {/* Without title or picture the card was a bare hostname, which reads
           as a preview that failed. The site's icon and the path it points at
           at least say where the link goes. */}
       {!hasRichContent && favicon && (
-        <img src={favicon} alt="" className="link-preview-favicon" />
+        <img src={favicon} alt="" className="link-preview-favicon"  loading="lazy" decoding="async" />
       )}
       <div className="link-preview-body">
         <div className="link-preview-hostname">{preview.siteName || hostname}</div>

@@ -53,7 +53,7 @@ const LiveChatReactions: React.FC<LiveChatReactionsProps> = ({ tallies, canReact
           onClick={() => react(tally.emoji)}
         >
           {tally.image ? (
-            <img src={tally.image} alt={tally.emoji} className="live-chat-reaction-image" />
+            <img src={tally.image} alt={tally.emoji} className="live-chat-reaction-image"  loading="lazy" decoding="async" />
           ) : (
             <span className="live-chat-reaction-emoji">{tally.emoji}</span>
           )}

@@ -835,7 +835,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
 
             <div className="groups-make-picture">
               {newGroup.picture
-                ? <img src={newGroup.picture} alt="" />
+                ? <img src={newGroup.picture} alt=""  loading="lazy" decoding="async" />
                 : <span className="groups-avatar-placeholder">{(newGroup.name || '?').charAt(0).toUpperCase()}</span>}
               <label className="groups-upload">
                 {uploadPct === null ? 'Choose a picture' : `${uploadPct}%`}
@@ -948,7 +948,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                     onClick={() => onNavigateToProfile(message.pubkey)}
                   >
                     {profiles[message.pubkey]?.picture
-                      ? <img src={profiles[message.pubkey].picture} alt="" />
+                      ? <img src={profiles[message.pubkey].picture} alt=""  loading="lazy" decoding="async" />
                       : <span className="groups-avatar-placeholder">{nameFor(message.pubkey).charAt(0).toUpperCase()}</span>}
                   </button>
                   <div className="groups-message-body">
@@ -1154,7 +1154,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                     title={`${nameFor(pubkey)}${role === MEMBER ? '' : ` — ${role}`} · click to mention`}
                   >
                     {profiles[pubkey]?.picture
-                      ? <img src={profiles[pubkey].picture} alt="" />
+                      ? <img src={profiles[pubkey].picture} alt=""  loading="lazy" decoding="async" />
                       : <span className="groups-avatar-placeholder">{nameFor(pubkey).charAt(0).toUpperCase()}</span>}
                     <span className={`groups-member-name ${pubkey === ownPubkey ? 'groups-member-you' : ''}`}>
                       <EmojiText text={nameFor(pubkey)} emojis={profiles[pubkey]?.emojis} />

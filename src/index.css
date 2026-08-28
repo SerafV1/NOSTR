@@ -1116,7 +1116,20 @@ textarea {
 }
 
 .home-main .events-list .event-card,
-.profile-notes .events-list .event-card {
+.profile-notes .events-list /* A feed read for an hour holds hundreds of cards, and every one of them
+   costs the browser layout, paint and the memory behind both — even scrolled
+   far out of sight. This lets it skip all of that for anything off screen and
+   keep only what is being read, while the card itself stays in the page so
+   scrolling back is instant and the height does not jump. */
+.event-card,
+.groups-message {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}
+
+.groups-message { contain-intrinsic-size: auto 72px; }
+
+.event-card {
   border-left: none;
   border-right: none;
   border-top: none;
@@ -7859,6 +7872,14 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   border-radius: var(--border-radius);
   font-size: 0.8rem;
   color: var(--text-secondary);
+}
+
+.groups-replying-what {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .groups-replying button {

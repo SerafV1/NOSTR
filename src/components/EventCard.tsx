@@ -374,7 +374,7 @@ const EventCard: React.FC<EventCardProps> = ({
     const asEmojiParts = (text: string, keyBase: string): React.ReactNode[] =>
       splitCustomEmoji(text, emojis).map((piece, index) => (
         piece.type === 'emoji'
-          ? <img key={`${keyBase}-${index}`} src={piece.url} alt={`:${piece.value}:`} className="custom-emoji" />
+          ? <img key={`${keyBase}-${index}`} src={piece.url} alt={`:${piece.value}:`} className="custom-emoji"  loading="lazy" decoding="async" />
           : <React.Fragment key={`${keyBase}-${index}`}>{piece.value}</React.Fragment>
       ));
 
@@ -624,6 +624,8 @@ const EventCard: React.FC<EventCardProps> = ({
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = 'none';
                 }}
+                              loading="lazy"
+                decoding="async"
               />
             ) : (
               <div className="author-avatar-placeholder">
@@ -813,6 +815,8 @@ const EventCard: React.FC<EventCardProps> = ({
                             onError={(e) => {
                               (e.target as HTMLImageElement).style.display = 'none';
                             }}
+                                                      loading="lazy"
+                            decoding="async"
                           />
                           {single && (!isSensitive || mediaRevealed) && (
                             <span
@@ -1034,7 +1038,7 @@ const EventCard: React.FC<EventCardProps> = ({
               <button className="image-modal-close" onClick={() => setEnlargedIndex(null)}>
                 ✕
               </button>
-              <img src={currentUrl} alt="Enlarged" className="image-modal-img" />
+              <img src={currentUrl} alt="Enlarged" className="image-modal-img"  loading="lazy" decoding="async" />
               {images.length > 1 && (
                 <div className="image-modal-counter">{enlargedIndex + 1} / {images.length}</div>
               )}

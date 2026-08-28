@@ -583,7 +583,7 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
                 onClick={() => selectMention(profile)}
               >
                 {profile.picture ? (
-                  <img src={profile.picture} alt="" className="suggestion-avatar" />
+                  <img src={profile.picture} alt="" className="suggestion-avatar"  loading="lazy" decoding="async" />
                 ) : (
                   <span className="suggestion-avatar-placeholder">
                     {(profile.display_name || profile.name || '?').charAt(0).toUpperCase()}
@@ -719,6 +719,8 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
                 alt="Preview"
                 className="compose-preview-img"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              loading="lazy"
+                decoding="async"
               />
             ))}
             {previewVideos.map(url => (

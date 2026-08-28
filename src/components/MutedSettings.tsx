@@ -86,7 +86,7 @@ const MutedSettings: React.FC<MutedSettingsProps> = ({ relaysConnected }) => {
           <div key={pubkey} className="muted-row">
             <span className="muted-person">
               {profile?.picture ? (
-                <img src={profile.picture} alt="" className="muted-avatar" />
+                <img src={profile.picture} alt="" className="muted-avatar"  loading="lazy" decoding="async" />
               ) : (
                 <span className="muted-avatar-placeholder">{name.charAt(0).toUpperCase()}</span>
               )}

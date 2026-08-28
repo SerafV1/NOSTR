@@ -146,7 +146,7 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
           </button>
           <button className="thread-contact" onClick={() => onNavigateToProfile(selectedPubkey)}>
             {profile?.picture ? (
-              <img src={profile.picture} alt="" className="thread-contact-avatar" />
+              <img src={profile.picture} alt="" className="thread-contact-avatar"  loading="lazy" decoding="async" />
             ) : (
               <div className="thread-contact-avatar-placeholder">
                 {nameFor(selectedPubkey).charAt(0).toUpperCase()}
@@ -232,7 +232,7 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
               onClick={() => setSelectedPubkey(conversation.pubkey)}
             >
               {profile?.picture ? (
-                <img src={profile.picture} alt="" className="notification-avatar" />
+                <img src={profile.picture} alt="" className="notification-avatar"  loading="lazy" decoding="async" />
               ) : (
                 <div className="notification-avatar-placeholder">
                   {displayName.charAt(0).toUpperCase()}

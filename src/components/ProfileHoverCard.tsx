@@ -212,7 +212,7 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
             onClick={() => onNavigateToProfile(pubkey)}
           >
             {profile?.picture ? (
-              <img src={profile.picture} alt="" className="hover-card-avatar" />
+              <img src={profile.picture} alt="" className="hover-card-avatar"  loading="lazy" decoding="async" />
             ) : (
               <span className="hover-card-avatar-placeholder">{displayName.charAt(0).toUpperCase()}</span>
             )}

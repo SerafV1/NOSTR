@@ -613,6 +613,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                   src={profile.picture}
                   alt={displayName}
                   className="profile-avatar-large"
+                                  loading="lazy"
+                  decoding="async"
                 />
               ) : (
                 <div className="profile-avatar-large-placeholder">
@@ -832,7 +834,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                   {timelineItems.map((item) => item.type === 'repost' ? (
                     <div key={item.key} className="reposted-item">
                       <div className="reposted-label">
-                        {profile.picture && <img src={profile.picture} alt="" className="reposted-avatar" />}
+                        {profile.picture && <img src={profile.picture} alt="" className="reposted-avatar"  loading="lazy" decoding="async" />}
                         <EmojiText text={displayName} emojis={profile.emojis} /> Reposted
                       </div>
                       <EventCard
@@ -939,7 +941,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                             onClick={() => onNavigateToProfile(zap.counterpartyPubkey)}
                           >
                             {counterpartyProfile?.picture ? (
-                              <img src={counterpartyProfile.picture} alt="" className="sent-zap-recipient-avatar" />
+                              <img src={counterpartyProfile.picture} alt="" className="sent-zap-recipient-avatar"  loading="lazy" decoding="async" />
                             ) : (
                               <span className="sent-zap-recipient-avatar-placeholder">
                                 {counterpartyName.charAt(0).toUpperCase()}
@@ -1007,7 +1009,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                           onClick={() => onNavigateToProfile(personPubkey)}
                         >
                           {person?.picture ? (
-                            <img src={person.picture} alt="" className="person-avatar" />
+                            <img src={person.picture} alt="" className="person-avatar"  loading="lazy" decoding="async" />
                           ) : (
                             <div className="person-avatar-placeholder">{name.charAt(0).toUpperCase()}</div>
                           )}

@@ -914,7 +914,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
                   <div key={item.key} className="reposted-item">
                     <div className="reposted-label">
                       {reposterProfile?.picture && (
-                        <img src={reposterProfile.picture} alt="" className="reposted-avatar" />
+                        <img src={reposterProfile.picture} alt="" className="reposted-avatar"  loading="lazy" decoding="async" />
                       )}
                       {reposterName} Reposted
                     </div>
@@ -975,7 +975,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
                       onClick={() => navigate(`/live/${naddr}`)}
                     >
                       <span className="live-banner-badge">LIVE</span>
-                      {profile?.picture && <img src={profile.picture} alt="" className="live-banner-avatar" />}
+                      {profile?.picture && <img src={profile.picture} alt="" className="live-banner-avatar"  loading="lazy" decoding="async" />}
                       <span className="live-banner-text">
                         <strong><EmojiText text={name} emojis={profile?.emojis} /></strong> {isGuest ? 'is a guest on' : 'is live now —'} {info.title}
                       </span>

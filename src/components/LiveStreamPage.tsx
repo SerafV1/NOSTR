@@ -313,7 +313,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
               <div className="live-stream-who">
               <button className="live-stream-host-link" onClick={() => onNavigateToProfile(stream.hostPubkey)}>
                 {profile?.picture ? (
-                  <img src={profile.picture} alt="" className="live-stream-host-avatar" />
+                  <img src={profile.picture} alt="" className="live-stream-host-avatar"  loading="lazy" decoding="async" />
                 ) : (
                   <div className="live-stream-host-avatar-placeholder">{hostName.charAt(0).toUpperCase()}</div>
                 )}
@@ -382,7 +382,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                         onClick={() => onNavigateToProfile(person.pubkey)}
                       >
                         {person.picture ? (
-                          <img src={person.picture} alt={person.name} />
+                          <img src={person.picture} alt={person.name}  loading="lazy" decoding="async" />
                         ) : (
                           <span className="live-stream-face-initial">
                             {person.name.charAt(0).toUpperCase()}

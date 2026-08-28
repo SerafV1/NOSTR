@@ -306,6 +306,8 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
                   alt={displayName}
                   className="notification-avatar"
                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                  loading="lazy"
+                  decoding="async"
                 />
               ) : (
                 <div className="notification-avatar-placeholder">

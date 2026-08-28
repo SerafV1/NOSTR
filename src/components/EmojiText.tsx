@@ -21,7 +21,7 @@ const EmojiText: React.FC<EmojiTextProps> = ({ text, emojis, className }) => {
     <span className={className}>
       {pieces.map((piece, index) => (
         piece.type === 'emoji'
-          ? <img key={index} src={piece.url} alt={`:${piece.value}:`} className="custom-emoji" />
+          ? <img key={index} src={piece.url} alt={`:${piece.value}:`} className="custom-emoji"  loading="lazy" decoding="async" />
           : <React.Fragment key={index}>{piece.value}</React.Fragment>
       ))}
     </span>

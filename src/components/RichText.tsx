@@ -161,7 +161,7 @@ const RichText: React.FC<RichTextProps> = ({
     for (const piece of splitCustomEmoji(text, emojis)) {
       if (piece.type === 'emoji') {
         parts.push(
-          <img key={key++} src={piece.url} alt={`:${piece.value}:`} className="custom-emoji" />
+          <img key={key++} src={piece.url} alt={`:${piece.value}:`} className="custom-emoji"  loading="lazy" decoding="async" />
         );
       } else {
         parts.push(piece.value);
