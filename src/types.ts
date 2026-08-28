@@ -101,7 +101,29 @@ export const EVENT_KINDS = {
   /** NIP-53 room presence: "I am watching this right now" */
   LIVE_PRESENCE: 10312,
   /** NIP-51 people set — used here for a stream's own list of muted accounts */
-  PEOPLE_SET: 30000
+  PEOPLE_SET: 30000,
+
+  // NIP-29 relay-based groups. The relay is the server: it holds the group,
+  // decides who is in it, and every event carries an 'h' tag naming which
+  // group it belongs to.
+  /** A message in a group's chat */
+  GROUP_CHAT: 9,
+  /** A thread started in a group, as opposed to a line of chat */
+  GROUP_THREAD: 11,
+  /** Asking the relay to be let in */
+  GROUP_JOIN_REQUEST: 9021,
+  /** Telling it you are leaving */
+  GROUP_LEAVE_REQUEST: 9022,
+  /** The group itself: name, picture, whether it is public and open */
+  GROUP_METADATA: 39000,
+  /** Who runs it */
+  GROUP_ADMINS: 39001,
+  /** Who is in it */
+  GROUP_MEMBERS: 39002,
+  /** NIP-42: proving to a relay who you are, which group relays ask for */
+  CLIENT_AUTH: 22242,
+  /** NIP-51: the groups this account is in, so they follow it between apps */
+  GROUP_LIST: 10009
 };
 
 // Common hashtags

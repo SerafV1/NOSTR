@@ -7331,3 +7331,300 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
     display: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   NIP-29 groups: relays down the left as servers, their groups beside them,
+   the conversation in the middle, who is in it down the right — the shape
+   people already know from the chat apps this replaces.
+   --------------------------------------------------------------------------- */
+.groups-page {
+  display: grid;
+  grid-template-columns: 190px 260px minmax(0, 1fr) 220px;
+  height: calc(100vh - var(--header-height, 60px));
+  overflow: hidden;
+}
+
+.groups-relays,
+.groups-list,
+.groups-members {
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+  padding: var(--spacing-md);
+}
+
+.groups-members {
+  border-right: none;
+  border-left: 1px solid var(--border-color);
+}
+
+.groups-relays h2,
+.groups-list h3,
+.groups-members h3 {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  margin: var(--spacing-md) 0 var(--spacing-sm);
+}
+
+.groups-relays h2 { margin-top: 0; }
+
+.groups-relay,
+.groups-item,
+.groups-member {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  padding: 6px 8px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.groups-relay:hover,
+.groups-item:hover,
+.groups-member:hover {
+  background: var(--light-bg);
+}
+
+.groups-relay.active,
+.groups-item.active {
+  background: var(--primary-color);
+  color: #fff;
+}
+
+.groups-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groups-item-count,
+.groups-item-relay {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.groups-item.active .groups-item-count,
+.groups-item.active .groups-item-relay {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.groups-search,
+.groups-add-relay input {
+  width: 100%;
+  padding: 6px 8px;
+  margin-bottom: var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--input-bg, var(--light-bg));
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+.groups-add-relay {
+  display: flex;
+  gap: 4px;
+  margin-top: var(--spacing-sm);
+}
+
+.groups-add-relay input { margin-bottom: 0; }
+
+.groups-add-relay button {
+  border: 1px solid var(--border-color);
+  background: var(--light-bg);
+  color: var(--text-primary);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  padding: 0 10px;
+}
+
+.groups-chat {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.groups-chat-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.groups-chat-header h2 { margin: 0; font-size: 1.05rem; }
+.groups-chat-header p {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.groups-join-btn {
+  border: 1px solid var(--primary-color);
+  background: var(--primary-color);
+  color: #fff;
+  border-radius: 999px;
+  padding: 6px 16px;
+  cursor: pointer;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.groups-notice {
+  margin: var(--spacing-sm) var(--spacing-md);
+  padding: var(--spacing-sm);
+  border-radius: var(--border-radius);
+  background: var(--light-bg);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.groups-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.groups-message {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: flex-start;
+}
+
+.groups-message-who,
+.groups-member img,
+.groups-avatar-placeholder {
+  flex-shrink: 0;
+}
+
+.groups-message-who {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.groups-message-who img,
+.groups-member img,
+.groups-avatar-placeholder {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: grid;
+  place-items: center;
+  background: var(--light-bg);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.groups-member img,
+.groups-member .groups-avatar-placeholder {
+  width: 24px;
+  height: 24px;
+}
+
+.groups-message-body { min-width: 0; }
+
+.groups-message-name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.groups-message-name time {
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.groups-composer {
+  display: flex;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--border-color);
+}
+
+.groups-composer textarea {
+  flex: 1;
+  resize: none;
+  min-height: 42px;
+  max-height: 120px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--input-bg, var(--light-bg));
+  color: var(--text-primary);
+  font-family: inherit;
+}
+
+.groups-composer button {
+  border: none;
+  background: var(--primary-color);
+  color: #fff;
+  border-radius: var(--border-radius);
+  padding: 0 18px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.groups-composer button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.groups-empty {
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  padding: var(--spacing-sm) 0;
+}
+
+.groups-nothing-open {
+  display: grid;
+  place-items: center;
+  height: 100%;
+}
+
+.groups-member-you { font-weight: 600; }
+
+/* Narrow screens: the two side columns fold away, leaving the groups and the
+   conversation — the same as every chat app does on a phone */
+@media (max-width: 1100px) {
+  .groups-page { grid-template-columns: 150px minmax(0, 1fr); }
+  .groups-members { display: none; }
+}
+
+/* On a phone there is room for one column at a time: the groups until one is
+   opened, then the conversation, with a way back to the list */
+@media (max-width: 700px) {
+  .groups-page { grid-template-columns: minmax(0, 1fr); }
+  .groups-relays { display: none; }
+  .groups-page.browsing .groups-chat { display: none; }
+  .groups-page.reading .groups-list { display: none; }
+  .groups-back { display: block; }
+}
+
+/* Everywhere else the list is already there, so nothing to go back to */
+.groups-back {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 var(--spacing-sm) 0 0;
+}

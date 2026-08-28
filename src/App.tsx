@@ -28,6 +28,7 @@ import NotificationsPage from './components/NotificationsPage';
 import MessagesPage from './components/MessagesPage';
 import ComposeModal from './components/ComposeModal';
 import LivePage from './components/LivePage';
+import GroupsPage from './components/GroupsPage';
 import LiveStreamPage from './components/LiveStreamPage';
 import LiveChatPage from './components/LiveChatPage';
 import LiveViewersPage from './components/LiveViewersPage';
@@ -47,6 +48,16 @@ const TIP_ADDRESS = 'sera@getalby.com';
 // with a raw-hex fallback so malformed or hand-typed links still resolve
 function encodeNoteParam(noteId: string): string {
   return NostrCrypto.encodeNote(noteId) || noteId;
+}
+
+function GroupsRoute({ onNavigateToProfile, onNavigateToNote, onNavigateToTopic }: RouteCallbacks) {
+  return (
+    <GroupsPage
+      onNavigateToProfile={onNavigateToProfile}
+      onNavigateToNote={onNavigateToNote}
+      onNavigateToTopic={onNavigateToTopic}
+    />
+  );
 }
 
 function decodeNoteParam(param: string | undefined): string | null {
@@ -556,6 +567,9 @@ function App() {
             <Link to="/live" className={`nav-btn ${location.pathname.startsWith('/live') ? 'active' : ''}`}>
               Live
             </Link>
+            <Link to="/groups" className={`nav-btn ${location.pathname.startsWith('/groups') ? 'active' : ''}`}>
+              Groups
+            </Link>
             {!browsingAnonymously && <>
             <Link to="/search" className={`nav-btn ${location.pathname === '/search' ? 'active' : ''}`}>
               Search
@@ -637,6 +651,7 @@ function App() {
           <Route path="/e/:noteId" element={<NoteRoute {...callbacks} />} />
           <Route path="/search" element={<SearchRoute {...callbacks} />} />
           <Route path="/live" element={<LivePage relaysConnected={relaysConnected} />} />
+          <Route path="/groups" element={<GroupsRoute {...callbacks} />} />
           <Route path="/live/:naddr" element={<LiveStreamRoute {...callbacks} />} />
           <Route path="/live/:naddr/chat" element={<LiveChatRoute {...callbacks} />} />
           <Route path="/live/:naddr/viewers" element={<LiveViewersRoute {...callbacks} />} />
