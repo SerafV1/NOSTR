@@ -7762,9 +7762,26 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
 }
 
 /* Kept out of the way until the message is under the cursor, so a hundred
-   lines of chat are not a hundred rows of buttons */
+   lines of chat are not a hundred rows of buttons. The reactions already
+   there stay put; it is only the way to add one that waits to be asked for. */
 .groups-message:hover .groups-message-actions,
 .groups-message-actions:focus-within { opacity: 1; }
+
+.groups-message .live-chat-react-btn {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.groups-message:hover .live-chat-react-btn,
+.groups-message .live-chat-react-wrapper:focus-within .live-chat-react-btn { opacity: 1; }
+
+.groups-message .live-chat-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
 
 .groups-message-actions button,
 .groups-message-zap {
