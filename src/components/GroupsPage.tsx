@@ -165,7 +165,6 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
   // joined in another app was invisible here until it was asked for: the
   // list a client keeps is one thing, being in the group is another.
   const [memberOf, setMemberOf] = useState<Record<string, string[]>>({});
-  const [lookingForMine, setLookingForMine] = useState(false);
   const [active, setActive] = useState<GroupAddress | null>(null);
   const [messages, setMessages] = useState<NostrEventSigned[]>([]);
   const [members, setMembers] = useState<string[]>([]);
@@ -286,8 +285,6 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
       ...KNOWN_GROUP_RELAYS,
       ...aroundTheNetwork
     ]));
-    setLookingForMine(true);
-    let outstanding = asked.length;
 
     for (const relay of asked) {
       fetchMyGroupsOn(relay, ownPubkey)
@@ -295,10 +292,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
           if (cancelled || ids.length === 0) return;
           setMemberOf(prev => (prev[relay]?.length === ids.length ? prev : { ...prev, [relay]: ids }));
         })
-        .finally(() => {
-          outstanding -= 1;
-          if (!cancelled && outstanding <= 0) setLookingForMine(false);
-        });
+        .catch(() => { /* a relay that will not answer is simply not one of yours */ });
     }
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -539,12 +533,29 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     return ordered;
   }, [runners, members]);
 
+  /**
+   * One list rather than two: the groups on this server, with the ones this
+   * account is in at the top of it. A second list of your own repeated every
+   * row that was already a few lines below it.
+   */
   const shownGroups = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    if (!needle) return activeGroups;
-    return activeGroups.filter(g =>
-      g.name.toLowerCase().includes(needle) || g.about.toLowerCase().includes(needle));
-  }, [activeGroups, search]);
+    const matching = needle
+      ? activeGroups.filter(g =>
+          g.name.toLowerCase().includes(needle) || g.about.toLowerCase().includes(needle))
+      : activeGroups;
+
+    const mineHere = new Set([
+      ...joined.filter(g => g.relay === activeRelay).map(g => g.id),
+      ...(memberOf[activeRelay] || [])
+    ]);
+
+    return [...matching].sort((a, b) => {
+      const aMine = mineHere.has(a.id) ? 0 : 1;
+      const bMine = mineHere.has(b.id) ? 0 : 1;
+      return aMine - bMine || (b.members || 0) - (a.members || 0);
+    });
+  }, [activeGroups, search, joined, memberOf, activeRelay]);
 
   const openGroup = (address: GroupAddress) => {
     setNotice(null);
@@ -767,33 +778,6 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
 
       {/* What that server holds */}
       <nav className="groups-list">
-        <h3>Yours</h3>
-        {mine.length === 0 && (
-          <div className="groups-empty">
-            {lookingForMine
-              ? 'Looking for the groups you are in…'
-              : 'None yet — join one below, and groups joined in other apps show up here too.'}
-          </div>
-        )}
-        {mine.length > 0 && (
-          <>
-            {mine.map(address => {
-              const info = (groupsByRelay[address.relay] || []).find(g => g.id === address.id);
-              return (
-                <button
-                  key={groupKey(address)}
-                  type="button"
-                  className={`groups-item ${active && groupKey(active) === groupKey(address) ? 'active' : ''}`}
-                  onClick={() => openGroup(address)}
-                >
-                  <span className="groups-item-name">{info?.name || address.id}</span>
-                  <span className="groups-item-relay">{relayLabel(address.relay)}</span>
-                </button>
-              );
-            })}
-          </>
-        )}
-
         {activeRelay && (
           <>
             <h3>
