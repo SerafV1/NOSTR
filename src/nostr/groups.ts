@@ -701,37 +701,6 @@ export function replyInGroup(
 }
 
 /**
- * A thread is any message answered in one: the group's own long-form (a kind
- * 11 with a subject) or a line of chat somebody took aside. Either way the
- * answers are NIP-22 comments naming it as their root.
- */
-export async function fetchThreadReplies(
-  address: GroupAddress,
-  threadId: string
-): Promise<NostrEventSigned[]> {
-  const found = await read(address.relay, [
-    { kinds: [EVENT_KINDS.COMMENT, EVENT_KINDS.GROUP_CHAT], '#e': [threadId], limit: 200 }
-  ]);
-  return found.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
-}
-
-export function replyInThread(
-  address: GroupAddress,
-  thread: NostrEventSigned,
-  content: string
-): Promise<NostrEventSigned> {
-  return publishToGroup(address, {
-    kind: EVENT_KINDS.COMMENT,
-    content,
-    tags: [
-      ['h', address.id],
-      ['E', thread.id], ['K', String(thread.kind)], ['P', thread.pubkey],
-      ['e', thread.id], ['k', String(thread.kind)], ['p', thread.pubkey]
-    ]
-  });
-}
-
-/**
  * Making a group. The relay is asked to create it and then told what it is
  * called; a relay that does not let strangers make groups says so, and that
  * is worth passing on rather than leaving a half-made room behind.

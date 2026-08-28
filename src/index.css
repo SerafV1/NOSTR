@@ -1214,7 +1214,6 @@ textarea {
   background: var(--light-bg);
 }
 
-
 .event-header {
   display: flex;
   justify-content: space-between;
@@ -6655,11 +6654,6 @@ a.capability-indicator.paid:hover {
 /* Signer fallback: NIP-55 says a signer with nowhere to return the answer
    copies it to the clipboard, which is what Amber does for web callers */
 
-
-
-
-
-
 .connect-uri {
   display: flex;
   flex-direction: column;
@@ -6732,8 +6726,6 @@ a.capability-indicator.paid:hover {
   min-height: 0;
   font-size: 0.9rem;
 }
-
-
 
 /* Shown while a remote signer is being waited on, so an action that needs
    approval elsewhere doesn't look like it was ignored */
@@ -7646,6 +7638,13 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
 }
 
 .groups-message-body { min-width: 0; }
+
+.groups-message-subject {
+  display: block;
+  font-weight: 700;
+  font-size: 0.9rem;
+  margin-bottom: 2px;
+}
 
 .groups-message-name {
   display: flex;

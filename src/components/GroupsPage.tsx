@@ -10,7 +10,6 @@ import {
   createGroup,
   fetchGroupChat,
   fetchGroupMessageResponses,
-  fetchThreadReplies,
   fetchGroup,
   fetchGroupAdmins,
   fetchGroupMembers,
@@ -27,7 +26,6 @@ import {
   leaveGroup,
   reactToGroupMessage,
   replyInGroup,
-  replyInThread,
   sendGroupMessage,
   setGroupRelays,
   subscribeGroupChat
@@ -172,11 +170,6 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
   // Reactions and zaps paid on the messages on screen
   const [responses, setResponses] = useState<NostrEventSigned[]>([]);
   const [replyingTo, setReplyingTo] = useState<NostrEventSigned | null>(null);
-  // A thread is a group's long-form: a kind 11 with a subject, answered by
-  // comments rather than by chat. Opened in place of the member list.
-  const [openThread, setOpenThread] = useState<NostrEventSigned | null>(null);
-  const [threadReplies, setThreadReplies] = useState<NostrEventSigned[]>([]);
-  const [threadDraft, setThreadDraft] = useState('');
   const [roleMeanings, setRoleMeanings] = useState<Record<string, string>>({});
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
   const [loadingChat, setLoadingChat] = useState(false);
@@ -332,8 +325,6 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     setRoleMeanings({});
     setResponses([]);
     setReplyingTo(null);
-    setOpenThread(null);
-    setThreadReplies([]);
     setNotice(null);
     setAskingForCode(false);
     setInviteCode('');
@@ -439,32 +430,6 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
 
     return byMessage;
   }, [responses, ownPubkey]);
-
-  // What has been said under the open thread
-  useEffect(() => {
-    if (!active || !openThread) return;
-    let cancelled = false;
-    setThreadReplies([]);
-    fetchThreadReplies(active, openThread.id).then(found => {
-      if (cancelled) return;
-      setThreadReplies(found);
-      void loadProfilesFor(found.map(r => r.pubkey));
-    });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.relay, active?.id, openThread?.id]);
-
-  const sendToThread = async () => {
-    const content = threadDraft.trim();
-    if (!active || !openThread || !content) return;
-    try {
-      const sent = await replyInThread(active, openThread, content);
-      setThreadDraft('');
-      setThreadReplies(prev => [...prev, sent]);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
-    }
-  };
 
   const react = async (message: NostrEventSigned, emoji: string) => {
     if (!active) return;
@@ -987,14 +952,11 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                       : <span className="groups-avatar-placeholder">{nameFor(message.pubkey).charAt(0).toUpperCase()}</span>}
                   </button>
                   <div className="groups-message-body">
-                    {message.kind === EVENT_KINDS.GROUP_THREAD && (
-                      <button
-                        type="button"
-                        className="groups-thread-open"
-                        onClick={() => setOpenThread(message)}
-                      >
-                        🧵 {message.tags.find(t => t[0] === 'subject')?.[1] || 'Thread'}
-                      </button>
+                    {message.kind === EVENT_KINDS.GROUP_THREAD
+                      && message.tags.find(t => t[0] === 'subject')?.[1] && (
+                      <span className="groups-message-subject">
+                        {message.tags.find(t => t[0] === 'subject')![1]}
+                      </span>
                     )}
                     {answered(message) && (
                       <button
@@ -1055,13 +1017,6 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                       <div className="groups-message-actions">
                         <button type="button" onClick={() => setReplyingTo(message)} title="Reply">
                           <ReplyIcon />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setOpenThread(message)}
-                          title="Answer this in a thread"
-                        >
-                          🧵
                         </button>
                         <ZapButton
                           lud16={profiles[message.pubkey]?.lud16}
@@ -1167,73 +1122,9 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
         )}
       </section>
 
-      {/* Who is in it — or, while one is open, the thread */}
+      {/* Who is in it */}
       <aside className="groups-members">
-        {openThread && (
-          <div className="groups-thread">
-            <h3>
-              🧵 {openThread.tags.find(t => t[0] === 'subject')?.[1]
-                || `Thread · ${nameFor(openThread.pubkey)}`}
-              <button type="button" onClick={() => setOpenThread(null)} title="Back to the members">✕</button>
-            </h3>
-
-            <div className="groups-thread-root">
-              <span className="groups-message-name">
-                <EmojiText text={nameFor(openThread.pubkey)} emojis={profiles[openThread.pubkey]?.emojis} />
-              </span>
-              <RichText
-                inlineImages
-                inlineQuotes
-                content={openThread.content}
-                eventTags={openThread.tags}
-                onNavigateToProfile={onNavigateToProfile}
-                onNavigateToNote={onNavigateToNote}
-                onNavigateToTopic={onNavigateToTopic}
-              />
-            </div>
-
-            <div className="groups-thread-replies">
-              {threadReplies.length === 0 && <div className="groups-empty">Nothing said yet.</div>}
-              {threadReplies.map(reply => (
-                <div className="groups-thread-reply" key={reply.id}>
-                  <span className="groups-message-name">
-                    <EmojiText text={nameFor(reply.pubkey)} emojis={profiles[reply.pubkey]?.emojis} />
-                    <time>
-                      {new Date((reply.created_at || 0) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}
-                    </time>
-                  </span>
-                  <RichText
-                    inlineImages
-                    inlineQuotes
-                    content={reply.content}
-                    eventTags={reply.tags}
-                    onNavigateToProfile={onNavigateToProfile}
-                    onNavigateToNote={onNavigateToNote}
-                    onNavigateToTopic={onNavigateToTopic}
-                  />
-                </div>
-              ))}
-            </div>
-
-            {canSign && (
-              <div className="groups-thread-composer">
-                <textarea
-                  value={threadDraft}
-                  placeholder="Answer in the thread"
-                  onChange={e => setThreadDraft(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendToThread(); }
-                  }}
-                />
-                <button type="button" onClick={() => void sendToThread()} disabled={!threadDraft.trim()}>
-                  Send
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {!openThread && active && (
+        {active && (
           <>
             <h3>
               Members
