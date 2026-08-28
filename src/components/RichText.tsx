@@ -3,8 +3,9 @@ import { nip19 } from 'nostr-tools';
 import { UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { formatAddress } from '../utils/helpers';
-import { splitContentTokens, extractImageUrls, extractVideoUrls, extractStreamUrls } from '../utils/media';
+import { splitContentTokens, extractImageUrls, extractVideoUrls, extractStreamUrls, extractEmbeds } from '../utils/media';
 import InlineStreamPlayer from './InlineStreamPlayer';
+import MediaEmbed from './MediaEmbed';
 import InlineLiveStream from './InlineLiveStream';
 import { foldNostrWebLinks } from '../utils/nostrLinks';
 import { streamNaddrFromUrl } from '../utils/liveStream';
@@ -219,6 +220,16 @@ const RichText: React.FC<RichTextProps> = ({
             <InlineStreamPlayer key={key++} src={token.value} className="rich-video" />
           );
           continue;
+        }
+
+        // A youtube, vimeo or spotify link is watchable where it is dropped,
+        // the same as in a post — chat is where people share those most
+        if (inlineImages) {
+          const embed = extractEmbeds(token.value)[0];
+          if (embed) {
+            parts.push(<MediaEmbed key={key++} embed={embed} className="rich-embed" />);
+            continue;
+          }
         }
 
         // Same reasoning for a video someone drops in the chat: it was left

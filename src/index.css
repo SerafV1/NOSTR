@@ -7339,7 +7339,8 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
    --------------------------------------------------------------------------- */
 .groups-page {
   display: grid;
-  grid-template-columns: 190px 260px minmax(0, 1fr) 220px;
+  /* The member list carries names, not initials, so it is given room for one */
+  grid-template-columns: 190px 260px minmax(0, 1fr) 280px;
   height: calc(100vh - var(--header-height, 60px));
   overflow: hidden;
 }
@@ -7360,6 +7361,10 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
 .groups-relays h2,
 .groups-list h3,
 .groups-members h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -7577,6 +7582,18 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   font-size: 0.85rem;
 }
 
+.groups-message-author {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.groups-message-author:hover { text-decoration: underline; }
+
 .groups-message-name time {
   font-weight: 400;
   font-size: 0.72rem;
@@ -7603,7 +7620,43 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   font-family: inherit;
 }
 
-.groups-composer button {
+.groups-composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.groups-composer-tools button,
+.groups-upload {
+  display: grid;
+  place-items: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--border-color);
+  background: var(--light-bg);
+  color: var(--text-primary);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.groups-composer-tools button:hover,
+.groups-upload:hover {
+  border-color: var(--primary-color);
+}
+
+.groups-picker-popup {
+  position: fixed;
+  z-index: 1000;
+  background: var(--bg-color, var(--light-bg));
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.groups-composer .groups-send {
   border: none;
   background: var(--primary-color);
   color: #fff;
@@ -7613,7 +7666,7 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   font-weight: 600;
 }
 
-.groups-composer button:disabled {
+.groups-composer .groups-send:disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -7630,10 +7683,73 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   height: 100%;
 }
 
-.groups-member-you { font-weight: 600; }
+/* Members, in ranks: whoever runs the place first, under whatever the group
+   calls them, then everyone else */
+.groups-rank { margin-bottom: var(--spacing-md); }
+
+/* Each member on their own line: the card that opens on hover wraps them in
+   an inline element, which had them sitting two and three to a row */
+.groups-rank .hover-card-wrapper {
+  display: block;
+  width: 100%;
+}
+
+.groups-rank h4 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  margin: var(--spacing-sm) 0 4px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.groups-members-count {
+  font-weight: 400;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.groups-member {
+  gap: var(--spacing-sm);
+  padding: 5px 8px;
+}
+
+/* A name is worth reading, so it gets the width and cuts off cleanly */
+.groups-member-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groups-member-role {
+  flex-shrink: 0;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.groups-member-you {
+  font-weight: 600;
+  color: var(--primary-color);
+}
 
 /* Narrow screens: the two side columns fold away, leaving the groups and the
    conversation — the same as every chat app does on a phone */
+@media (max-width: 1300px) {
+  .groups-page { grid-template-columns: 170px 230px minmax(0, 1fr); }
+  .groups-members { display: none; }
+}
+
 @media (max-width: 1100px) {
   .groups-page { grid-template-columns: 150px minmax(0, 1fr); }
   .groups-members { display: none; }

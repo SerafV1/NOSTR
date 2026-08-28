@@ -1,3 +1,4 @@
+import { nip19 } from 'nostr-tools';
 import { NostrEvent, NostrEventSigned, NostrFilter, EVENT_KINDS } from '../types';
 import { NostrCore } from './core';
 import { getRelayPool } from './relay';
@@ -493,12 +494,36 @@ export async function fetchGroupMembers(address: GroupAddress): Promise<string[]
   return lists[0]?.tags.filter(t => t[0] === 'p' && t[1]).map(t => t[1]) || [];
 }
 
-/** Who runs it */
-export async function fetchGroupAdmins(address: GroupAddress): Promise<string[]> {
-  const lists = await read(address.relay, [
-    { kinds: [EVENT_KINDS.GROUP_ADMINS], '#d': [address.id], limit: 1 }
+export interface GroupRole {
+  pubkey: string;
+  /** What the group calls them: admin, moderator, king, whatever it uses */
+  role: string;
+}
+
+/**
+ * Who runs it, and under what title. A relay writes each one as
+ * ['p', pubkey, role], and the group's own list of roles (kind 39003) says
+ * what each title means — worth having, since a group may call its admins
+ * anything it likes.
+ */
+export async function fetchGroupAdmins(
+  address: GroupAddress
+): Promise<{ people: GroupRole[]; meanings: Record<string, string> }> {
+  const [lists, roleLists] = await Promise.all([
+    read(address.relay, [{ kinds: [EVENT_KINDS.GROUP_ADMINS], '#d': [address.id], limit: 1 }]),
+    read(address.relay, [{ kinds: [EVENT_KINDS.GROUP_ROLES], '#d': [address.id], limit: 1 }])
   ]);
-  return lists[0]?.tags.filter(t => t[0] === 'p' && t[1]).map(t => t[1]) || [];
+
+  const people: GroupRole[] = (lists[0]?.tags || [])
+    .filter(t => t[0] === 'p' && t[1])
+    .map(t => ({ pubkey: t[1], role: t[2] || 'admin' }));
+
+  const meanings: Record<string, string> = {};
+  for (const t of roleLists[0]?.tags || []) {
+    if (t[0] === 'role' && t[1]) meanings[t[1]] = t[2] || '';
+  }
+
+  return { people, meanings };
 }
 
 /**
@@ -551,13 +576,28 @@ async function publishToGroup(address: GroupAddress, event: NostrEvent): Promise
   return signed;
 }
 
-/** Say something in a group */
+/**
+ * Say something in a group. Anyone named in it is tagged as well, which is
+ * how they are told they were spoken to.
+ */
 export function sendGroupMessage(address: GroupAddress, content: string): Promise<NostrEventSigned> {
-  return publishToGroup(address, {
-    kind: EVENT_KINDS.GROUP_CHAT,
-    content,
-    tags: [['h', address.id]]
-  });
+  const tags: string[][] = [['h', address.id]];
+
+  for (const mention of content.match(/nostr:(?:npub1|nprofile1)[023456789acdefghjklmnpqrstuvwxyz]+/gi) || []) {
+    try {
+      const decoded = nip19.decode(mention.replace(/^nostr:/i, ''));
+      const pubkey = decoded.type === 'npub'
+        ? (decoded.data as string)
+        : decoded.type === 'nprofile'
+          ? (decoded.data as { pubkey: string }).pubkey
+          : null;
+      if (pubkey && !tags.some(t => t[0] === 'p' && t[1] === pubkey)) tags.push(['p', pubkey]);
+    } catch {
+      // Not a name after all
+    }
+  }
+
+  return publishToGroup(address, { kind: EVENT_KINDS.GROUP_CHAT, content, tags });
 }
 
 /** Ask to be let in. An open group lets you in at once; a closed one asks its admins. */

@@ -120,6 +120,8 @@ export const EVENT_KINDS = {
   GROUP_ADMINS: 39001,
   /** Who is in it */
   GROUP_MEMBERS: 39002,
+  /** What the group calls its ranks, and what each one means */
+  GROUP_ROLES: 39003,
   /** NIP-42: proving to a relay who you are, which group relays ask for */
   CLIENT_AUTH: 22242,
   /** NIP-51: the groups this account is in, so they follow it between apps */

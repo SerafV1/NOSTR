@@ -5,8 +5,10 @@ import { CredentialManager } from '../nostr/crypto';
 import {
   GroupAddress,
   GroupInfo,
+  GroupRole,
   fetchGroupChat,
   fetchGroup,
+  fetchGroupAdmins,
   fetchGroupMembers,
   fetchGroups,
   fetchMyGroupsOn,
@@ -23,8 +25,22 @@ import {
   subscribeGroupChat
 } from '../nostr/groups';
 import { formatAddress } from '../utils/helpers';
+import { resolveMentionHandles } from '../utils/mentions';
+import {
+  extractEmbeds,
+  extractImageUrls,
+  extractPreviewLinkUrl,
+  extractStreamUrls,
+  extractVideoUrls
+} from '../utils/media';
+import LinkPreviewCard from './LinkPreviewCard';
 import RichText from './RichText';
 import EmojiText from './EmojiText';
+import ProfileHoverCard from './ProfileHoverCard';
+import EmojiPicker from './EmojiPicker';
+import GifPicker from './GifPicker';
+import { BlossomClient } from '../nostr/blossom';
+import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 
 interface GroupsPageProps {
   /** The account's own relays, which is where the shared list of groups lives */
@@ -34,7 +50,36 @@ interface GroupsPageProps {
   onNavigateToTopic?: (topic: string) => void;
 }
 
+/**
+ * A plain link is worth a card of its own — the same rule a post keeps: only
+ * where there is nothing else to look at, so an article gets a preview and a
+ * picture does not get one underneath it.
+ */
+const previewableLink = (content: string): string | null => {
+  if (extractImageUrls(content).length > 0) return null;
+  if (extractVideoUrls(content).length > 0) return null;
+  if (extractStreamUrls(content).length > 0) return null;
+  if (extractEmbeds(content).length > 0) return null;
+  return extractPreviewLinkUrl(content) || null;
+};
+
 const relayLabel = (url: string): string => url.replace(/^wss:\/\//, '').replace(/\/$/, '');
+
+/** The rank everyone else is */
+const MEMBER = '\u0000member';
+
+/** Whoever holds the place together goes first, whatever they are called */
+const rankOrder = (role: string): number => {
+  const known = ['king', 'owner', 'admin', 'bishop', 'moderator', 'mod'];
+  const at = known.indexOf(role.toLowerCase());
+  return at === -1 ? known.length : at;
+};
+
+const plural = (role: string): string => {
+  const word = role.charAt(0).toUpperCase() + role.slice(1);
+  if (/s$/i.test(word)) return word;
+  return /(ch|sh|x|z)$/i.test(word) ? `${word}es` : `${word}s`;
+};
 
 /**
  * NIP-29 groups, where the relay is the server: a column of relays, the
@@ -61,6 +106,8 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
   const [active, setActive] = useState<GroupAddress | null>(null);
   const [messages, setMessages] = useState<NostrEventSigned[]>([]);
   const [members, setMembers] = useState<string[]>([]);
+  const [runners, setRunners] = useState<GroupRole[]>([]);
+  const [roleMeanings, setRoleMeanings] = useState<Record<string, string>>({});
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
   const [loadingChat, setLoadingChat] = useState(false);
   const [draft, setDraft] = useState('');
@@ -70,9 +117,15 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
   // A closed group is joined by invitation: the relay ignores a bare request
   // and wants the code that was handed out with it
   const [inviteCode, setInviteCode] = useState('');
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [showGifs, setShowGifs] = useState(false);
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [askingForCode, setAskingForCode] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const draftRef = useRef<HTMLTextAreaElement>(null);
+  const emoji = useAnchoredPopup(showEmoji, () => setShowEmoji(false));
+  const gifs = useAnchoredPopup(showGifs, () => setShowGifs(false));
   const ownPubkey = CredentialManager.getPublicKey();
   const canSign = CredentialManager.canSign();
 
@@ -202,6 +255,8 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
 
     setMessages([]);
     setMembers([]);
+    setRunners([]);
+    setRoleMeanings({});
     setNotice(null);
     setAskingForCode(false);
     setInviteCode('');
@@ -222,6 +277,13 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
       if (cancelled) return;
       setMembers(found);
       void loadProfilesFor(found.slice(0, 60));
+    });
+
+    fetchGroupAdmins(active).then(({ people, meanings }) => {
+      if (cancelled) return;
+      setRunners(people);
+      setRoleMeanings(meanings);
+      void loadProfilesFor(people.map(p => p.pubkey));
     });
 
     subscribeGroupChat(active, event => {
@@ -261,6 +323,31 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     return profile?.display_name || profile?.name || formatAddress(pubkey);
   };
 
+  /**
+   * The member list in ranks, as this kind of app always shows it: whoever
+   * runs the place at the top under whatever it calls them — admin, king,
+   * moderator — and everyone else below.
+   */
+  const byRank = useMemo(() => {
+    const roleOf = new Map(runners.map(r => [r.pubkey, r.role]));
+    const ranks = new Map<string, string[]>();
+
+    for (const { pubkey, role } of runners) {
+      const held = ranks.get(role) || [];
+      if (!held.includes(pubkey)) held.push(pubkey);
+      ranks.set(role, held);
+    }
+
+    const rest = members.filter(pubkey => !roleOf.has(pubkey));
+    // Someone can run a group without the relay listing them as a member
+    const ordered = Array.from(ranks.entries())
+      .sort((a, b) => rankOrder(a[0]) - rankOrder(b[0]) || a[0].localeCompare(b[0]))
+      .map(([role, people]) => ({ role, people }));
+
+    if (rest.length > 0) ordered.push({ role: MEMBER, people: rest.slice(0, 200) });
+    return ordered;
+  }, [runners, members]);
+
   const shownGroups = useMemo(() => {
     const needle = search.trim().toLowerCase();
     if (!needle) return activeGroups;
@@ -274,12 +361,47 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     if (address.relay !== activeRelay) setActiveRelay(address.relay);
   };
 
+  /**
+   * Naming somebody in the message being written. What is typed reads as
+   * "@Their Name"; what is published carries their actual address, or they
+   * were never really named at all.
+   */
+  const pickedMentions = useRef(new Map<string, string>());
+
+  const mention = (pubkey: string) => {
+    const name = nameFor(pubkey);
+    pickedMentions.current.set(name, pubkey);
+    addToDraft(`@${name}`);
+  };
+
+  /** Anything added to a message is added as its address; the chat draws it */
+  const addToDraft = (text: string) => {
+    setDraft(current => (current ? `${current.trimEnd()} ${text}` : text));
+    draftRef.current?.focus();
+  };
+
+  const addPicture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';   // so the same picture can be picked twice
+    if (!file) return;
+    setUploadPct(0);
+    try {
+      const blob = await BlossomClient.uploadFile(file, undefined, setUploadPct);
+      addToDraft(blob.url);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not upload that picture');
+    } finally {
+      setUploadPct(null);
+    }
+  };
+
   const send = async () => {
     const content = draft.trim();
     if (!content || !active || sending) return;
     setSending(true);
     try {
-      const sent = await sendGroupMessage(active, content);
+      const { content: resolved } = resolveMentionHandles(content, pickedMentions.current);
+      const sent = await sendGroupMessage(active, resolved);
       setDraft('');
       setMessages(prev => (prev.some(m => m.id === sent.id) ? prev : [...prev, sent]));
     } catch (error) {
@@ -516,17 +638,36 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                   </button>
                   <div className="groups-message-body">
                     <span className="groups-message-name">
-                      <EmojiText text={nameFor(message.pubkey)} emojis={profiles[message.pubkey]?.emojis} />
+                      {/* Whoever said it, with the same card the rest of the
+                          app gives: follow, mute, who they are */}
+                      <ProfileHoverCard
+                        pubkey={message.pubkey}
+                        profile={profiles[message.pubkey]}
+                        escapesClipping
+                        onNavigateToProfile={onNavigateToProfile}
+                      >
+                        <button
+                          type="button"
+                          className="groups-message-author"
+                          onClick={() => onNavigateToProfile(message.pubkey)}
+                        >
+                          <EmojiText text={nameFor(message.pubkey)} emojis={profiles[message.pubkey]?.emojis} />
+                        </button>
+                      </ProfileHoverCard>
                       <time>{new Date((message.created_at || 0) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}</time>
                     </span>
                     <RichText
                       inlineImages
+                      inlineQuotes
                       content={message.content}
                       eventTags={message.tags}
                       onNavigateToProfile={onNavigateToProfile}
                       onNavigateToNote={onNavigateToNote}
                       onNavigateToTopic={onNavigateToTopic}
                     />
+                    {previewableLink(message.content) && (
+                      <LinkPreviewCard url={previewableLink(message.content)!} />
+                    )}
                   </div>
                 </div>
               ))}
@@ -536,6 +677,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
             {canSign ? (
               <div className="groups-composer">
                 <textarea
+                  ref={draftRef}
                   value={draft}
                   placeholder={`Message ${activeInfo?.name || 'the group'}`}
                   onChange={e => setDraft(e.target.value)}
@@ -543,7 +685,60 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); }
                   }}
                 />
-                <button type="button" onClick={() => void send()} disabled={sending || !draft.trim()}>
+
+                <div className="groups-composer-tools">
+                  <div ref={emoji.containerRef}>
+                    <button
+                      type="button"
+                      ref={emoji.triggerRef}
+                      title="Emoji"
+                      onClick={() => {
+                        if (showEmoji) { setShowEmoji(false); return; }
+                        emoji.openPopup();
+                        setShowEmoji(true);
+                      }}
+                    >
+                      😊
+                    </button>
+                    {showEmoji && emoji.render(
+                      <div className="groups-picker-popup" ref={emoji.popupRef} style={emoji.style}>
+                        <EmojiPicker onSelect={(mark) => { setShowEmoji(false); addToDraft(mark); }} />
+                      </div>
+                    )}
+                  </div>
+
+                  <div ref={gifs.containerRef}>
+                    <button
+                      type="button"
+                      ref={gifs.triggerRef}
+                      title="GIF"
+                      onClick={() => {
+                        if (showGifs) { setShowGifs(false); return; }
+                        gifs.openPopup();
+                        setShowGifs(true);
+                      }}
+                    >
+                      GIF
+                    </button>
+                    {showGifs && gifs.render(
+                      <div className="groups-picker-popup" ref={gifs.popupRef} style={gifs.style}>
+                        <GifPicker onSelect={(url) => { setShowGifs(false); addToDraft(url); }} />
+                      </div>
+                    )}
+                  </div>
+
+                  <label className="groups-upload" title="Picture">
+                    {uploadPct === null ? '🖼' : `${uploadPct}%`}
+                    <input type="file" accept="image/*" hidden onChange={addPicture} />
+                  </label>
+                </div>
+
+                <button
+                  type="button"
+                  className="groups-send"
+                  onClick={() => void send()}
+                  disabled={sending || !draft.trim()}
+                >
                   {sending ? 'Sending…' : 'Send'}
                 </button>
               </div>
@@ -558,21 +753,44 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
       <aside className="groups-members">
         {active && (
           <>
-            <h3>Members {members.length > 0 && <span>{members.length}</span>}</h3>
-            {members.slice(0, 100).map(pubkey => (
-              <button
-                key={pubkey}
-                type="button"
-                className="groups-member"
-                onClick={() => onNavigateToProfile(pubkey)}
-              >
-                {profiles[pubkey]?.picture
-                  ? <img src={profiles[pubkey].picture} alt="" />
-                  : <span className="groups-avatar-placeholder">{nameFor(pubkey).charAt(0).toUpperCase()}</span>}
-                <span className={pubkey === ownPubkey ? 'groups-member-you' : ''}>
-                  <EmojiText text={nameFor(pubkey)} emojis={profiles[pubkey]?.emojis} />
-                </span>
-              </button>
+            <h3>
+              Members
+              {members.length > 0 && <span className="groups-members-count">{members.length}</span>}
+            </h3>
+            {byRank.map(({ role, people }) => (
+              <div className="groups-rank" key={role}>
+                <h4 title={roleMeanings[role] || undefined}>
+                  {role === MEMBER ? 'Members' : plural(role)}
+                  <span className="groups-members-count">{people.length}</span>
+                </h4>
+                {people.map(pubkey => (
+                  <ProfileHoverCard
+                    key={pubkey}
+                    pubkey={pubkey}
+                    profile={profiles[pubkey]}
+                    escapesClipping
+                    onNavigateToProfile={onNavigateToProfile}
+                  >
+                  <button
+                    type="button"
+                    className="groups-member"
+                    // Clicking someone in the list is how a message to them
+                    // starts; their profile is a click on their picture in
+                    // anything they have said
+                    onClick={() => mention(pubkey)}
+                    title={`${nameFor(pubkey)}${role === MEMBER ? '' : ` — ${role}`} · click to mention`}
+                  >
+                    {profiles[pubkey]?.picture
+                      ? <img src={profiles[pubkey].picture} alt="" />
+                      : <span className="groups-avatar-placeholder">{nameFor(pubkey).charAt(0).toUpperCase()}</span>}
+                    <span className={`groups-member-name ${pubkey === ownPubkey ? 'groups-member-you' : ''}`}>
+                      <EmojiText text={nameFor(pubkey)} emojis={profiles[pubkey]?.emojis} />
+                    </span>
+                    {role !== MEMBER && <span className="groups-member-role">{role}</span>}
+                  </button>
+                  </ProfileHoverCard>
+                ))}
+              </div>
             ))}
           </>
         )}
