@@ -568,7 +568,11 @@ function App() {
             <Link to="/live" className={`nav-btn ${location.pathname.startsWith('/live') ? 'active' : ''}`}>
               Live
             </Link>
-            <Link to="/groups" className={`nav-btn ${location.pathname.startsWith('/groups') ? 'active' : ''}`}>
+            {/* Not startsWith('/s') — that is also /search and /settings */}
+            <Link
+              to="/s"
+              className={`nav-btn ${location.pathname === '/s' || location.pathname.startsWith('/s/') || location.pathname.startsWith('/groups') ? 'active' : ''}`}
+            >
               Groups
             </Link>
             {!browsingAnonymously && <>
@@ -652,8 +656,13 @@ function App() {
           <Route path="/e/:noteId" element={<NoteRoute {...callbacks} />} />
           <Route path="/search" element={<SearchRoute {...callbacks} />} />
           <Route path="/live" element={<LivePage relaysConnected={relaysConnected} />} />
-          <Route path="/groups" element={<GroupsRoute {...callbacks} />} />
-          {/* A server has an address of its own, and so does a group on it */}
+          {/* A server has an address of its own, and so does a group on it.
+              Short, because these are addresses people paste to each other. */}
+          <Route path="/s" element={<GroupsRoute {...callbacks} />} />
+          <Route path="/s/:server" element={<GroupsRoute {...callbacks} />} />
+          <Route path="/s/:server/:groupId" element={<GroupsRoute {...callbacks} />} />
+          {/* What was handed out before the address got shorter */}
+          <Route path="/groups" element={<Navigate to="/s" replace />} />
           <Route path="/groups/:server" element={<GroupsRoute {...callbacks} />} />
           <Route path="/groups/:server/:groupId" element={<GroupsRoute {...callbacks} />} />
           <Route path="/live/:naddr" element={<LiveStreamRoute {...callbacks} />} />

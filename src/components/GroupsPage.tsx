@@ -141,7 +141,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
 
   /** Wherever the reader is, the address says so */
   const addressOf = (relay: string, id?: string): string =>
-    `/groups/${encodeURIComponent(relayLabel(relay))}${id ? `/${encodeURIComponent(id)}` : ''}`;
+    `/s/${encodeURIComponent(relayLabel(relay))}${id ? `/${encodeURIComponent(id)}` : ''}`;
 
   const [copied, setCopied] = useState<string | null>(null);
 
