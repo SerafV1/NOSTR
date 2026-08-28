@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { EVENT_KINDS, NostrEventSigned, UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
@@ -104,12 +105,57 @@ const plural = (role: string): string => {
  * groups people are in through Armada, Chachi or 0xchat.
  */
 const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
+  // A server and a group each have an address of their own, so either can be
+  // linked to and opened straight into
+  const { server, groupId } = useParams();
+  const navigate = useNavigate();
+  const linkedRelay = server ? `wss://${decodeURIComponent(server)}` : null;
+
   const [relays, setRelays] = useState<string[]>(getGroupRelays);
-  const [activeRelay, setActiveRelay] = useState<string>(() => getGroupRelays()[0] || '');
+  const [activeRelay, setActiveRelay] = useState<string>(() => linkedRelay || getGroupRelays()[0] || '');
   // The first server to turn up — found or added — is the one opened
   useEffect(() => {
     if (!activeRelay && relays.length > 0) setActiveRelay(relays[0]);
   }, [relays, activeRelay]);
+
+  // Arriving by link: the address says which server, and which group on it.
+  // A server nobody here has heard of is added, since being sent one is as
+  // good a way of learning about it as any.
+  useEffect(() => {
+    if (!linkedRelay) return;
+    setActiveRelay(linkedRelay);
+    if (!relays.includes(linkedRelay)) {
+      const next = [...relays, linkedRelay];
+      setRelays(next);
+      setGroupRelays(next);
+    }
+    if (groupId) {
+      const wanted = decodeURIComponent(groupId);
+      setActive(current =>
+        current && current.relay === linkedRelay && current.id === wanted
+          ? current
+          : { relay: linkedRelay, id: wanted });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedRelay, groupId]);
+
+  /** Wherever the reader is, the address says so */
+  const addressOf = (relay: string, id?: string): string =>
+    `/groups/${encodeURIComponent(relayLabel(relay))}${id ? `/${encodeURIComponent(id)}` : ''}`;
+
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const shareLink = async (path: string, what: string) => {
+    const link = `${window.location.origin}${path}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(what);
+      setTimeout(() => setCopied(null), 2000);
+    } catch {
+      // Where the clipboard is not allowed, showing it is the next best thing
+      setNotice(link);
+    }
+  };
   const [groupsByRelay, setGroupsByRelay] = useState<Record<string, GroupInfo[]>>({});
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [search, setSearch] = useState('');
@@ -504,6 +550,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     setNotice(null);
     setActive(address);
     if (address.relay !== activeRelay) setActiveRelay(address.relay);
+    navigate(addressOf(address.relay, address.id));
   };
 
   /**
@@ -689,12 +736,23 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
             key={url}
             type="button"
             className={`groups-relay ${url === activeRelay ? 'active' : ''}`}
-            onClick={() => setActiveRelay(url)}
+            onClick={() => { setActiveRelay(url); setActive(null); navigate(addressOf(url)); }}
             title={url}
           >
             {relayLabel(url)}
           </button>
         ))}
+        {activeRelay && (
+          <button
+            type="button"
+            className="groups-share-server"
+            onClick={() => void shareLink(addressOf(activeRelay), 'server')}
+            title={`Copy a link to ${relayLabel(activeRelay)}`}
+          >
+            {copied === 'server' ? 'Link copied' : 'Share server'}
+          </button>
+        )}
+
         <div className="groups-add-relay">
           <input
             type="text"
@@ -879,6 +937,14 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                 <h2>{activeInfo?.name || active.id}</h2>
                 {activeInfo?.about && <p>{activeInfo.about}</p>}
               </div>
+              <button
+                type="button"
+                className="groups-share-btn"
+                onClick={() => void shareLink(addressOf(active.relay, active.id), 'group')}
+                title="Copy a link to this group"
+              >
+                {copied === 'group' ? 'Link copied' : 'Share'}
+              </button>
               {canSign && (
                 <button type="button" className="groups-join-btn" onClick={pressJoin}>
                   {isJoined ? 'Leave' : askingForCode ? 'Join with code' : 'Join'}

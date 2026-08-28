@@ -653,6 +653,9 @@ function App() {
           <Route path="/search" element={<SearchRoute {...callbacks} />} />
           <Route path="/live" element={<LivePage relaysConnected={relaysConnected} />} />
           <Route path="/groups" element={<GroupsRoute {...callbacks} />} />
+          {/* A server has an address of its own, and so does a group on it */}
+          <Route path="/groups/:server" element={<GroupsRoute {...callbacks} />} />
+          <Route path="/groups/:server/:groupId" element={<GroupsRoute {...callbacks} />} />
           <Route path="/live/:naddr" element={<LiveStreamRoute {...callbacks} />} />
           <Route path="/live/:naddr/chat" element={<LiveChatRoute {...callbacks} />} />
           <Route path="/live/:naddr/viewers" element={<LiveViewersRoute {...callbacks} />} />
