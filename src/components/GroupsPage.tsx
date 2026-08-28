@@ -60,6 +60,10 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [newRelay, setNewRelay] = useState('');
+  // A closed group is joined by invitation: the relay ignores a bare request
+  // and wants the code that was handed out with it
+  const [inviteCode, setInviteCode] = useState('');
+  const [askingForCode, setAskingForCode] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const ownPubkey = CredentialManager.getPublicKey();
@@ -166,12 +170,18 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
 
     setMessages([]);
     setMembers([]);
+    setNotice(null);
+    setAskingForCode(false);
+    setInviteCode('');
     setLoadingChat(true);
 
     fetchGroupChat(active, 200)
-      .then(found => {
+      .then(({ messages: found, refusal }) => {
         if (cancelled) return;
         setMessages(found);
+        // A relay that will not show a group says why, and "private group" is
+        // a different thing from a group nobody has spoken in
+        if (refusal) setNotice(refusal);
         void loadProfilesFor(found.map(m => m.pubkey));
       })
       .finally(() => { if (!cancelled) setLoadingChat(false); });
@@ -250,7 +260,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     }
   };
 
-  const toggleMembership = async () => {
+  const toggleMembership = async (code?: string) => {
     if (!active) return;
     setNotice(null);
     try {
@@ -262,15 +272,28 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
           [active.relay]: (prev[active.relay] || []).filter(id => id !== active.id)
         }));
       } else {
-        await joinGroup(active);
+        await joinGroup(active, code);
         setJoined(prev => [...prev, active]);
+        setAskingForCode(false);
+        setInviteCode('');
         setNotice(activeInfo?.isOpen
           ? null
-          : 'This group is closed, so the request is with its admins now.');
+          : 'The request is with the group\'s admins now.');
       }
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      const said = error instanceof Error ? error.message : String(error);
+      setNotice(said);
+      // Some relays only say what is missing once asked, so the way to try
+      // again with an invitation is put in front of whoever was refused
+      if (/invit|code|closed|not allowed|restricted/i.test(said)) setAskingForCode(true);
     }
+  };
+
+  /** A closed group takes an invitation; an open one is simply joined */
+  const pressJoin = () => {
+    if (isJoined) { void toggleMembership(); return; }
+    if (activeInfo && !activeInfo.isOpen && !askingForCode) { setAskingForCode(true); return; }
+    void toggleMembership(inviteCode.trim() || undefined);
   };
 
   // A relay this account has groups on but has never been told about — the
@@ -371,6 +394,9 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
             {inGroup({ relay: group.relay, id: group.id }) && (
               <span className="groups-item-in" title="You are in this group">✓</span>
             )}
+            {!group.isOpen && (
+              <span className="groups-item-closed" title="By invitation">🔒</span>
+            )}
             {group.members !== undefined && (
               <span className="groups-item-count">{group.members}</span>
             )}
@@ -400,11 +426,26 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                 {activeInfo?.about && <p>{activeInfo.about}</p>}
               </div>
               {canSign && (
-                <button type="button" className="groups-join-btn" onClick={toggleMembership}>
-                  {isJoined ? 'Leave' : 'Join'}
+                <button type="button" className="groups-join-btn" onClick={pressJoin}>
+                  {isJoined ? 'Leave' : askingForCode ? 'Join with code' : 'Join'}
                 </button>
               )}
             </header>
+
+            {askingForCode && !isJoined && (
+              <div className="groups-invite">
+                <input
+                  type="text"
+                  value={inviteCode}
+                  placeholder="invitation code"
+                  onChange={e => setInviteCode(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') pressJoin(); }}
+                />
+                <button type="button" onClick={() => { setAskingForCode(false); setInviteCode(''); }}>
+                  Cancel
+                </button>
+              </div>
+            )}
 
             {notice && <div className="groups-notice">{notice}</div>}
 

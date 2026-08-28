@@ -67,6 +67,8 @@ export function parseGroupKey(key: string): GroupAddress | null {
 type Waiting = {
   onEvent: (event: NostrEventSigned) => void;
   onEose?: () => void;
+  /** The relay turning the question down, in its own words */
+  onClosed?: (reason: string) => void;
 };
 
 class GroupRelay {
@@ -143,7 +145,9 @@ class GroupRelay {
       return;
     }
     if (verb === 'CLOSED') {
-      this.subs.get(first)?.onEose?.();
+      const waiting = this.subs.get(first);
+      waiting?.onClosed?.(String(second || ''));
+      waiting?.onEose?.();
       this.subs.delete(first);
       return;
     }
@@ -178,16 +182,26 @@ class GroupRelay {
 
   /** Everything the relay holds for these filters, and then no more */
   async read(filters: NostrFilter[], waitMs = 5000): Promise<NostrEventSigned[]> {
+    const { events } = await this.readWithReason(filters, waitMs);
+    return events;
+  }
+
+  /** The same, with whatever the relay said if it would not answer */
+  async readWithReason(
+    filters: NostrFilter[],
+    waitMs = 5000
+  ): Promise<{ events: NostrEventSigned[]; refusal: string | null }> {
     try {
       await this.open();
     } catch (error) {
       console.warn(`[Groups] ${this.url}:`, error);
-      return [];
+      return { events: [], refusal: `${this.url} could not be reached` };
     }
 
-    return new Promise<NostrEventSigned[]>(resolve => {
+    return new Promise<{ events: NostrEventSigned[]; refusal: string | null }>(resolve => {
       const id = `r${this.nextId++}`;
       const found: NostrEventSigned[] = [];
+      let refusal: string | null = null;
       let done = false;
 
       const finish = () => {
@@ -196,14 +210,18 @@ class GroupRelay {
         clearTimeout(timer);
         this.subs.delete(id);
         this.send(['CLOSE', id]);
-        resolve(found);
+        resolve({ events: found, refusal: found.length === 0 ? refusal : null });
       };
 
       // A relay that wants to know who is asking can hold back its "that is
       // all" while sending the events themselves quite happily, so what has
       // arrived by the end of the wait is the answer
       const timer = setTimeout(finish, waitMs);
-      this.subs.set(id, { onEvent: event => found.push(event), onEose: finish });
+      this.subs.set(id, {
+        onEvent: event => found.push(event),
+        onEose: finish,
+        onClosed: reason => { refusal = reason; }
+      });
       this.send(['REQ', id, ...filters]);
     });
   }
@@ -376,16 +394,27 @@ export async function fetchGroupAdmins(address: GroupAddress): Promise<string[]>
   return lists[0]?.tags.filter(t => t[0] === 'p' && t[1]).map(t => t[1]) || [];
 }
 
-/** What has been said in it, oldest first, as a chat reads */
-export async function fetchGroupChat(address: GroupAddress, limit = 100): Promise<NostrEventSigned[]> {
-  const messages = await read(address.relay, [
+/**
+ * What has been said in it, oldest first, as a chat reads — and, where the
+ * relay would not say, the reason it gave. A private group answers "you're
+ * trying to access a private group" rather than with an empty room, and the
+ * difference is worth passing on.
+ */
+export async function fetchGroupChat(
+  address: GroupAddress,
+  limit = 100
+): Promise<{ messages: NostrEventSigned[]; refusal: string | null }> {
+  const { events, refusal } = await relayAt(address.relay).readWithReason([
     {
       kinds: [EVENT_KINDS.GROUP_CHAT, EVENT_KINDS.GROUP_THREAD],
       '#h': [address.id],
       limit
     }
   ]);
-  return messages.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+  return {
+    messages: events.sort((a, b) => (a.created_at || 0) - (b.created_at || 0)),
+    refusal
+  };
 }
 
 /** Whatever is said from now on */

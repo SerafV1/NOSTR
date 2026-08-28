@@ -7484,6 +7484,32 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   white-space: nowrap;
 }
 
+.groups-invite {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin: var(--spacing-sm) var(--spacing-md) 0;
+}
+
+.groups-invite input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--input-bg, var(--light-bg));
+  color: var(--text-primary);
+}
+
+.groups-invite button {
+  border: 1px solid var(--border-color);
+  background: none;
+  color: var(--text-secondary);
+  border-radius: var(--border-radius);
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.groups-item-closed { font-size: 0.72rem; }
+
 .groups-notice {
   margin: var(--spacing-sm) var(--spacing-md);
   padding: var(--spacing-sm);
