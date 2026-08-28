@@ -2094,6 +2094,14 @@ export class NostrCore {
       // Retried a couple of times, a beat apart: whether this succeeds can
       // come down to whether the one relay that has it happened to answer
       // inside our timeout window on this particular attempt.
+      // A quick look first: most notes are held by several of the relays
+      // being read, and one of them usually answers in under a second. Only
+      // when nobody does is it worth the slow, wait-for-everyone rounds
+      // below, which cost the best part of ten seconds on a note that was
+      // never going to be found any faster.
+      const quick = await relayPool.fetchEvents(filters);
+      if (quick[0]) return quick[0];
+
       for (let i = 0; i < 2; i++) {
         const events = await relayPool.fetchEvents(filters, true);
         if (events[0]) return events[0];

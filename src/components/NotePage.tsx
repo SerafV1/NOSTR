@@ -76,22 +76,36 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
         // Replies don't depend on the ancestor walk below, so they're
         // started here and land whenever they land — chaining them after it
         // meant waiting out up to twenty sequential parent lookups first
-        // Every relay is waited for here, and asked twice if the first round
-        // comes back empty: arriving from the notifications page, the pool
-        // is still busy with that page's own queries, and a conversation
-        // that is merely late reads exactly like a conversation that is not
-        // there.
+        // Asked twice over, and nothing that arrives is taken away again.
+        // The quick round draws the conversation as soon as the first relays
+        // answer; the thorough one behind it waits for all of them and fills
+        // in whatever they were slow with — a reply that lives on one distant
+        // relay used to hold up the whole page while it was waited for.
+        const addReplies = (found: NostrEventSigned[]) => {
+          if (found.length === 0) return;
+          setReplies(prev => {
+            const byId = new Map(prev.map(reply => [reply.id, reply]));
+            for (const reply of found) byId.set(reply.id, reply);
+            return Array.from(byId.values())
+              .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+          });
+        };
+
+        NostrCore.fetchReplies(noteId, 100)
+          .then(addReplies)
+          .catch(error => console.error('Failed to fetch replies:', error));
+
         NostrCore.fetchReplies(noteId, 100, true)
           .then(async found => {
             if (found.length > 0) return found;
+            // Nothing at all: arriving from the notifications page, the pool
+            // is still busy with that page's own queries, and a conversation
+            // that is merely late reads exactly like one that is not there
             await new Promise(resolve => setTimeout(resolve, 2000));
             return NostrCore.fetchReplies(noteId, 100, true);
           })
-          .then(setReplies)
-          .catch(error => {
-            console.error('Failed to fetch replies:', error);
-            setReplies([]);
-          });
+          .then(addReplies)
+          .catch(error => console.error('Failed to fetch replies:', error));
 
         // If this note is itself a reply, walk all the way up the chain to
         // the root and show every ancestor for context — a reply-to-a-reply

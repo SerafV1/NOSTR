@@ -217,17 +217,36 @@ const EventCard: React.FC<EventCardProps> = ({
 
   const loadEngagement = async () => {
     try {
-      const engagement = await NostrCore.fetchEngagement(event.id, focused);
-      setReplyCount(engagement.replies);
-      setRepostCount(engagement.reposts);
-      setReposted(engagement.myRepost);
-      setLikeCount(engagement.likes);
-      setZapSats(engagement.zapSats);
-      if (engagement.myReaction) {
-        setReactionEmoji(engagement.myReaction);
+      // The post being read gets both: the quick answer that comes with the
+      // rest of the page, then the thorough one that waits for every relay.
+      // Waiting only for the thorough one left the numbers blank for as long
+      // as the slowest relay took.
+      if (focused) {
+        const quick = await NostrCore.fetchEngagement(event.id);
+        applyEngagement(quick);
       }
+      const engagement = await NostrCore.fetchEngagement(event.id, focused);
+      applyEngagement(engagement);
     } catch (error) {
       console.error('Failed to load engagement:', error);
+    }
+  };
+
+  const applyEngagement = (engagement: {
+    replies: number;
+    reposts: number;
+    likes: number;
+    zapSats: number;
+    myReaction: string | null;
+    myRepost: boolean;
+  }) => {
+    setReplyCount(engagement.replies);
+    setRepostCount(engagement.reposts);
+    setReposted(engagement.myRepost);
+    setLikeCount(engagement.likes);
+    setZapSats(engagement.zapSats);
+    if (engagement.myReaction) {
+      setReactionEmoji(engagement.myReaction);
     }
   };
 
