@@ -19,6 +19,7 @@ import {
   discoverGroupRelays,
   getGroupRelays,
   groupKey,
+  readCommunityAddress,
   KNOWN_GROUP_RELAYS,
   joinGroup,
   joinedGroupsFromCache,
@@ -27,7 +28,6 @@ import {
   reactToGroupMessage,
   replyInGroup,
   replyInThread,
-  startGroupThread,
   sendGroupMessage,
   setGroupRelays,
   subscribeGroupChat
@@ -184,6 +184,8 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [newRelay, setNewRelay] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
   // A closed group is joined by invitation: the relay ignores a bare request
   // and wants the code that was handed out with it
   const [inviteCode, setInviteCode] = useState('');
@@ -464,22 +466,6 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     }
   };
 
-  /** Starting one, out of whatever is in the message box */
-  const startThread = async () => {
-    const content = draft.trim();
-    if (!active || !content) return;
-    const subject = window.prompt('What is the thread about?', content.slice(0, 60));
-    if (!subject) return;
-    try {
-      const sent = await startGroupThread(active, subject, content);
-      setDraft('');
-      setMessages(prev => [...prev, sent]);
-      setOpenThread(sent);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
-    }
-  };
-
   const react = async (message: NostrEventSigned, emoji: string) => {
     if (!active) return;
     try {
@@ -720,15 +706,28 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     }
   };
 
-  const addRelay = () => {
-    const url = newRelay.trim();
-    if (!url) return;
-    const normalised = url.startsWith('ws') ? url : `wss://${url}`;
-    const next = Array.from(new Set([...relays, normalised]));
+  /**
+   * Adding a community, however it was handed over: the relay's own address,
+   * a link from this app, or the `naddr` other clients pass around — which
+   * carries the group and the relay holding it inside itself.
+   */
+  const addCommunity = () => {
+    const address = readCommunityAddress(newRelay);
+    if (!address) {
+      setAddError("That doesn't look like a community — paste its address, a link to it, or its naddr.");
+      return;
+    }
+
+    setAddError(null);
+    const next = Array.from(new Set([...relays, address.relay]));
     setRelays(next);
     setGroupRelays(next);
     setNewRelay('');
-    setActiveRelay(normalised);
+    setAdding(false);
+    setActiveRelay(address.relay);
+
+    if (address.id) openGroup({ relay: address.relay, id: address.id });
+    else navigate(addressOf(address.relay));
   };
 
   return (
@@ -764,16 +763,34 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
           </button>
         )}
 
-        <div className="groups-add-relay">
-          <input
-            type="text"
-            value={newRelay}
-            placeholder="add a relay…"
-            onChange={e => setNewRelay(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') addRelay(); }}
-          />
-          <button type="button" onClick={addRelay}>+</button>
-        </div>
+        {!adding ? (
+          <button type="button" className="groups-add-community" onClick={() => setAdding(true)}>
+            + Add community
+          </button>
+        ) : (
+          <div className="groups-add-community-form">
+            <input
+              type="text"
+              value={newRelay}
+              autoFocus
+              placeholder="address, link or naddr"
+              onChange={e => { setNewRelay(e.target.value); setAddError(null); }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') addCommunity();
+                if (e.key === 'Escape') { setAdding(false); setAddError(null); }
+              }}
+            />
+            <div className="groups-add-community-buttons">
+              <button type="button" onClick={() => { setAdding(false); setAddError(null); }}>Cancel</button>
+              <button type="button" className="groups-join-btn" onClick={addCommunity}>Add</button>
+            </div>
+            {addError && <p className="groups-empty">{addError}</p>}
+            <p className="groups-empty">
+              Anything works: wss://groups.example.com, a link somebody sent, or the naddr another
+              app hands out.
+            </p>
+          </div>
+        )}
       </aside>
 
       {/* What that server holds */}
@@ -1039,6 +1056,13 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                         <button type="button" onClick={() => setReplyingTo(message)} title="Reply">
                           <ReplyIcon />
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setOpenThread(message)}
+                          title="Answer this in a thread"
+                        >
+                          🧵
+                        </button>
                         <ZapButton
                           lud16={profiles[message.pubkey]?.lud16}
                           triggerClassName="groups-message-zap"
@@ -1121,15 +1145,6 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    title="Start a thread out of this"
-                    onClick={() => void startThread()}
-                    disabled={!draft.trim()}
-                  >
-                    🧵
-                  </button>
-
                   <label className="groups-upload" title="Picture">
                     {uploadPct === null ? '🖼' : `${uploadPct}%`}
                     <input type="file" accept="image/*" hidden onChange={addPicture} />
@@ -1157,7 +1172,8 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
         {openThread && (
           <div className="groups-thread">
             <h3>
-              🧵 {openThread.tags.find(t => t[0] === 'subject')?.[1] || 'Thread'}
+              🧵 {openThread.tags.find(t => t[0] === 'subject')?.[1]
+                || `Thread · ${nameFor(openThread.pubkey)}`}
               <button type="button" onClick={() => setOpenThread(null)} title="Back to the members">✕</button>
             </h3>
 

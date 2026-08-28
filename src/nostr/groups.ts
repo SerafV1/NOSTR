@@ -351,6 +351,53 @@ function read(url: string, filters: NostrFilter[], waitMs = 5000): Promise<Nostr
 // ---------------------------------------------------------------------------
 
 /**
+ * What somebody pasted in, whatever form it came in. A community is handed
+ * about in several: the relay's own address, a link from this app, or the
+ * `naddr` other clients hand out — which carries the group and the relay
+ * holding it inside itself.
+ */
+export function readCommunityAddress(text: string): GroupAddress | null {
+  const given = text.trim();
+  if (!given) return null;
+
+  // An naddr, on its own or as a nostr: link
+  const bech = given.match(/(?:nostr:)?(naddr1[023456789acdefghjklmnpqrstuvwxyz]+)/i)?.[1];
+  if (bech) {
+    try {
+      const decoded = nip19.decode(bech.toLowerCase());
+      if (decoded.type === 'naddr') {
+        const { kind, identifier, relays } = decoded.data as {
+          kind: number; identifier: string; relays?: string[];
+        };
+        const relay = relays?.[0];
+        if (kind === EVENT_KINDS.GROUP_METADATA && relay) {
+          return { relay: relay.replace(/\/$/, ''), id: identifier };
+        }
+      }
+    } catch {
+      // Not an address after all
+    }
+  }
+
+  // A link from this app: /s/<server>/<group>, on any origin
+  const asLink = given.match(/\/s\/([^/\s?#]+)(?:\/([^/\s?#]+))?/i);
+  if (asLink) {
+    return {
+      relay: `wss://${decodeURIComponent(asLink[1])}`,
+      id: asLink[2] ? decodeURIComponent(asLink[2]) : ''
+    };
+  }
+
+  // The relay itself, written however people write it
+  const host = given
+    .replace(/^https?:\/\//i, '')
+    .replace(/^wss?:\/\//i, '')
+    .replace(/\/$/, '');
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}(:\d+)?$/i.test(host)) return null;
+  return { relay: `wss://${host}`, id: '' };
+}
+
+/**
  * The servers this account actually has: the ones it was found to be a member
  * of, and the ones it was told about by hand. Empty to begin with, which is
  * the truth — a stranger's relay is not one of your servers.
@@ -654,22 +701,10 @@ export function replyInGroup(
 }
 
 /**
- * Starting a thread, which is a group's long-form: a kind 11 with a subject,
- * answered by NIP-22 comments rather than by chat.
+ * A thread is any message answered in one: the group's own long-form (a kind
+ * 11 with a subject) or a line of chat somebody took aside. Either way the
+ * answers are NIP-22 comments naming it as their root.
  */
-export function startGroupThread(
-  address: GroupAddress,
-  subject: string,
-  content: string
-): Promise<NostrEventSigned> {
-  return publishToGroup(address, {
-    kind: EVENT_KINDS.GROUP_THREAD,
-    content,
-    tags: [['h', address.id], ['subject', subject]]
-  });
-}
-
-/** What has been said under one thread */
 export async function fetchThreadReplies(
   address: GroupAddress,
   threadId: string

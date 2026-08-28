@@ -2364,6 +2364,12 @@ button.poll-option-vote:disabled {
   margin-bottom: var(--spacing-sm);
 }
 
+.zap-amount-btn.chosen {
+  border-color: var(--primary-color);
+  background: var(--primary-color);
+  color: #fff;
+}
+
 .zap-amount-btn {
   background: var(--dark-bg);
   border: 1px solid var(--border-color);
@@ -7438,21 +7444,57 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   font-size: 0.85rem;
 }
 
-.groups-add-relay {
-  display: flex;
-  gap: 4px;
+.groups-add-community {
+  width: 100%;
   margin-top: var(--spacing-sm);
-}
-
-.groups-add-relay input { margin-bottom: 0; }
-
-.groups-add-relay button {
-  border: 1px solid var(--border-color);
-  background: var(--light-bg);
-  color: var(--text-primary);
+  padding: 7px 8px;
+  border: 1px dashed var(--border-color);
+  background: none;
+  color: var(--text-secondary);
   border-radius: var(--border-radius);
   cursor: pointer;
-  padding: 0 10px;
+  font-size: 0.8rem;
+}
+
+.groups-add-community:hover {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.groups-add-community-form {
+  margin-top: var(--spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.groups-add-community-form input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--input-bg, var(--light-bg));
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+
+.groups-add-community-buttons {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.groups-add-community-buttons button {
+  flex: 1;
+  padding: 5px 8px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.groups-add-community-buttons button:first-child {
+  border: 1px solid var(--border-color);
+  background: none;
+  color: var(--text-secondary);
 }
 
 .groups-chat {

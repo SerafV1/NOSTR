@@ -44,12 +44,19 @@ const ZapButton: React.FC<ZapButtonProps> = ({
 }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [customAmount, setCustomAmount] = useState('');
+  // Picking an amount marks it; nothing is paid until Zap is pressed. Money
+  // leaving on a single click, before a message could even be typed, is not
+  // a thing to do by accident.
+  const [chosen, setChosen] = useState<number | null>(null);
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(false);
   const [invoice, setInvoice] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const { containerRef, triggerRef, popupRef, style, openPopup, render } =
     useAnchoredPopup(showMenu, () => setShowMenu(false), [invoice, loading]);
+
+  /** What pressing Zap would pay: what was typed, else what was picked */
+  const amountToSend = Number(customAmount) > 0 ? Number(customAmount) : (chosen || 0);
 
   const sendZap = async (amountSats: number) => {
     if (!lud16 || loading) return;
@@ -181,9 +188,9 @@ const ZapButton: React.FC<ZapButtonProps> = ({
                   <button
                     key={amount}
                     type="button"
-                    className="zap-amount-btn"
+                    className={`zap-amount-btn ${chosen === amount ? 'chosen' : ''}`}
                     disabled={loading}
-                    onClick={() => sendZap(amount)}
+                    onClick={() => { setChosen(amount); setCustomAmount(''); }}
                   >
                     ⚡{amount >= 1000 ? `${amount / 1000}k` : amount}
                   </button>
@@ -207,16 +214,16 @@ const ZapButton: React.FC<ZapButtonProps> = ({
                   min={1}
                   placeholder="Custom sats"
                   value={customAmount}
-                  onChange={(e) => setCustomAmount(e.target.value)}
+                  onChange={(e) => { setCustomAmount(e.target.value); setChosen(null); }}
                   disabled={loading}
                 />
                 <button
                   type="button"
                   className="btn btn-primary btn-small"
-                  disabled={loading || !customAmount || Number(customAmount) <= 0}
-                  onClick={() => sendZap(Number(customAmount))}
+                  disabled={loading || amountToSend <= 0}
+                  onClick={() => sendZap(amountToSend)}
                 >
-                  {loading ? '...' : 'Zap'}
+                  {loading ? '...' : `Zap${amountToSend > 0 ? ` ${amountToSend.toLocaleString()}` : ''}`}
                 </button>
               </div>
             </>
