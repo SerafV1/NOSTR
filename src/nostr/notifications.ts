@@ -95,6 +95,35 @@ export function dropMuted(notifications: NostrNotification[]): NostrNotification
  * and an empty one wiped the page. Merging by id means a poor fetch can only
  * ever add.
  */
+/**
+ * A follow arrives as the whole of that person's contact list — two thousand
+ * tags naming other people, seventy kilobytes of it, behind one line saying
+ * they followed you. Kept as it came, twenty-seven of those filled three
+ * megabytes and pushed this browser's storage to the edge of what it allows,
+ * at which point writes fail silently: the badge counted a notification that
+ * the page then could not find, and it only appeared once the page's own next
+ * read of the relays happened to bring it back.
+ *
+ * Nothing here reads those tags. Unfollows are worked out from lists fetched
+ * fresh, not from these. Only the one naming this account is worth keeping.
+ */
+function slimForStorage(notification: NostrNotification, owner: string): NostrNotification {
+  const event = notification.event;
+  if (event.kind !== EVENT_KINDS.CONTACTS) return notification;
+  if (event.tags.length <= 1 && !event.content) return notification;
+
+  return {
+    ...notification,
+    event: {
+      ...event,
+      tags: event.tags.filter(t => t[0] === 'p' && t[1] === owner),
+      // The relay list some clients keep in a contact list's content, which
+      // is nobody's business here either
+      content: ''
+    }
+  };
+}
+
 export function cacheNotifications(
   pubkey: string,
   fresh: NostrNotification[]
@@ -106,7 +135,12 @@ export function cacheNotifications(
     .sort((a, b) => (b.event.created_at || 0) - (a.event.created_at || 0))
     .slice(0, NOTIFICATION_CACHE_LIMIT);
 
-  PersistentCache.set(notificationsCacheKey(pubkey), merged);
+  // Slimmed on the way to storage — including what is already there, so a
+  // browser carrying the old, fat copies is cleaned out by the next write
+  PersistentCache.set(
+    notificationsCacheKey(pubkey),
+    merged.map(notification => slimForStorage(notification, pubkey))
+  );
   return merged;
 }
 
