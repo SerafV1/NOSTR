@@ -112,6 +112,9 @@ export const EVENT_KINDS = {
   GROUP_THREAD: 11,
   /** Asking the relay to be let in */
   GROUP_JOIN_REQUEST: 9021,
+  /** Making a group, and saying what it is */
+  GROUP_CREATE: 9007,
+  GROUP_EDIT_METADATA: 9002,
   /** Telling it you are leaving */
   GROUP_LEAVE_REQUEST: 9022,
   /** The group itself: name, picture, whether it is public and open */

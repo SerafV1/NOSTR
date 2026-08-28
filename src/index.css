@@ -7600,6 +7600,190 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   color: var(--text-secondary);
 }
 
+/* Making a group: a small form over the page, since it is a few lines of
+   description and a picture rather than a page of its own */
+.groups-new-btn {
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  color: var(--text-secondary);
+  cursor: pointer;
+  line-height: 1;
+  padding: 1px 7px;
+  font-size: 0.95rem;
+}
+
+.groups-new-btn:hover { color: var(--primary-color); border-color: var(--primary-color); }
+
+.groups-make-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  z-index: 1200;
+}
+
+.groups-make {
+  width: min(480px, 92vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: var(--spacing-lg);
+  background: var(--bg-color, var(--light-bg));
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.groups-make h3 { margin: 0; }
+
+.groups-make label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.groups-make input[type="text"],
+.groups-make textarea {
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--input-bg, var(--light-bg));
+  color: var(--text-primary);
+  font: inherit;
+  resize: vertical;
+}
+
+.groups-make-picture {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.groups-make-picture img,
+.groups-make-picture .groups-avatar-placeholder {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--border-radius);
+  object-fit: cover;
+}
+
+.groups-make-picture button {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.groups-make-flags label {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--text-primary);
+  font-size: 0.86rem;
+}
+
+.groups-make-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+}
+
+.groups-make-buttons button:first-child {
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  border-radius: var(--border-radius);
+  padding: 6px 16px;
+  cursor: pointer;
+}
+
+/* What a message answers, and what can be done with it */
+.groups-answering {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  padding: 0 0 2px;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.groups-answering:hover { color: var(--primary-color); }
+
+.groups-message-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-top: 2px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+/* Kept out of the way until the message is under the cursor, so a hundred
+   lines of chat are not a hundred rows of buttons */
+.groups-message:hover .groups-message-actions,
+.groups-message-actions:focus-within { opacity: 1; }
+
+.groups-message-actions button,
+.groups-message-zap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  border-radius: var(--border-radius);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.groups-message-actions button:hover,
+.groups-message-zap:hover {
+  color: var(--primary-color);
+  background: var(--light-bg);
+}
+
+.groups-message-actions svg { width: 14px; height: 14px; }
+
+.groups-replying {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: 4px 8px;
+  margin-bottom: var(--spacing-sm);
+  border-left: 2px solid var(--primary-color);
+  background: var(--light-bg);
+  border-radius: var(--border-radius);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.groups-replying button {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+/* The composer grew a line above it, so it stops being one row */
+.groups-composer {
+  flex-wrap: wrap;
+}
+
 .groups-composer {
   display: flex;
   gap: var(--spacing-sm);

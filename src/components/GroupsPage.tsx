@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { NostrEventSigned, UserProfile } from '../types';
+import { EVENT_KINDS, NostrEventSigned, UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
 import {
   GroupAddress,
   GroupInfo,
   GroupRole,
+  createGroup,
   fetchGroupChat,
+  fetchGroupMessageResponses,
+  fetchThreadReplies,
   fetchGroup,
   fetchGroupAdmins,
   fetchGroupMembers,
@@ -20,6 +23,10 @@ import {
   joinedGroupsFromCache,
   fetchJoinedGroups,
   leaveGroup,
+  reactToGroupMessage,
+  replyInGroup,
+  replyInThread,
+  startGroupThread,
   sendGroupMessage,
   setGroupRelays,
   subscribeGroupChat
@@ -37,6 +44,10 @@ import LinkPreviewCard from './LinkPreviewCard';
 import RichText from './RichText';
 import EmojiText from './EmojiText';
 import ProfileHoverCard from './ProfileHoverCard';
+import LiveChatReactions, { ReactionTally } from './LiveChatReactions';
+import ZapButton from './ZapButton';
+import { ZapIcon, ReplyIcon } from './Icons';
+import { customEmojiMap } from '../utils/customEmoji';
 import EmojiPicker from './EmojiPicker';
 import GifPicker from './GifPicker';
 import { BlossomClient } from '../nostr/blossom';
@@ -61,6 +72,12 @@ const previewableLink = (content: string): string | null => {
   if (extractStreamUrls(content).length > 0) return null;
   if (extractEmbeds(content).length > 0) return null;
   return extractPreviewLinkUrl(content) || null;
+};
+
+/** The message this one answers, where it says so */
+const answered = (message: NostrEventSigned): string | null => {
+  const marked = message.tags.find(t => t[0] === 'e' && t[3] === 'reply')?.[1];
+  return marked || message.tags.find(t => t[0] === 'e')?.[1] || null;
 };
 
 const relayLabel = (url: string): string => url.replace(/^wss:\/\//, '').replace(/\/$/, '');
@@ -107,6 +124,14 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
   const [messages, setMessages] = useState<NostrEventSigned[]>([]);
   const [members, setMembers] = useState<string[]>([]);
   const [runners, setRunners] = useState<GroupRole[]>([]);
+  // Reactions and zaps paid on the messages on screen
+  const [responses, setResponses] = useState<NostrEventSigned[]>([]);
+  const [replyingTo, setReplyingTo] = useState<NostrEventSigned | null>(null);
+  // A thread is a group's long-form: a kind 11 with a subject, answered by
+  // comments rather than by chat. Opened in place of the member list.
+  const [openThread, setOpenThread] = useState<NostrEventSigned | null>(null);
+  const [threadReplies, setThreadReplies] = useState<NostrEventSigned[]>([]);
+  const [threadDraft, setThreadDraft] = useState('');
   const [roleMeanings, setRoleMeanings] = useState<Record<string, string>>({});
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
   const [loadingChat, setLoadingChat] = useState(false);
@@ -117,6 +142,12 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
   // A closed group is joined by invitation: the relay ignores a bare request
   // and wants the code that was handed out with it
   const [inviteCode, setInviteCode] = useState('');
+  // Making one of your own
+  const [making, setMaking] = useState(false);
+  const [newGroup, setNewGroup] = useState({ name: '', about: '', picture: '', open: true, publicGroup: true });
+  const [makingBusy, setMakingBusy] = useState(false);
+  const [makeError, setMakeError] = useState<string | null>(null);
+
   const [showEmoji, setShowEmoji] = useState(false);
   const [showGifs, setShowGifs] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
@@ -257,6 +288,10 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     setMembers([]);
     setRunners([]);
     setRoleMeanings({});
+    setResponses([]);
+    setReplyingTo(null);
+    setOpenThread(null);
+    setThreadReplies([]);
     setNotice(null);
     setAskingForCode(false);
     setInviteCode('');
@@ -304,6 +339,116 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' });
   }, [messages.length, active?.id]);
+
+  // What has been said about what is on screen. Asked once the messages are
+  // in, and again when new ones arrive, in one query for the lot of them.
+  useEffect(() => {
+    if (!active || messages.length === 0) return;
+    let cancelled = false;
+    const ids = messages.slice(-120).map(m => m.id);
+    fetchGroupMessageResponses(active, ids).then(found => {
+      if (cancelled) return;
+      setResponses(prev => {
+        const byId = new Map(prev.map(e => [e.id, e]));
+        for (const event of found) byId.set(event.id, event);
+        return Array.from(byId.values());
+      });
+      void loadProfilesFor(found.map(e => e.pubkey));
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.relay, active?.id, messages.length]);
+
+  /** Reactions under each message, and what has been paid on it */
+  const chatter = useMemo(() => {
+    const byMessage = new Map<string, { tallies: ReactionTally[]; sats: number }>();
+    const seenReactors = new Map<string, Set<string>>();
+
+    for (const event of responses) {
+      const target = event.tags.filter(t => t[0] === 'e').pop()?.[1];
+      if (!target) continue;
+      const held = byMessage.get(target) || { tallies: [], sats: 0 };
+
+      if (event.kind === EVENT_KINDS.ZAP_RECEIPT) {
+        held.sats += NostrCore.parseZapAmountSats(event);
+        byMessage.set(target, held);
+        continue;
+      }
+
+      // The same person reacting twice with the same thing is one reaction
+      const mark = event.content.trim() || '❤️';
+      const key = `${target}|${mark}`;
+      const reactors = seenReactors.get(key) || new Set<string>();
+      if (reactors.has(event.pubkey)) continue;
+      reactors.add(event.pubkey);
+      seenReactors.set(key, reactors);
+
+      const already = held.tallies.find(t => t.emoji === mark);
+      const picture = customEmojiMap(event.tags)[mark.replace(/:/g, '')];
+      if (already) {
+        already.count += 1;
+        already.mine = already.mine || event.pubkey === ownPubkey;
+        already.image = already.image || picture;
+      } else {
+        held.tallies.push({ emoji: mark, count: 1, mine: event.pubkey === ownPubkey, image: picture });
+      }
+      byMessage.set(target, held);
+    }
+
+    return byMessage;
+  }, [responses, ownPubkey]);
+
+  // What has been said under the open thread
+  useEffect(() => {
+    if (!active || !openThread) return;
+    let cancelled = false;
+    setThreadReplies([]);
+    fetchThreadReplies(active, openThread.id).then(found => {
+      if (cancelled) return;
+      setThreadReplies(found);
+      void loadProfilesFor(found.map(r => r.pubkey));
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.relay, active?.id, openThread?.id]);
+
+  const sendToThread = async () => {
+    const content = threadDraft.trim();
+    if (!active || !openThread || !content) return;
+    try {
+      const sent = await replyInThread(active, openThread, content);
+      setThreadDraft('');
+      setThreadReplies(prev => [...prev, sent]);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  /** Starting one, out of whatever is in the message box */
+  const startThread = async () => {
+    const content = draft.trim();
+    if (!active || !content) return;
+    const subject = window.prompt('What is the thread about?', content.slice(0, 60));
+    if (!subject) return;
+    try {
+      const sent = await startGroupThread(active, subject, content);
+      setDraft('');
+      setMessages(prev => [...prev, sent]);
+      setOpenThread(sent);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const react = async (message: NostrEventSigned, emoji: string) => {
+    if (!active) return;
+    try {
+      const sent = await reactToGroupMessage(active, message, emoji);
+      setResponses(prev => [...prev, sent]);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   const loadProfilesFor = async (pubkeys: string[]) => {
     const wanted = Array.from(new Set(pubkeys)).filter(pubkey => pubkey && !profiles[pubkey]);
@@ -401,7 +546,10 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     setSending(true);
     try {
       const { content: resolved } = resolveMentionHandles(content, pickedMentions.current);
-      const sent = await sendGroupMessage(active, resolved);
+      const sent = replyingTo
+        ? await replyInGroup(active, replyingTo, resolved)
+        : await sendGroupMessage(active, resolved);
+      setReplyingTo(null);
       setDraft('');
       setMessages(prev => (prev.some(m => m.id === sent.id) ? prev : [...prev, sent]));
     } catch (error) {
@@ -463,6 +611,56 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     setGroupRelays(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mine.map(g => g.relay).join(',')]);
+
+  /**
+   * A group of one's own. The relay is asked to make it and then told what it
+   * is called — a relay that does not let strangers make groups says so, and
+   * saying that plainly beats leaving a half-made room behind.
+   */
+  const makeGroup = async () => {
+    if (!activeRelay || !newGroup.name.trim() || makingBusy) return;
+    setMakingBusy(true);
+    setMakeError(null);
+    try {
+      // An address of its own, so two groups made the same minute cannot land
+      // on top of one another
+      const id = `${newGroup.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 20) || 'group'}-${Math.random().toString(36).slice(2, 8)}`;
+      const address = await createGroup(activeRelay, id, {
+        name: newGroup.name.trim(),
+        about: newGroup.about.trim() || undefined,
+        picture: newGroup.picture || undefined,
+        open: newGroup.open,
+        publicGroup: newGroup.publicGroup
+      });
+
+      setMaking(false);
+      setNewGroup({ name: '', about: '', picture: '', open: true, publicGroup: true });
+      setJoined(prev => [...prev, address]);
+      setGroupsByRelay(prev => ({ ...prev, [activeRelay]: [] }));  // read the relay's list afresh
+      setActive(address);
+    } catch (error) {
+      setMakeError(
+        `${error instanceof Error ? error.message : String(error)} — not every relay lets anyone make a group.`
+      );
+    } finally {
+      setMakingBusy(false);
+    }
+  };
+
+  const pickGroupPicture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadPct(0);
+    try {
+      const blob = await BlossomClient.uploadFile(file, undefined, setUploadPct);
+      setNewGroup(current => ({ ...current, picture: blob.url }));
+    } catch (error) {
+      setMakeError(error instanceof Error ? error.message : 'Could not upload that picture');
+    } finally {
+      setUploadPct(null);
+    }
+  };
 
   const addRelay = () => {
     const url = newRelay.trim();
@@ -540,7 +738,19 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
 
         {activeRelay && (
           <>
-            <h3>On {relayLabel(activeRelay)}</h3>
+            <h3>
+              On {relayLabel(activeRelay)}
+              {canSign && (
+                <button
+                  type="button"
+                  className="groups-new-btn"
+                  onClick={() => { setMaking(true); setMakeError(null); }}
+                  title="Make a group here"
+                >
+                  +
+                </button>
+              )}
+            </h3>
             <input
               className="groups-search"
               type="text"
@@ -574,6 +784,79 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
           </button>
         ))}
       </nav>
+
+      {making && (
+        <div className="groups-make-overlay" onClick={() => !makingBusy && setMaking(false)}>
+          <div className="groups-make" onClick={e => e.stopPropagation()}>
+            <h3>New group on {relayLabel(activeRelay)}</h3>
+
+            <label>
+              Name
+              <input
+                type="text"
+                value={newGroup.name}
+                autoFocus
+                onChange={e => setNewGroup({ ...newGroup, name: e.target.value })}
+              />
+            </label>
+
+            <label>
+              What it is for
+              <textarea
+                value={newGroup.about}
+                rows={3}
+                onChange={e => setNewGroup({ ...newGroup, about: e.target.value })}
+              />
+            </label>
+
+            <div className="groups-make-picture">
+              {newGroup.picture
+                ? <img src={newGroup.picture} alt="" />
+                : <span className="groups-avatar-placeholder">{(newGroup.name || '?').charAt(0).toUpperCase()}</span>}
+              <label className="groups-upload">
+                {uploadPct === null ? 'Choose a picture' : `${uploadPct}%`}
+                <input type="file" accept="image/*" hidden onChange={pickGroupPicture} />
+              </label>
+              {newGroup.picture && (
+                <button type="button" onClick={() => setNewGroup({ ...newGroup, picture: '' })}>Remove</button>
+              )}
+            </div>
+
+            <div className="groups-make-flags">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={newGroup.publicGroup}
+                  onChange={e => setNewGroup({ ...newGroup, publicGroup: e.target.checked })}
+                />
+                Anyone may read it
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={newGroup.open}
+                  onChange={e => setNewGroup({ ...newGroup, open: e.target.checked })}
+                />
+                Anyone may join without being asked in
+              </label>
+            </div>
+
+            {makeError && <div className="groups-notice">{makeError}</div>}
+
+            <div className="groups-make-buttons">
+              <button type="button" onClick={() => setMaking(false)} disabled={makingBusy}>Cancel</button>
+              <button
+                type="button"
+                className="groups-join-btn"
+                onClick={() => void makeGroup()}
+                disabled={makingBusy || !newGroup.name.trim()}
+              >
+                {makingBusy ? 'Making…' : 'Make it'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* The conversation */}
       <section className="groups-chat">
@@ -626,7 +909,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                 <div className="groups-empty">Nobody has said anything yet.</div>
               )}
               {messages.map(message => (
-                <div key={message.id} className="groups-message">
+                <div key={message.id} id={`msg-${message.id}`} className="groups-message">
                   <button
                     type="button"
                     className="groups-message-who"
@@ -637,6 +920,32 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                       : <span className="groups-avatar-placeholder">{nameFor(message.pubkey).charAt(0).toUpperCase()}</span>}
                   </button>
                   <div className="groups-message-body">
+                    {message.kind === EVENT_KINDS.GROUP_THREAD && (
+                      <button
+                        type="button"
+                        className="groups-thread-open"
+                        onClick={() => setOpenThread(message)}
+                      >
+                        🧵 {message.tags.find(t => t[0] === 'subject')?.[1] || 'Thread'}
+                      </button>
+                    )}
+                    {answered(message) && (
+                      <button
+                        type="button"
+                        className="groups-answering"
+                        onClick={() => {
+                          const to = messages.find(m => m.id === answered(message));
+                          if (to) document.getElementById(`msg-${to.id}`)?.scrollIntoView({ block: 'center' });
+                        }}
+                      >
+                        ↳ {(() => {
+                          const to = messages.find(m => m.id === answered(message));
+                          return to
+                            ? `${nameFor(to.pubkey)}: ${to.content.replace(/\s+/g, ' ').slice(0, 48)}`
+                            : 'an earlier message';
+                        })()}
+                      </button>
+                    )}
                     <span className="groups-message-name">
                       {/* Whoever said it, with the same card the rest of the
                           app gives: follow, mute, who they are */}
@@ -668,6 +977,35 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                     {previewableLink(message.content) && (
                       <LinkPreviewCard url={previewableLink(message.content)!} />
                     )}
+
+                    <LiveChatReactions
+                      tallies={chatter.get(message.id)?.tallies || []}
+                      canReact={canSign}
+                      onReact={(mark) => void react(message, mark)}
+                    />
+
+                    {canSign && (
+                      <div className="groups-message-actions">
+                        <button type="button" onClick={() => setReplyingTo(message)} title="Reply">
+                          <ReplyIcon />
+                        </button>
+                        <ZapButton
+                          lud16={profiles[message.pubkey]?.lud16}
+                          triggerClassName="groups-message-zap"
+                          triggerTitle={`Zap ${nameFor(message.pubkey)}`}
+                          recipientPubkey={message.pubkey}
+                          eventId={message.id}
+                          recipientName={nameFor(message.pubkey)}
+                          recipientPicture={profiles[message.pubkey]?.picture}
+                          recipientEmojis={profiles[message.pubkey]?.emojis}
+                        >
+                          <ZapIcon />
+                          {(chatter.get(message.id)?.sats || 0) > 0 && (
+                            <span>{chatter.get(message.id)!.sats.toLocaleString()}</span>
+                          )}
+                        </ZapButton>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -676,6 +1014,12 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
 
             {canSign ? (
               <div className="groups-composer">
+                {replyingTo && (
+                  <div className="groups-replying">
+                    ↳ Replying to {nameFor(replyingTo.pubkey)}
+                    <button type="button" onClick={() => setReplyingTo(null)} title="Never mind">✕</button>
+                  </div>
+                )}
                 <textarea
                   ref={draftRef}
                   value={draft}
@@ -727,6 +1071,15 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                     )}
                   </div>
 
+                  <button
+                    type="button"
+                    title="Start a thread out of this"
+                    onClick={() => void startThread()}
+                    disabled={!draft.trim()}
+                  >
+                    🧵
+                  </button>
+
                   <label className="groups-upload" title="Picture">
                     {uploadPct === null ? '🖼' : `${uploadPct}%`}
                     <input type="file" accept="image/*" hidden onChange={addPicture} />
@@ -749,9 +1102,72 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
         )}
       </section>
 
-      {/* Who is in it */}
+      {/* Who is in it — or, while one is open, the thread */}
       <aside className="groups-members">
-        {active && (
+        {openThread && (
+          <div className="groups-thread">
+            <h3>
+              🧵 {openThread.tags.find(t => t[0] === 'subject')?.[1] || 'Thread'}
+              <button type="button" onClick={() => setOpenThread(null)} title="Back to the members">✕</button>
+            </h3>
+
+            <div className="groups-thread-root">
+              <span className="groups-message-name">
+                <EmojiText text={nameFor(openThread.pubkey)} emojis={profiles[openThread.pubkey]?.emojis} />
+              </span>
+              <RichText
+                inlineImages
+                inlineQuotes
+                content={openThread.content}
+                eventTags={openThread.tags}
+                onNavigateToProfile={onNavigateToProfile}
+                onNavigateToNote={onNavigateToNote}
+                onNavigateToTopic={onNavigateToTopic}
+              />
+            </div>
+
+            <div className="groups-thread-replies">
+              {threadReplies.length === 0 && <div className="groups-empty">Nothing said yet.</div>}
+              {threadReplies.map(reply => (
+                <div className="groups-thread-reply" key={reply.id}>
+                  <span className="groups-message-name">
+                    <EmojiText text={nameFor(reply.pubkey)} emojis={profiles[reply.pubkey]?.emojis} />
+                    <time>
+                      {new Date((reply.created_at || 0) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}
+                    </time>
+                  </span>
+                  <RichText
+                    inlineImages
+                    inlineQuotes
+                    content={reply.content}
+                    eventTags={reply.tags}
+                    onNavigateToProfile={onNavigateToProfile}
+                    onNavigateToNote={onNavigateToNote}
+                    onNavigateToTopic={onNavigateToTopic}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {canSign && (
+              <div className="groups-thread-composer">
+                <textarea
+                  value={threadDraft}
+                  placeholder="Answer in the thread"
+                  onChange={e => setThreadDraft(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendToThread(); }
+                  }}
+                />
+                <button type="button" onClick={() => void sendToThread()} disabled={!threadDraft.trim()}>
+                  Send
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!openThread && active && (
           <>
             <h3>
               Members

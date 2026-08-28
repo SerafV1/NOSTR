@@ -600,6 +600,130 @@ export function sendGroupMessage(address: GroupAddress, content: string): Promis
   return publishToGroup(address, { kind: EVENT_KINDS.GROUP_CHAT, content, tags });
 }
 
+/**
+ * Reacting to something said in a group. NIP-25 as everywhere else, with the
+ * group's own tag on it so the relay knows where it belongs.
+ */
+export function reactToGroupMessage(
+  address: GroupAddress,
+  message: NostrEventSigned,
+  emoji: string,
+  emojiUrl?: string
+): Promise<NostrEventSigned> {
+  const tags: string[][] = [
+    ['h', address.id],
+    ['e', message.id],
+    ['p', message.pubkey],
+    ['k', String(message.kind)]
+  ];
+  // A custom emoji is sent as its shortcode plus where the picture lives
+  if (emojiUrl) tags.push(['emoji', emoji.replace(/:/g, ''), emojiUrl]);
+
+  return publishToGroup(address, { kind: EVENT_KINDS.REACTION, content: emoji, tags });
+}
+
+/** Everything said about these messages: reactions, and zaps paid for them */
+export async function fetchGroupMessageResponses(
+  address: GroupAddress,
+  messageIds: string[]
+): Promise<NostrEventSigned[]> {
+  if (messageIds.length === 0) return [];
+  return read(address.relay, [
+    {
+      kinds: [EVENT_KINDS.REACTION, EVENT_KINDS.ZAP_RECEIPT],
+      '#e': messageIds.slice(0, 200),
+      limit: 500
+    }
+  ]);
+}
+
+/** Answering one message rather than the room */
+export function replyInGroup(
+  address: GroupAddress,
+  to: NostrEventSigned,
+  content: string
+): Promise<NostrEventSigned> {
+  const tags: string[][] = [
+    ['h', address.id],
+    // Marked the way a thread is marked everywhere else, so a client that
+    // does not know groups can still see what answers what
+    ['e', to.id, '', 'reply'],
+    ['p', to.pubkey]
+  ];
+  return publishToGroup(address, { kind: EVENT_KINDS.GROUP_CHAT, content, tags });
+}
+
+/**
+ * Starting a thread, which is a group's long-form: a kind 11 with a subject,
+ * answered by NIP-22 comments rather than by chat.
+ */
+export function startGroupThread(
+  address: GroupAddress,
+  subject: string,
+  content: string
+): Promise<NostrEventSigned> {
+  return publishToGroup(address, {
+    kind: EVENT_KINDS.GROUP_THREAD,
+    content,
+    tags: [['h', address.id], ['subject', subject]]
+  });
+}
+
+/** What has been said under one thread */
+export async function fetchThreadReplies(
+  address: GroupAddress,
+  threadId: string
+): Promise<NostrEventSigned[]> {
+  const found = await read(address.relay, [
+    { kinds: [EVENT_KINDS.COMMENT, EVENT_KINDS.GROUP_CHAT], '#e': [threadId], limit: 200 }
+  ]);
+  return found.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+}
+
+export function replyInThread(
+  address: GroupAddress,
+  thread: NostrEventSigned,
+  content: string
+): Promise<NostrEventSigned> {
+  return publishToGroup(address, {
+    kind: EVENT_KINDS.COMMENT,
+    content,
+    tags: [
+      ['h', address.id],
+      ['E', thread.id], ['K', String(thread.kind)], ['P', thread.pubkey],
+      ['e', thread.id], ['k', String(thread.kind)], ['p', thread.pubkey]
+    ]
+  });
+}
+
+/**
+ * Making a group. The relay is asked to create it and then told what it is
+ * called; a relay that does not let strangers make groups says so, and that
+ * is worth passing on rather than leaving a half-made room behind.
+ */
+export async function createGroup(
+  relay: string,
+  id: string,
+  about: { name: string; about?: string; picture?: string; open?: boolean; publicGroup?: boolean }
+): Promise<GroupAddress> {
+  const address: GroupAddress = { relay, id };
+
+  await publishToGroup(address, {
+    kind: EVENT_KINDS.GROUP_CREATE,
+    content: '',
+    tags: [['h', id]]
+  });
+
+  const tags: string[][] = [['h', id], ['name', about.name]];
+  if (about.about) tags.push(['about', about.about]);
+  if (about.picture) tags.push(['picture', about.picture]);
+  tags.push([about.publicGroup === false ? 'private' : 'public']);
+  tags.push([about.open === false ? 'closed' : 'open']);
+
+  await publishToGroup(address, { kind: EVENT_KINDS.GROUP_EDIT_METADATA, content: '', tags });
+  return address;
+}
+
 /** Ask to be let in. An open group lets you in at once; a closed one asks its admins. */
 export function requestToJoin(address: GroupAddress, code?: string): Promise<NostrEventSigned> {
   const tags: string[][] = [['h', address.id]];
