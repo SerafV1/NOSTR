@@ -32,6 +32,8 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
   const [transparent, setTransparent] = useState(() => params.get('transparent') === '1');
   const [bold, setBold] = useState(() => params.get('bold') === '1');
   const [published, setPublished] = useState<number | null>(null);
+  /** When the copy the number came from was published, so an older one cannot replace it */
+  const latestAt = useRef(0);
   // Everyone heard from in the chat lately — a number that moves on its own,
   // for streams whose broadcaster publishes no count
   const [inChat, setInChat] = useState(0);
@@ -51,8 +53,18 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
       if (event.pubkey !== pubkey) return;
       if (event.tags.find(t => t[0] === 'd')?.[1] !== identifier) return;
 
+      // Every relay answers with the copy it holds, and they are not all
+      // at the same revision — one was measured 8 minutes behind another,
+      // with a count two viewers lower. Whichever arrives last would
+      // otherwise win, which is how this sat on a stale number (0, from
+      // when the stream opened) while the broadcaster's own site showed
+      // the current one.
+      const at = event.created_at || 0;
+      if (at < latestAt.current) return;
+
       const parsed = parseLiveEvent(event);
       if (!cancelled && parsed.currentParticipants !== undefined) {
+        latestAt.current = at;
         setPublished(parsed.currentParticipants);
       }
     };
