@@ -1,0 +1,16 @@
+{
+  "names": {
+    "seraf": "5eb2c642d40a58795422121625be7fbe47e8901485a1a8bc01e1907b8aea0a9b",
+    "_": "5eb2c642d40a58795422121625be7fbe47e8901485a1a8bc01e1907b8aea0a9b"
+  },
+  "relays": {
+    "5eb2c642d40a58795422121625be7fbe47e8901485a1a8bc01e1907b8aea0a9b": [
+      "wss://relay.damus.io",
+      "wss://relay.primal.net",
+      "wss://premium.primal.net",
+      "wss://bitcoiner.social",
+      "wss://nostrelites.org",
+      "wss://wot.utxo.one"
+    ]
+  }
+}
