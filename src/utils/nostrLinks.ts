@@ -9,9 +9,26 @@ import { nip19 } from 'nostr-tools';
 const ENTITY_SOURCE = '(?:note1|nevent1|npub1|nprofile1)[023456789acdefghjklmnpqrstuvwxyz]{20,}';
 const TRAILING_PUNCTUATION = /[.,;:!?)\]]+$/;
 
-/** The nostr address a web link carries, if it carries one at all */
+/**
+ * The nostr address a web link carries, if it carries one at all.
+ *
+ * It has to be in the path, not in the host. A blossom server gives every
+ * account a subdomain of its own, so a picture posted from Amethyst arrives
+ * as https://npub1….blossom.band/<hash>.jpg — a file on a server, not a web
+ * page about that person. Read whole, the npub in the hostname turned the
+ * picture into a mention, and the post lost the photograph it was written
+ * around.
+ */
 export function nostrRefFromUrl(url: string): string | null {
-  const found = url.match(new RegExp(ENTITY_SOURCE, 'i'));
+  let carried = url;
+  try {
+    const { pathname, search, hash } = new URL(url);
+    carried = `${pathname}${search}${hash}`;
+  } catch {
+    // Not something the browser will parse as a URL — read it whole, as before
+  }
+
+  const found = carried.match(new RegExp(ENTITY_SOURCE, 'i'));
   if (!found) return null;
 
   const ref = found[0].toLowerCase();
