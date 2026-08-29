@@ -6,7 +6,7 @@ import { Embed, extractEmbeds } from './media';
  * kick.com, youtube.com. Those are watched through the service's own player,
  * which is what the other clients do with them too.
  */
-export function streamEmbed(streamingUrl: string, autoplay = false): Embed | null {
+export function streamEmbed(streamingUrl: string, autoplay = false, sound = false): Embed | null {
   if (!streamingUrl || /\.m3u8(\?|#|$)/i.test(streamingUrl)) return null;
 
   const embed = extractEmbeds(streamingUrl)[0];
@@ -14,7 +14,7 @@ export function streamEmbed(streamingUrl: string, autoplay = false): Embed | nul
   if (!embed || embed.height !== null) return null;
   if (!autoplay) return embed;
 
-  return { ...embed, src: withAutoplay(embed) };
+  return { ...embed, src: withAutoplay(embed, sound) };
 }
 
 /** Whether this address plays at all, either way round */
@@ -27,7 +27,7 @@ export function streamIsWatchable(streamingUrl: string, hlsPlayable: boolean): b
  * browsers refuse to play sound the viewer has not asked for, and a picture
  * that never appears is worse than one they have to unmute.
  */
-function withAutoplay(embed: Embed): string {
+function withAutoplay(embed: Embed, sound = false): string {
   let url: URL;
   try {
     url = new URL(embed.src);
@@ -35,16 +35,20 @@ function withAutoplay(embed: Embed): string {
     return embed.src;
   }
 
+  // A page showing two streams at once decides which one is heard. Nothing
+  // here can reach inside another service's player once it is running, so
+  // the answer is written into the address and the frame is loaded again —
+  // which is what changing this does, since the address is its key.
   if (embed.kind === 'youtube') {
     url.searchParams.set('autoplay', '1');
-    url.searchParams.set('mute', '1');
+    url.searchParams.set('mute', sound ? '0' : '1');
   } else if (embed.kind === 'vimeo') {
     url.searchParams.set('autoplay', '1');
-    url.searchParams.set('muted', '1');
+    url.searchParams.set('muted', sound ? 'false' : 'true');
   } else {
     // Twitch and Kick both read these
     url.searchParams.set('autoplay', 'true');
-    url.searchParams.set('muted', 'true');
+    url.searchParams.set('muted', sound ? 'false' : 'true');
   }
   return url.toString();
 }

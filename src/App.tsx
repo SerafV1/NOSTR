@@ -29,6 +29,7 @@ import MessagesPage from './components/MessagesPage';
 import ComposeModal from './components/ComposeModal';
 import LivePage from './components/LivePage';
 import GroupsPage from './components/GroupsPage';
+import LiveTogetherPage from './components/LiveTogetherPage';
 import LiveStreamPage from './components/LiveStreamPage';
 import LiveChatPage from './components/LiveChatPage';
 import LiveViewersPage from './components/LiveViewersPage';
@@ -160,6 +161,28 @@ function LiveStreamRoute({ relaysConnected, onNavigateToProfile, onNavigateToNot
       kind={address.kind}
       pubkey={address.pubkey}
       identifier={address.identifier}
+      relaysConnected={relaysConnected}
+      onNavigateToProfile={onNavigateToProfile}
+      onNavigateToNote={onNavigateToNote}
+      onNavigateToTopic={onNavigateToTopic}
+    />
+  );
+}
+
+function LiveTogetherRoute({ relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }: RouteCallbacks) {
+  // Two streams, named one after the other in the address so the page can be
+  // shared as what it is: "watch these two together"
+  const { naddr, other } = useParams();
+  const naddrs = [naddr, other].filter((n): n is string => Boolean(n));
+  const known = naddrs.filter(n => decodeLiveNaddr(n));
+
+  if (known.length < 2) {
+    return <div className="live-together-page"><div className="error">Two stream links are needed to watch two streams</div></div>;
+  }
+
+  return (
+    <LiveTogetherPage
+      naddrs={known}
       relaysConnected={relaysConnected}
       onNavigateToProfile={onNavigateToProfile}
       onNavigateToNote={onNavigateToNote}
@@ -666,6 +689,7 @@ function App() {
           <Route path="/groups/:server" element={<GroupsRoute {...callbacks} />} />
           <Route path="/groups/:server/:groupId" element={<GroupsRoute {...callbacks} />} />
           <Route path="/live/:naddr" element={<LiveStreamRoute {...callbacks} />} />
+          <Route path="/live/:naddr/with/:other" element={<LiveTogetherRoute {...callbacks} />} />
           <Route path="/live/:naddr/chat" element={<LiveChatRoute {...callbacks} />} />
           <Route path="/live/:naddr/viewers" element={<LiveViewersRoute {...callbacks} />} />
           <Route path="/live/:naddr/zappers" element={<LiveZappersRoute {...callbacks} />} />

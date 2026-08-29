@@ -6019,6 +6019,232 @@ a.capability-indicator.paid:hover {
   }
 }
 
+/* Picking the second stream: the live ones, busiest first, over the page
+   rather than on a page of their own — the choice is one click long */
+.live-stream-pair {
+  position: relative;
+  display: inline-block;
+}
+
+.live-stream-pair-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 320px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--light-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.live-stream-pair-list button {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-sm);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.live-stream-pair-list button:last-child { border-bottom: none; }
+.live-stream-pair-list button:hover { background: var(--card-hover-bg); }
+
+.live-stream-pair-list img {
+  width: 48px;
+  height: 27px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.live-stream-pair-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-stream-pair-count,
+.live-stream-pair-empty {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.live-stream-pair-empty { padding: var(--spacing-sm); }
+
+/* Two streams at once, for someone watching a game two people are playing.
+   Nothing is combined into one picture: two players side by side, and the
+   page decides which of them is heard. */
+.live-together-page {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--spacing-lg);
+  display: flex;
+  align-items: stretch;
+  gap: var(--spacing-lg);
+}
+
+.live-together-streams {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  /* Side by side while there is room for both, stacked once there is not */
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: var(--spacing-md);
+  align-content: start;
+}
+
+.live-together-tile {
+  min-width: 0;
+  background: var(--light-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+/* The one being listened to, marked the way the rest of the app marks what
+   is chosen */
+.live-together-tile.listening { border-color: var(--primary-color); }
+
+.live-together-tile-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  min-width: 0;
+}
+
+.live-together-tile-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  max-width: 40%;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.live-together-tile-who:hover { text-decoration: underline; }
+
+.live-together-tile-who img {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.live-together-tile-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.live-together-tile-ended {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 1px 6px;
+}
+
+.live-together-listen,
+.live-together-alone,
+.live-together-zap {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 2px 8px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.live-together-listen:hover,
+.live-together-alone:hover,
+.live-together-zap:hover {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.live-together-chat {
+  flex-shrink: 0;
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+/* One chat at a time — two columns of it and neither gets read */
+.live-together-chat-tabs {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.live-together-chat-tabs button {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 4px 8px;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.live-together-chat-tabs button.active {
+  color: var(--text-primary);
+  border-color: var(--primary-color);
+  background: var(--card-hover-bg);
+}
+
+.live-together-chat-dock {
+  flex: 1;
+  width: 100%;
+  min-height: 320px;
+}
+
+/* Narrow enough and the chat stops being a column beside the streams */
+@media (max-width: 1100px) {
+  .live-together-page { flex-direction: column; }
+  .live-together-chat { width: 100%; }
+  .live-together-chat-dock { min-height: 420px; }
+}
+
 .live-video-wrapper {
   position: relative;
   width: 100%;

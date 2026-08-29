@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { nip19 } from 'nostr-tools';
 import { UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
@@ -34,7 +35,11 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   // On a phone the chat sits below the video and the details, far from what
   // it is about. Opening it over the page keeps the stream in view while
   // reading along, the way stream sites do it.
+  const navigate = useNavigate();
   const [chatOpen, setChatOpen] = useState(false);
+  /** The list of other live streams, once someone asks to watch two at once */
+  const [pairing, setPairing] = useState(false);
+  const [others, setOthers] = useState<LiveStreamInfo[] | null>(null);
   const [sharing, setSharing] = useState(false);
   // Shrunk into a corner of the page, so the description and the chat can be
   // read with the stream still on screen
@@ -340,6 +345,59 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                   <ZapIcon /> Zap
                 </ZapButton>
               )}
+
+              {/* Someone playing the same game as this one is streaming it
+                  themselves — watching both at once is a page, not a video:
+                  see LiveTogetherPage */}
+              <div className="live-stream-pair">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-small btn-with-icon"
+                  title="Watch this stream beside another one"
+                  onClick={async () => {
+                    const opening = !pairing;
+                    setPairing(opening);
+                    if (!opening || others) return;
+                    const found = await NostrCore.fetchLiveEvents('live');
+                    setOthers(found
+                      .map(parseLiveEvent)
+                      .filter(other => other.status === 'live'
+                        && other.streamingUrl
+                        && !(other.pubkey === stream.pubkey && other.dTag === stream.dTag))
+                      // The busiest first: with a hundred of them on the
+                      // relays, the ones anybody is watching are the ones
+                      // worth offering
+                      .sort((a, b) => (b.currentParticipants ?? 0) - (a.currentParticipants ?? 0))
+                      .slice(0, 12));
+                  }}
+                >
+                  ⧉ Watch with…
+                </button>
+
+                {pairing && (
+                  <div className="live-stream-pair-list">
+                    {others === null && <div className="live-stream-pair-empty">Looking…</div>}
+                    {others?.length === 0 && (
+                      <div className="live-stream-pair-empty">Nobody else is live right now</div>
+                    )}
+                    {others?.map(other => (
+                      <button
+                        key={`${other.pubkey}:${other.dTag}`}
+                        type="button"
+                        onClick={() => navigate(
+                          `/live/${naddrParam}/with/${encodeLiveNaddr(30311, other.pubkey, other.dTag)}`
+                        )}
+                      >
+                        {other.image && <img src={other.image} alt="" loading="lazy" decoding="async" />}
+                        <span className="live-stream-pair-title">{other.title}</span>
+                        {other.currentParticipants !== undefined && (
+                          <span className="live-stream-pair-count">👁 {other.currentParticipants}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* A stream is announced by posting where it is. Written here
                   so the note carries the title and the address of the stream

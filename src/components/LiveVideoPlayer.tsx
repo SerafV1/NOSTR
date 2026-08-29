@@ -26,6 +26,15 @@ interface LiveVideoPlayerProps {
   onMinimize?: () => void;
   /** True while it is in that corner, so the button offers the way back */
   minimized?: boolean;
+  /**
+   * Whether this player is the one carrying the sound. Given only where
+   * several are on screen at once: two streams talking over each other is
+   * nobody's idea of watching both, so one page decides which one is heard
+   * and this follows. Left out, the player minds its own mute button.
+   */
+  sound?: boolean;
+  /** Pressing unmute here asks for the sound, rather than simply taking it */
+  onWantSound?: () => void;
 }
 
 /**
@@ -34,7 +43,7 @@ interface LiveVideoPlayerProps {
  * into fragments MSE can play. hls.js is ~500KB, so it's dynamically
  * imported here rather than bundled into the main chunk every page pays for.
  */
-const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className, onMinimize, minimized }) => {
+const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className, onMinimize, minimized, sound, onWantSound }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [buffering, setBuffering] = useState(true);
@@ -341,9 +350,25 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className, onMin
   const toggleMute = () => {
     const video = videoRef.current;
     if (!video) return;
+    // Where a page hands the sound out, unmuting is a request for it — the
+    // page answers by taking it off whoever had it, and `sound` below moves
+    // this player accordingly
+    if (video.muted && onWantSound) {
+      onWantSound();
+      return;
+    }
     video.muted = !video.muted;
     setMuted(video.muted);
   };
+
+  // Follow the page's decision about who is heard
+  useEffect(() => {
+    if (sound === undefined) return;
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = !sound;
+    setMuted(video.muted);
+  }, [sound, reinitKey]);
 
   const changeVolume = (value: number) => {
     const video = videoRef.current;
