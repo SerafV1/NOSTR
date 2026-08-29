@@ -6,6 +6,7 @@ import { extractImageUrls, extractVideoUrls, extractEmbeds, extractStreamUrls, s
 import { extractStreamRefs } from '../utils/liveStream';
 import { foldNostrWebLinks } from '../utils/nostrLinks';
 import RichText from './RichText';
+import Nip05Handle from './Nip05Handle';
 import EmojiText from './EmojiText';
 import MediaEmbed from './MediaEmbed';
 import VideoPlayer from './VideoPlayer';
@@ -119,7 +120,11 @@ const QuotedNoteCard: React.FC<QuotedNoteCardProps> = ({ event, repostedBy, dept
         >
           <EmojiText text={displayName} emojis={profile?.emojis} />
         </button>
-        <span className="quoted-note-handle">@{handle}</span>
+        <span className="quoted-note-handle">
+          {profile?.nip05
+            ? <Nip05Handle nip05={profile.nip05} pubkey={event.pubkey} />
+            : `@${handle}`}
+        </span>
         <span className="quoted-note-dot">·</span>
         <span className="quoted-note-time">{formatDate(new Date(event.created_at * 1000))}</span>
       </div>

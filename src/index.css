@@ -6019,6 +6019,33 @@ a.capability-indicator.paid:hover {
   }
 }
 
+/* The domain's own answer about an address, beside the address. A tick
+   where it names this account, a warning where it names someone else, and a
+   quiet question mark where the domain could not be reached at all — that
+   last one says nothing about the address and must not read as an
+   accusation. */
+.nip05-handle {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nip05-mark {
+  flex-shrink: 0;
+  font-size: 0.85em;
+  line-height: 1;
+  cursor: help;
+}
+
+.nip05-mark.ok { color: var(--success-color); }
+.nip05-mark.bad { color: var(--error-color); }
+.nip05-mark.unknown { color: var(--text-secondary); opacity: 0.6; }
+
 /* Picking the second stream: the live ones, busiest first, over the page
    rather than on a page of their own — the choice is one click long */
 .live-stream-pair {

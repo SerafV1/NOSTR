@@ -10,6 +10,7 @@ import RichText from './RichText';
 import QuotedNoteCard from './QuotedNoteCard';
 import EditProfileForm from './EditProfileForm';
 import ZapButton from './ZapButton';
+import Nip05Handle from './Nip05Handle';
 import EmojiText from './EmojiText';
 import { ZapIcon, MessageIcon, CopyIcon, CheckIcon } from './Icons';
 
@@ -676,7 +677,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
               <h1 className="profile-name">
                 <EmojiText text={displayName} emojis={profile.emojis} />
               </h1>
-              {profile.nip05 && <p className="profile-nip05">{profile.nip05}</p>}
+              {profile.nip05 && (
+                <p className="profile-nip05">
+                  <Nip05Handle nip05={profile.nip05} pubkey={profile.pubkey} />
+                </p>
+              )}
               <p className="profile-handle">
                 {formatAddress(npubHandle)}
                 <button
@@ -1015,7 +1020,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                           )}
                           <div className="person-info">
                             <div className="person-name"><EmojiText text={name} emojis={person?.emojis} /></div>
-                            <div className="person-handle">{handle}</div>
+                            <div className="person-handle">
+                              {person?.nip05
+                                ? <Nip05Handle nip05={person.nip05} pubkey={personPubkey} />
+                                : handle}
+                            </div>
                             {person?.about && (
                               <div className="person-bio">
                                 <EmojiText text={person.about} emojis={person.emojis} />

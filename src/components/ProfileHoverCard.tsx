@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import EmojiText from './EmojiText';
+import Nip05Handle from './Nip05Handle';
 import { UserProfile } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
@@ -218,7 +219,11 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
             )}
             <span className="hover-card-names">
               <span className="hover-card-name"><EmojiText text={displayName} emojis={profile?.emojis} /></span>
-              <span className="hover-card-handle">{handle}</span>
+              <span className="hover-card-handle">
+                {profile?.nip05
+                  ? <Nip05Handle nip05={profile.nip05} pubkey={pubkey} />
+                  : handle}
+              </span>
             </span>
           </button>
 

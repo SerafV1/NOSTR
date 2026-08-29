@@ -17,6 +17,7 @@ import {
 import ComposeModal from './ComposeModal';
 import RelayBadges from './RelayBadges';
 import MediaEmbed from './MediaEmbed';
+import Nip05Handle from './Nip05Handle';
 import ProfileHoverCard from './ProfileHoverCard';
 import VideoPlayer from './VideoPlayer';
 import InlineStreamPlayer from './InlineStreamPlayer';
@@ -648,7 +649,9 @@ const EventCard: React.FC<EventCardProps> = ({
               </button>
             </ProfileHoverCard>
             <div className="author-handle">
-              {profile?.nip05 || formatAddress(event.pubkey)}
+              {profile?.nip05
+                ? <Nip05Handle nip05={profile.nip05} pubkey={event.pubkey} />
+                : formatAddress(event.pubkey)}
             </div>
           </div>
         </div>
