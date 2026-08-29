@@ -19,6 +19,9 @@ interface HomePageProps {
 
 type FeedType = 'home' | 'global' | 'topic';
 
+/** Who repeated what: the repost event, and the post it points at */
+type ShownRepost = { repost: NostrEventSigned; original: NostrEventSigned };
+
 // How often the live subscription re-checks its relays and re-issues its
 // REQ. Short enough that a silently dead stream recovers while you're still
 // looking at the page, long enough not to churn connections.
@@ -72,12 +75,12 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   // Reposts from followed accounts — only shown on the home feed's Posts
   // tab, interleaved with your own notes X-style (fetched once per feed
   // load, not part of the live-subscription/pending mechanism above)
-  const [reposts, setReposts] = useState<{ repost: NostrEventSigned; original: NostrEventSigned }[]>([]);
+  const [reposts, setReposts] = useState<ShownRepost[]>([]);
   // Reposts newer than what is on screen, waiting behind the same button new
   // posts wait behind. Without this a background refresh slipped them into
   // the top of the timeline on its own, which is the one thing that button
   // exists to prevent.
-  const [pendingReposts, setPendingReposts] = useState<{ repost: NostrEventSigned; original: NostrEventSigned }[]>([]);
+  const [pendingReposts, setPendingReposts] = useState<ShownRepost[]>([]);
   // Seeded from cache so returning to Home shows the sidebar immediately.
   // It used to be filled inside an effect gated on hasFollows, which isn't
   // known until the whole feed has loaded — so the panel sat empty for
@@ -92,7 +95,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   // re-creating itself on every feed update
   const eventsRef = useRef<NostrEventSigned[]>([]);
   const pendingRef = useRef<NostrEventSigned[]>([]);
-  const repostsRef = useRef<{ repost: NostrEventSigned; original: NostrEventSigned }[]>([]);
+  const repostsRef = useRef<ShownRepost[]>([]);
   // Which feed the last fetch was for, so a switch is told from a refresh
   const lastFetchedFeed = useRef<string | null>(null);
   const followedRef = useRef<string[]>([]);
@@ -161,6 +164,43 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     return fresh.filter(e => allowed.has(e.pubkey));
   };
 
+  /**
+   * The reposts on screen are cached beside the feed's notes rather than
+   * with them — the feed cache is a list of notes, a repost is a pair.
+   *
+   * Without this, leaving Home and coming back dropped every repost off the
+   * screen while the next fetch still found them, and each one newer than
+   * the newest cached note counted as an arrival: the same repost was
+   * offered behind "show new posts" on every single visit, and pressing the
+   * button changed nothing, because nothing about it was remembered.
+   */
+  const repostsCacheKey = (): string => `${feedCacheKey()}_reposts`;
+
+  const readCachedReposts = (): ShownRepost[] => {
+    const cached = PersistentCache.get<ShownRepost[]>(repostsCacheKey()) || [];
+    const maxTimestamp = Math.floor(Date.now() / 1000) + 300;
+    const fresh = cached.filter(r =>
+      r?.repost?.id
+      && r?.original?.id
+      && (r.repost.created_at || 0) <= maxTimestamp
+      // Blocking someone clears them out of what was already kept, the same
+      // way it does for the notes
+      && !NostrCore.isBlocked(r.repost.pubkey)
+      && !NostrCore.isBlocked(r.original.pubkey));
+    if (feedType !== 'home') return fresh;
+    const allowed = homeAuthors();
+    // Same rule the cached notes get: with no follow list to check against,
+    // show nothing rather than someone else's feed
+    if (!allowed) return [];
+    return fresh.filter(r => allowed.has(r.repost.pubkey));
+  };
+
+  /** Kept to a slice of the span the feed cache covers */
+  const rememberReposts = (shown: ShownRepost[]): ShownRepost[] => {
+    PersistentCache.set(repostsCacheKey(), shown.slice(0, 30));
+    return shown;
+  };
+
   useEffect(() => {
     if (relaysConnected) {
       // Refreshing the feed already on screen is one thing; switching to
@@ -192,11 +232,20 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     }
   }, [feedType, activeTopic, relaysConnected]);
 
-  // Discard pending new posts and stale reposts when switching feeds
+  // Discard pending new posts when switching feeds, and put back the reposts
+  // the feed being shown was last showing — they are cached with it, so a
+  // repost already read is not offered again as new
   useEffect(() => {
     setPendingEvents([]);
-    setReposts([]);
     setPendingReposts([]);
+    const kept = readCachedReposts();
+    // Written straight to the ref as well: the fetch started by the effect
+    // above reads it to decide what counts as already on screen, and does
+    // so after several awaits — but from the value it was given, not a
+    // re-render's
+    repostsRef.current = kept;
+    setReposts(kept);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feedType, activeTopic]);
 
   // Home-feed-local cache of the last live-stream check, so navigating away
@@ -391,7 +440,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     if (waitingReposts.length > 0) {
       setReposts(prev => {
         const ids = new Set(waitingReposts.map(r => r.repost.id));
-        return [...waitingReposts, ...prev.filter(r => !ids.has(r.repost.id))];
+        return rememberReposts([...waitingReposts, ...prev.filter(r => !ids.has(r.repost.id))]);
       });
       setPendingReposts([]);
     }
@@ -675,11 +724,11 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
 
           const held = repostResults.filter(r => !belongs(r));
           if (held.length > 0) noteFeedChange('reposts held', `${held.length} waiting`);
-          setReposts(repostResults.filter(belongs));
+          setReposts(rememberReposts(repostResults.filter(belongs)));
           setPendingReposts(held);
         } else {
           noteFeedChange('reposts shown', `${repostResults.length} with a fresh feed`);
-          setReposts(repostResults);
+          setReposts(rememberReposts(repostResults));
           setPendingReposts([]);
         }
       } else {
