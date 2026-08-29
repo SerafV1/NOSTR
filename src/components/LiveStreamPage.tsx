@@ -1,10 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { nip19 } from 'nostr-tools';
 import { UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
-import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr } from '../utils/liveStream';
+import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr, streamShareText } from '../utils/liveStream';
 import { formatAddress } from '../utils/helpers';
 import StreamSurface from './StreamSurface';
 import LiveChatPanel, { PresentPerson } from './LiveChatPanel';
@@ -182,22 +181,8 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
 
 
 
-  // The address rather than this page's URL: it names the stream itself, so
-  // every client resolves it, and this one draws it back as the stream.
-  // Whoever is presenting is named in it too, which puts the post in their
-  // notifications — a stream shared without the streamer knowing helps nobody.
-  // Naming yourself in your own announcement reads as a stranger wrote it,
-  // and the 'p' tag it carries would only notify you of your own post
-  const sharingOwnStream = CredentialManager.getPublicKey() === stream.hostPubkey;
-  const hostMention = (() => {
-    if (sharingOwnStream) return '';
-    try {
-      return `nostr:${nip19.npubEncode(stream.hostPubkey)}`;
-    } catch {
-      // An unencodable key is no reason to lose the rest of the post
-      return '';
-    }
-  })();
+  const shareText = streamShareText(stream, naddrParam, CredentialManager.getPublicKey());
+
   /**
    * Dragging the small player. It is picked up by the strip along its top
    * rather than by the picture, which is where the player's own clicks live.
@@ -225,26 +210,6 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
     dragFrom.current = null;
     e.currentTarget.releasePointerCapture(e.pointerId);
   };
-
-  // The line that says what this is, in the words the moment calls for. A
-  // stream shared after it ended should not announce itself as live.
-  const shareLead = sharingOwnStream
-    ? (stream.status === 'live'
-        ? '🔴 I am live now'
-        : stream.status === 'planned' ? 'Coming up' : 'This was live')
-    : (stream.status === 'live'
-        ? '🔴 Live now with'
-        : stream.status === 'planned' ? 'Coming up, with' : 'Was live with');
-  // The stream's own address and nothing else. Carrying this app's web link
-  // beside it meant two references to one stream, which clients that show
-  // both drew as two things in one post — and this app now reads the plain
-  // address the same way every other client does, so the link bought it
-  // nothing either.
-  const shareText = [
-    stream.title,
-    hostMention ? `\n\n${shareLead} ${hostMention}` : `\n\n${shareLead}`,
-    `\n\nnostr:${naddrParam}`
-  ].join('');
 
   return (
     <div className="live-stream-page">

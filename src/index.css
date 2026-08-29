@@ -6119,11 +6119,46 @@ a.capability-indicator.paid:hover {
    is chosen */
 .live-together-tile.listening { border-color: var(--primary-color); }
 
-.live-together-tile-bar {
+.live-together-tile-details {
+  padding: var(--spacing-sm);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.live-together-tile-head {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  padding: var(--spacing-sm);
+  min-width: 0;
+}
+
+/* The badge is drawn over the picture on the stream's own page, where the
+   frame around it is positioned. Here it sits in the line of text with the
+   title, so it stands in the flow like any other word. */
+.live-together-tile-head .live-stream-badge {
+  position: static;
+  flex-shrink: 0;
+}
+
+.live-together-tile-head h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.95rem;
+}
+
+/* Everything the stream's own page offers under the video, in a column half
+   as wide — so the row wraps rather than squeezing the names out of shape */
+.live-together-tile-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
   min-width: 0;
 }
 
@@ -6172,6 +6207,24 @@ a.capability-indicator.paid:hover {
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   padding: 1px 6px;
+}
+
+.live-together-tile-summary {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow: hidden;
+  display: -webkit-box;
+  /* Enough to say what the stream is, not enough to bury the other one.
+     The height is spelled out beside the clamp: a description carrying a
+     link or a hashtag is not plain text any more, and the clamp alone let a
+     sliver of the next line show under it. */
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  max-height: calc(1.45em * 3);
 }
 
 .live-together-listen,

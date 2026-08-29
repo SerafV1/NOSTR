@@ -118,6 +118,50 @@ export function parseLiveEvent(event: NostrEventSigned): LiveStreamInfo {
   };
 }
 
+/**
+ * The post that announces a stream, in the words the moment calls for: one
+ * shared after it ended must not announce itself as live, and naming
+ * yourself in your own announcement reads as though a stranger wrote it.
+ *
+ * The stream's own address and nothing else goes in it. A web link beside it
+ * meant two references to one stream, which clients that draw both showed as
+ * two things in one post.
+ *
+ * `sharedBy` is whoever is posting, so the line knows whether this is their
+ * own stream — and whoever is presenting is named in it otherwise, which
+ * puts the post in their notifications. A stream shared without the streamer
+ * hearing of it helps nobody.
+ */
+export function streamShareText(
+  info: LiveStreamInfo,
+  naddr: string,
+  sharedBy: string | null
+): string {
+  const own = sharedBy !== null && sharedBy === info.hostPubkey;
+  const lead = own
+    ? (info.status === 'live'
+        ? '🔴 I am live now'
+        : info.status === 'planned' ? 'Coming up' : 'This was live')
+    : (info.status === 'live'
+        ? '🔴 Live now with'
+        : info.status === 'planned' ? 'Coming up, with' : 'Was live with');
+
+  const mention = own ? '' : (() => {
+    try {
+      return `nostr:${nip19.npubEncode(info.hostPubkey)}`;
+    } catch {
+      // An unencodable key is no reason to lose the rest of the post
+      return '';
+    }
+  })();
+
+  return [
+    info.title,
+    mention ? `\n\n${lead} ${mention}` : `\n\n${lead}`,
+    `\n\nnostr:${naddr}`
+  ].join('');
+}
+
 // Addressable events are identified by (kind, pubkey, d) rather than event
 // id — an naddr is the stable, shareable reference across edits/relays
 export function encodeLiveNaddr(kind: number, pubkey: string, dTag: string): string {
