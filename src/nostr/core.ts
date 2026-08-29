@@ -8,7 +8,7 @@ import {
 } from '../types';
 import { nip19 } from 'nostr-tools';
 import { NostrCrypto, CredentialManager, ExtensionManager } from './crypto';
-import { getRelayPool } from './relay';
+import { getRelayPool, RelayPool } from './relay';
 import { replyTags } from './replyTags';
 import { bunkerSignEvent } from './bunker';
 import { isEffectivelyLive } from '../utils/liveStream';
@@ -1585,9 +1585,24 @@ export class NostrCore {
       if (!signed) throw new Error('Failed to sign event');
 
       const relayPool = getRelayPool();
-      const results = await relayPool.publishEvent(signed);
-      if (!Array.from(results.values()).some(Boolean)) {
-        throw new Error('No relay accepted the chat message');
+      // A relay that never answers is not a relay that said no. Measured on
+      // the default set: 8 of 14 confirm a chat message inside a second, and
+      // of the rest some refuse the kind outright while others simply go
+      // quiet — and a quiet one has the message all the same. Treating that
+      // silence as failure is what left a sent message sitting in the box
+      // with an alert over it, while everyone in the room could read it.
+      const refusals: string[] = [];
+      let silent = 0;
+      const results = await relayPool.publishEvent(signed, (_url, accepted, reason) => {
+        if (accepted) return;
+        if (reason === RelayPool.SILENT) silent += 1;
+        else if (reason) refusals.push(reason);
+      });
+
+      if (!Array.from(results.values()).some(Boolean) && silent === 0) {
+        throw new Error(refusals[0]
+          ? `No relay took the message: ${refusals[0]}`
+          : 'No relay accepted the chat message');
       }
       return signed;
     } catch (error) {

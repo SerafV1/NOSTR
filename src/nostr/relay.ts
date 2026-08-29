@@ -720,10 +720,21 @@ export class RelayPool {
     );
   }
 
+  /**
+   * What a relay that never answered is recorded as. Silence is not a
+   * refusal: the event went out over an open socket and is very likely
+   * stored — the relay simply did not say so in time.
+   */
+  static readonly SILENT = 'publish confirmation timeout';
+
   async publishEvent(
     event: NostrEventSigned,
-    /** Called as each relay answers, so a publish can be watched happening */
-    onRelayResult?: (url: string, accepted: boolean) => void
+    /**
+     * Called as each relay answers, so a publish can be watched happening.
+     * A refusal comes with the relay's own words for it; a relay that simply
+     * never answered says so too, which is a different thing — see below.
+     */
+    onRelayResult?: (url: string, accepted: boolean, reason?: string) => void
   ): Promise<Map<string, boolean>> {
     const results = new Map<string, boolean>();
     const tasks: Promise<void>[] = [];
@@ -737,7 +748,7 @@ export class RelayPool {
           try {
             if (!relay.publish) {
               results.set(url, false);
-              onRelayResult?.(url, false);
+              onRelayResult?.(url, false, 'this relay cannot be written to');
               return;
             }
 
@@ -766,7 +777,7 @@ export class RelayPool {
             await Promise.race([
               confirmation,
               new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error('publish confirmation timeout')), 5000)
+                setTimeout(() => reject(new Error(RelayPool.SILENT)), 5000)
               )
             ]);
 
@@ -780,11 +791,11 @@ export class RelayPool {
           } catch (error) {
             console.error(`Failed to publish to ${url}:`, error);
             results.set(url, false);
-            onRelayResult?.(url, false);
             const reason = error instanceof Error ? error.message : String(error);
+            onRelayResult?.(url, false, reason);
             // A silent relay proves nothing about whether this account may
             // write — only a relay that actually answered does
-            if (!reason.includes('publish confirmation timeout')) {
+            if (!reason.includes(RelayPool.SILENT)) {
               this.recordWriteOutcome(event.pubkey, url, false, reason);
             }
           }

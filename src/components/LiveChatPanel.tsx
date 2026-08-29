@@ -622,20 +622,30 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     const content = input.trim();
     if (!content || sending) return;
 
+    // The box empties the moment the message is on its way, the way a chat
+    // is expected to behave — waiting for every relay to answer left a
+    // message sitting there re-readable and re-sendable while the room was
+    // already reading it. Whatever was written is kept here, and put back
+    // only if it turns out nowhere took it.
+    const tagged = new Map(mentions.current);
+    setInput('');
+    mentions.current.clear();
+    closeSuggestions();
     setSending(true);
     try {
-      const { content: resolved, mentioned } = resolveMentionHandles(content, mentions.current);
+      const { content: resolved, mentioned } = resolveMentionHandles(content, tagged);
       const sent = await NostrCore.publishLiveChatMessage(address, relayHint, resolved, mentioned);
       if (sent) {
-        setInput('');
-        mentions.current.clear();
-        closeSuggestions();
         setMessages(prev => (prev.some(m => m.id === sent.id) ? prev : [...prev, sent]));
       } else {
-        alert('Message was not accepted by any relay — check your connection');
+        throw new Error('Message was not accepted by any relay — check your connection');
       }
     } catch (error) {
       console.error('Failed to send chat message:', error);
+      // Nothing took it, so hand the words back rather than making them be
+      // typed again — unless something else has since been written
+      setInput(current => current || content);
+      mentions.current = tagged;
       alert(error instanceof Error ? error.message : 'Failed to send message');
     } finally {
       setSending(false);
