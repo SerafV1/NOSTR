@@ -8,6 +8,15 @@ export interface DirectMessage {
   senderPubkey: string;
   /** The other party in the conversation, from our point of view */
   otherPubkey: string;
+  /**
+   * Everyone in the conversation except us, sorted. One name for a private
+   * message, several for a group — the same message shape either way.
+   */
+  participants: string[];
+  /** Those participants as one string, which is what a conversation is known by */
+  key: string;
+  /** What the group calls itself, where it calls itself anything */
+  subject?: string;
   content: string;
   createdAt: number;
   replyTo?: string;
@@ -15,9 +24,26 @@ export interface DirectMessage {
 }
 
 export interface Conversation {
-  pubkey: string;
+  /** The participants joined together — a person's key for a private message */
+  key: string;
+  participants: string[];
+  subject?: string;
   lastMessage: DirectMessage;
 }
+
+/**
+ * A conversation is known by who is in it, so the same people always land in
+ * the same thread whichever of them writes.
+ */
+export const conversationKey = (participants: string[]): string =>
+  Array.from(new Set(participants)).sort().join(',');
+
+/**
+ * Every message is sealed and wrapped once per person, so a room of thirty
+ * is thirty publishes for every line typed. This is where that stops being
+ * reasonable.
+ */
+export const MAX_GROUP_MEMBERS = 25;
 
 /**
  * NIP-17 private direct messages: an unsigned kind-14 "rumor" (the actual
@@ -69,8 +95,18 @@ export class DirectMessageCore {
     return NostrCrypto.signEvent(event, privkey, createdAt);
   }
 
-  private static buildRumor(senderPubkey: string, recipientPubkey: string, content: string, replyTo?: string): NostrEventSigned {
-    const tags: string[][] = [['p', recipientPubkey]];
+  private static buildRumor(
+    senderPubkey: string,
+    recipients: string[],
+    content: string,
+    replyTo?: string,
+    subject?: string
+  ): NostrEventSigned {
+    // Everyone the message is for is named in it, so whoever opens it can
+    // see the whole room rather than only the person who wrote to them.
+    // The sender is not named: the seal around this is signed by them.
+    const tags: string[][] = recipients.map(pubkey => ['p', pubkey]);
+    if (subject) tags.push(['subject', subject]);
     if (replyTo) tags.push(['e', replyTo]);
 
     const template: any = {
@@ -87,8 +123,23 @@ export class DirectMessageCore {
     return template as NostrEventSigned;
   }
 
-  /** Seal a rumor for `targetPubkey` and wrap it in a gift wrap addressed to them */
-  private static async sealAndWrap(rumor: NostrEventSigned, targetPubkey: string): Promise<NostrEventSigned> {
+  /**
+   * Seal a rumor for `targetPubkey` and wrap it in a gift wrap addressed to
+   * them. Public because an invitation to an encrypted community travels the
+   * same way a private message does, and there should be one implementation
+   * of that, not two.
+   */
+  static async sealAndWrap(
+    rumor: NostrEventSigned,
+    targetPubkey: string,
+    /**
+     * Tags for the wrap itself. A wrap normally says nothing but who it is
+     * for; a Concord invite deliberately adds `["k","3313"]` so a recipient
+     * can look up their invitations without decrypting every gift wrap ever
+     * addressed to them.
+     */
+    extraWrapTags: string[][] = []
+  ): Promise<NostrEventSigned> {
     const sealContent = await this.nip44Encrypt(JSON.stringify(rumor), targetPubkey);
     const seal = await this.signAsSelf(
       { kind: EVENT_KINDS.SEAL, content: sealContent, tags: [] },
@@ -99,20 +150,14 @@ export class DirectMessageCore {
     const wrapContent = NostrCrypto.encryptNip44(JSON.stringify(seal), ephemeralPrivkey, targetPubkey);
 
     return NostrCrypto.signEvent(
-      { kind: EVENT_KINDS.GIFT_WRAP, content: wrapContent, tags: [['p', targetPubkey]] },
+      { kind: EVENT_KINDS.GIFT_WRAP, content: wrapContent, tags: [['p', targetPubkey], ...extraWrapTags] },
       ephemeralPrivkey,
       this.randomPastTimestamp()
     );
   }
 
-  /**
-   * Send a private message. Publishes two gift wraps of the same rumor —
-   * one the recipient can decrypt, one only we can decrypt — so the
-   * conversation shows up in our own history too (relays never see the
-   * rumor itself, so without this self-copy we couldn't read our own sent
-   * messages back).
-   */
-  static async sendDirectMessage(recipientPubkey: string, content: string, replyTo?: string): Promise<boolean> {
+  /** Why this session cannot write an encrypted message, if it cannot */
+  private static refuseToEncrypt(): void {
     if (!CredentialManager.canSign()) {
       throw new Error('No signing method available — log in again');
     }
@@ -130,27 +175,60 @@ export class DirectMessageCore {
         'Your NOSTR extension does not support NIP-44 encryption, required for private messages.'
       );
     }
+  }
+
+  /**
+   * Send one message to everyone in a conversation — one person or twenty.
+   *
+   * The rumor is sealed and wrapped separately for each of them, and once
+   * more for us: relays never see the rumor, so without our own copy we
+   * could not read back what we had said. Nobody hosts this room and no
+   * relay knows it exists — what a relay holds is a pile of gift wraps
+   * addressed to one key each.
+   *
+   * A member added later sees nothing that came before, and the room they
+   * join is a different room to the one that ran without them: a
+   * conversation is known by who is in it, and that is the whole of it.
+   * NIP-17 has no membership event to change.
+   */
+  static async sendGroupMessage(
+    members: string[],
+    content: string,
+    subject?: string,
+    replyTo?: string
+  ): Promise<boolean> {
+    this.refuseToEncrypt();
 
     const senderPubkey = CredentialManager.getPublicKey();
     if (!senderPubkey) throw new Error('Public key not found');
 
-    const rumor = this.buildRumor(senderPubkey, recipientPubkey, content, replyTo);
+    const recipients = Array.from(new Set(members)).filter(pubkey => pubkey !== senderPubkey);
+    if (recipients.length === 0) throw new Error('A message needs somebody to go to');
+    if (recipients.length > MAX_GROUP_MEMBERS) {
+      throw new Error(`A group here holds ${MAX_GROUP_MEMBERS} people — every message is sealed once for each of them`);
+    }
 
-    const [wrapForRecipient, wrapForSelf] = await Promise.all([
-      this.sealAndWrap(rumor, recipientPubkey),
-      this.sealAndWrap(rumor, senderPubkey)
-    ]);
+    const rumor = this.buildRumor(senderPubkey, recipients, content, replyTo, subject);
+
+    const wraps = await Promise.all(
+      [...recipients, senderPubkey].map(target => this.sealAndWrap(rumor, target))
+    );
 
     const relayPool = getRelayPool();
-    const [recipientResults] = await Promise.all([
-      relayPool.publishEvent(wrapForRecipient),
-      relayPool.publishEvent(wrapForSelf)
-    ]);
+    const results = await Promise.all(wraps.map(wrap => relayPool.publishEvent(wrap)));
 
-    if (!Array.from(recipientResults.values()).some(Boolean)) {
+    // Our own copy landing is not the message arriving anywhere, so the
+    // wraps for the others are what says whether it went
+    const forOthers = results.slice(0, recipients.length);
+    if (!forOthers.some(result => Array.from(result.values()).some(Boolean))) {
       throw new Error('No relay accepted the message');
     }
     return true;
+  }
+
+  /** One person, which is a conversation of two */
+  static async sendDirectMessage(recipientPubkey: string, content: string, replyTo?: string): Promise<boolean> {
+    return this.sendGroupMessage([recipientPubkey], content, undefined, replyTo);
   }
 
   /** Unwrap and decrypt a single gift wrap. Returns null if it's not ours, malformed, or spoofed. */
@@ -173,14 +251,23 @@ export class DirectMessageCore {
       if (rumor.kind !== EVENT_KINDS.CHAT_MESSAGE) return null;
 
       const isOwn = seal.pubkey === ownPubkey;
-      const otherPubkey = isOwn
-        ? rumor.tags.find(t => t[0] === 'p' && t[1] !== ownPubkey)?.[1] || ownPubkey
-        : seal.pubkey;
+      // Who is in this conversation: everyone the message names, and whoever
+      // wrote it — minus ourselves, since a conversation is the people on
+      // the other side of it. One name for a private message, several for a
+      // group, and the same set however many of them write.
+      const named = rumor.tags.filter(t => t[0] === 'p' && t[1]).map(t => t[1]);
+      const participants = Array.from(new Set([...named, seal.pubkey]))
+        .filter(pubkey => pubkey !== ownPubkey)
+        .sort();
 
       return {
         id: rumor.id,
         senderPubkey: seal.pubkey,
-        otherPubkey,
+        // A message we sent to ourselves alone still belongs somewhere
+        otherPubkey: participants[0] || ownPubkey,
+        participants: participants.length > 0 ? participants : [ownPubkey],
+        key: conversationKey(participants.length > 0 ? participants : [ownPubkey]),
+        subject: rumor.tags.find(t => t[0] === 'subject')?.[1],
         content: rumor.content,
         createdAt: rumor.created_at || 0,
         replyTo: rumor.tags.find(t => t[0] === 'e')?.[1],
@@ -219,18 +306,24 @@ export class DirectMessageCore {
     }
   }
 
-  /** Group a flat message list into per-contact conversations, newest first */
+  /** A flat message list as conversations — by who is in them — newest first */
   static groupConversations(messages: DirectMessage[]): Conversation[] {
-    const byContact = new Map<string, DirectMessage>();
+    const byRoom = new Map<string, DirectMessage>();
     for (const message of messages) {
-      const existing = byContact.get(message.otherPubkey);
+      const existing = byRoom.get(message.key);
       if (!existing || message.createdAt > existing.createdAt) {
-        byContact.set(message.otherPubkey, message);
+        byRoom.set(message.key, message);
       }
     }
 
-    return Array.from(byContact.entries())
-      .map(([pubkey, lastMessage]) => ({ pubkey, lastMessage }))
+    return Array.from(byRoom.values())
+      .map(lastMessage => ({
+        key: lastMessage.key,
+        participants: lastMessage.participants,
+        // The name the room was last given, so renaming it is just saying so
+        subject: lastMessage.subject,
+        lastMessage
+      }))
       .sort((a, b) => b.lastMessage.createdAt - a.lastMessage.createdAt);
   }
 }
@@ -265,7 +358,7 @@ export class DirectMessageStore {
 
   static countUnread(ownPubkey: string, conversations: Conversation[]): number {
     return conversations.filter(c =>
-      !c.lastMessage.isOwn && c.lastMessage.createdAt > this.getLastSeen(ownPubkey, c.pubkey)
+      !c.lastMessage.isOwn && c.lastMessage.createdAt > this.getLastSeen(ownPubkey, c.key)
     ).length;
   }
 }

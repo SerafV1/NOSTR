@@ -1,20 +1,32 @@
-import React, { useState, useEffect, useRef } from 'react';
-import EmojiText from './EmojiText';
+import React, { useEffect, useRef, useState } from 'react';
 import { UserProfile } from '../types';
 import { NostrCore, PersistentCache } from '../nostr/core';
-import { DirectMessageCore, DirectMessageStore, DirectMessage, Conversation } from '../nostr/dm';
-import { formatDate, formatAddress } from '../utils/helpers';
+import { formatAddress, formatDate } from '../utils/helpers';
+import {
+  DirectMessageCore,
+  DirectMessageStore,
+  DirectMessage,
+  Conversation,
+  conversationKey
+} from '../nostr/dm';
 import RichText from './RichText';
+import EmojiText from './EmojiText';
 
 interface MessagesPageProps {
-  onNavigateToNote?: (noteId: string) => void;
-  onNavigateToStream?: (naddr: string) => void;
   pubkey: string;
   relaysConnected: boolean;
   onNavigateToProfile: (pubkey: string) => void;
+  onNavigateToNote?: (noteId: string) => void;
+  onNavigateToStream?: (naddr: string) => void;
   onMarkRead?: () => void;
-  /** Set when arriving from a profile's "Message" button — opens that thread directly */
   initialRecipient?: string | null;
+}
+
+/** The room being read: one person, or a few */
+interface OpenRoom {
+  key: string;
+  participants: string[];
+  subject?: string;
 }
 
 const MessagesPage: React.FC<MessagesPageProps> = ({
@@ -29,7 +41,11 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
   const [loading, setLoading] = useState(true);
-  const [selectedPubkey, setSelectedPubkey] = useState<string | null>(initialRecipient || null);
+  const [open, setOpen] = useState<OpenRoom | null>(
+    initialRecipient
+      ? { key: conversationKey([initialRecipient]), participants: [initialRecipient] }
+      : null
+  );
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const threadEndRef = useRef<HTMLDivElement>(null);
@@ -45,8 +61,10 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
 
     try {
       const fetched = await DirectMessageCore.fetchMessages(pubkey);
-      const contacts = Array.from(new Set(fetched.map(m => m.otherPubkey)));
-      const contactProfiles = await NostrCore.fetchProfiles(contacts);
+      // Everyone in every conversation, not only whoever is opposite: a
+      // group of five needs five names before it can be drawn as anything
+      const people = Array.from(new Set(fetched.flatMap(m => m.participants)));
+      const contactProfiles = await NostrCore.fetchProfiles(people);
       setProfiles(prev => ({ ...prev, ...Object.fromEntries(contactProfiles) }));
 
       setMessages(fetched);
@@ -79,7 +97,9 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
   }, [relaysConnected, pubkey]);
 
   useEffect(() => {
-    setSelectedPubkey(initialRecipient || null);
+    setOpen(initialRecipient
+      ? { key: conversationKey([initialRecipient]), participants: [initialRecipient] }
+      : null);
   }, [initialRecipient]);
 
   const conversations = DirectMessageCore.groupConversations(messages);
@@ -87,27 +107,37 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
   // Mark the open thread as read once its messages are in, and let the
   // header badge recompute from the (now-updated) last-seen markers
   useEffect(() => {
-    if (!selectedPubkey) return;
-    const thread = messages.filter(m => m.otherPubkey === selectedPubkey);
+    if (!open) return;
+    const thread = messages.filter(m => m.key === open.key);
     if (thread.length === 0) return;
     const newest = Math.max(...thread.map(m => m.createdAt));
-    DirectMessageStore.setLastSeen(pubkey, selectedPubkey, newest);
+    DirectMessageStore.setLastSeen(pubkey, open.key, newest);
     onMarkRead?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, selectedPubkey, pubkey]);
+  }, [messages, open?.key, pubkey]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ block: 'end' });
-  }, [selectedPubkey, messages.length]);
+  }, [open?.key, messages.length]);
+
+  const nameFor = (pk: string) => profiles[pk]?.display_name || profiles[pk]?.name || formatAddress(pk);
+
+  /** What to call a conversation: what it calls itself, or who is in it */
+  const roomName = (room: { participants: string[]; subject?: string }): string => {
+    if (room.subject) return room.subject;
+    const names = room.participants.map(nameFor);
+    if (names.length <= 2) return names.join(' and ');
+    return `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`;
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     const content = draft.trim();
-    if (!content || !selectedPubkey || sending) return;
+    if (!content || !open || sending) return;
 
     setSending(true);
     try {
-      await DirectMessageCore.sendDirectMessage(selectedPubkey, content);
+      await DirectMessageCore.sendGroupMessage(open.participants, content, open.subject);
       setDraft('');
       // Optimistic append — the next poll will reconcile with the relay copy
       setMessages(prev => [
@@ -115,7 +145,10 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
         {
           id: `local_${Date.now()}`,
           senderPubkey: pubkey,
-          otherPubkey: selectedPubkey,
+          otherPubkey: open.participants[0],
+          participants: open.participants,
+          key: open.key,
+          subject: open.subject,
           content,
           createdAt: Math.floor(Date.now() / 1000),
           isOwn: true
@@ -129,42 +162,70 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
     }
   };
 
-  const nameFor = (pk: string) => profiles[pk]?.display_name || profiles[pk]?.name || formatAddress(pk);
-
-  if (selectedPubkey) {
+  if (open) {
     const thread = messages
-      .filter(m => m.otherPubkey === selectedPubkey)
+      .filter(m => m.key === open.key)
       .sort((a, b) => a.createdAt - b.createdAt);
-    const profile = profiles[selectedPubkey];
+    // The name a group last gave itself, so a room opened from the list
+    // keeps its name even before anything new is said in it
+    const room = { participants: open.participants, subject: open.subject || thread[thread.length - 1]?.subject };
+    const alone = open.participants.length === 1;
+    const profile = profiles[open.participants[0]];
 
     return (
       <div className="messages-page">
         <div className="thread-header">
-          <button className="thread-back-btn" onClick={() => setSelectedPubkey(null)}>
+          <button className="thread-back-btn" onClick={() => setOpen(null)}>
             <span className="back-btn-arrow" aria-hidden="true">←</span>
             Back
           </button>
-          <button className="thread-contact" onClick={() => onNavigateToProfile(selectedPubkey)}>
-            {profile?.picture ? (
-              <img src={profile.picture} alt="" className="thread-contact-avatar"  loading="lazy" decoding="async" />
-            ) : (
-              <div className="thread-contact-avatar-placeholder">
-                {nameFor(selectedPubkey).charAt(0).toUpperCase()}
+
+          {alone ? (
+            <button className="thread-contact" onClick={() => onNavigateToProfile(open.participants[0])}>
+              {profile?.picture ? (
+                <img src={profile.picture} alt="" className="thread-contact-avatar" loading="lazy" decoding="async" />
+              ) : (
+                <div className="thread-contact-avatar-placeholder">
+                  {nameFor(open.participants[0]).charAt(0).toUpperCase()}
+                </div>
+              )}
+              <span><EmojiText text={nameFor(open.participants[0])} emojis={profile?.emojis} /></span>
+            </button>
+          ) : (
+            <div className="thread-room">
+              <span className="thread-title">{roomName(room)}</span>
+              {/* Who is in it, since a group has no page of its own to say so */}
+              <div className="thread-room-people">
+                {open.participants.map(member => (
+                  <button key={member} type="button" onClick={() => onNavigateToProfile(member)}>
+                    <EmojiText text={nameFor(member)} emojis={profiles[member]?.emojis} />
+                  </button>
+                ))}
               </div>
-            )}
-            <span><EmojiText text={nameFor(selectedPubkey)} emojis={profile?.emojis} /></span>
-          </button>
+            </div>
+          )}
         </div>
 
         <div className="thread-messages">
           {thread.length === 0 && (
             <div className="empty-state">
-              <p>No messages yet — say hello 👋</p>
+              <p>{alone ? 'No messages yet — say hello 👋' : 'Nothing said yet. The group starts with the first message.'}</p>
             </div>
           )}
           {thread.map(message => (
             <div key={message.id} className={`dm-bubble-row ${message.isOwn ? 'own' : ''}`}>
               <div className="dm-bubble">
+                {/* In a group, who said it — a bubble on its own says only
+                    whether it was you */}
+                {!alone && !message.isOwn && (
+                  <button
+                    type="button"
+                    className="dm-bubble-who"
+                    onClick={() => onNavigateToProfile(message.senderPubkey)}
+                  >
+                    <EmojiText text={nameFor(message.senderPubkey)} emojis={profiles[message.senderPubkey]?.emojis} />
+                  </button>
+                )}
                 <div className="dm-bubble-content">
                   {/* Pictures are deliberately not loaded here: fetching one
                       tells whoever hosts it that this message was opened,
@@ -187,7 +248,7 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
         <form className="thread-compose" onSubmit={handleSend}>
           <textarea
             className="thread-compose-input"
-            placeholder="Write a private message..."
+            placeholder={alone ? 'Write a private message...' : 'Write to the group...'}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -220,28 +281,37 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
 
       <div className="conversation-list">
         {conversations.map((conversation: Conversation) => {
-          const profile = profiles[conversation.pubkey];
-          const displayName = nameFor(conversation.pubkey);
+          const alone = conversation.participants.length === 1;
+          const profile = profiles[conversation.participants[0]];
+          const displayName = roomName(conversation);
           const isUnread = !conversation.lastMessage.isOwn &&
-            conversation.lastMessage.createdAt > DirectMessageStore.getLastSeen(pubkey, conversation.pubkey);
+            conversation.lastMessage.createdAt > DirectMessageStore.getLastSeen(pubkey, conversation.key);
 
           return (
             <div
-              key={conversation.pubkey}
+              key={conversation.key}
               className={`conversation-item ${isUnread ? 'unread' : ''}`}
-              onClick={() => setSelectedPubkey(conversation.pubkey)}
+              onClick={() => setOpen({
+                key: conversation.key,
+                participants: conversation.participants,
+                subject: conversation.subject
+              })}
             >
-              {profile?.picture ? (
-                <img src={profile.picture} alt="" className="notification-avatar"  loading="lazy" decoding="async" />
+              {alone && profile?.picture ? (
+                <img src={profile.picture} alt="" className="notification-avatar" loading="lazy" decoding="async" />
               ) : (
                 <div className="notification-avatar-placeholder">
-                  {displayName.charAt(0).toUpperCase()}
+                  {alone ? displayName.charAt(0).toUpperCase() : conversation.participants.length + 1}
                 </div>
               )}
               <div className="notification-body">
-                <div className="notification-text"><EmojiText text={displayName} emojis={profile?.emojis} /></div>
+                <div className="notification-text">
+                  <EmojiText text={displayName} emojis={alone ? profile?.emojis : undefined} />
+                </div>
                 <div className="notification-preview">
-                  {conversation.lastMessage.isOwn ? 'You: ' : ''}
+                  {conversation.lastMessage.isOwn
+                    ? 'You: '
+                    : (alone ? '' : `${nameFor(conversation.lastMessage.senderPubkey)}: `)}
                   {conversation.lastMessage.content}
                 </div>
               </div>
