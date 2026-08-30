@@ -684,6 +684,9 @@ function App() {
           <Route path="/s" element={<GroupsRoute {...callbacks} />} />
           <Route path="/s/:server" element={<GroupsRoute {...callbacks} />} />
           <Route path="/s/:server/:groupId" element={<GroupsRoute {...callbacks} />} />
+          {/* A community nobody hosts has no server in its address — it is
+              known by its own id, and the keys to read it live on the device */}
+          <Route path="/c/:communityId" element={<GroupsRoute {...callbacks} />} />
           {/* What was handed out before the address got shorter */}
           <Route path="/groups" element={<Navigate to="/s" replace />} />
           <Route path="/groups/:server" element={<GroupsRoute {...callbacks} />} />

@@ -1129,18 +1129,18 @@ textarea {
   contain-intrinsic-size: auto 320px;
 }
 
-/* What that costs, and why it has to stop at the edge of anything a card
-   opens. `content-visibility` contains paint and layout, which makes the card
-   the containing block for whatever is positioned inside it — so a menu, an
-   emoji picker or a reply window drawn from a card was laid out inside that
-   card and clipped at its edge: Reply opened a window inside the post, the
-   repost menu came out cut, and the emoji picker never appeared at all. While
-   one of them is open, the card gives its containment up. */
+/* What that costs, and why it has to stop at the edge of an open menu.
+   `content-visibility` contains paint and layout, which makes the card the
+   containing block for anything positioned inside it — so a menu, an emoji
+   picker or a reply window drawn from a card was laid out inside that card
+   and clipped at its edge: the repost menu came out cut in half, the picker
+   never appeared, and Reply opened a window inside the post. While one of
+   them is open the card gives its containment up. */
 .event-card:has(.reply-options-menu),
 .event-card:has(.reactions-menu),
-.event-card:has(.zap-menu),
 .event-card:has(.compose-modal-overlay),
 .event-card:has(.image-modal),
+.event-card:has(.zap-menu),
 .groups-message:has(.reactions-menu),
 .groups-message:has(.zap-menu),
 .groups-message:has(.emoji-picker) {
@@ -4914,6 +4914,11 @@ a.capability-indicator.paid:hover {
 
 .notifications-header {
   margin-bottom: var(--spacing-lg);
+  /* The way to start a group sits beside the word Messages */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
 }
 
 .notification-list {
@@ -5060,6 +5065,53 @@ a.capability-indicator.paid:hover {
   border-bottom: 1px solid var(--border-color);
   margin-bottom: var(--spacing-md);
   flex-shrink: 0;
+}
+
+/* A conversation with more than one person in it: the name it goes by, and
+   who is actually in it — a group has no page of its own to say so */
+.thread-room {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.thread-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-room-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.thread-room-people button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.thread-room-people button:hover { color: var(--primary-color); }
+
+/* In a group, a bubble on its own says only whether it was you */
+.dm-bubble-who {
+  display: block;
+  background: none;
+  border: none;
+  padding: 0 0 2px;
+  color: var(--primary-color);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .thread-back-btn {
@@ -7834,6 +7886,44 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
+  /* The way back to the newest message floats over the room */
+  position: relative;
+}
+
+/* Shown only while the reader is further up. It sits just above where the
+   message box is, so it is under the thumb on a phone and out of the way of
+   the last line of chat. */
+.groups-jump-latest {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--card-hover-bg);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.groups-jump-latest:hover {
+  color: var(--text-primary);
+  border-color: var(--primary-color);
+}
+
+/* Something was said while they were reading further up, which is worth
+   more than a way back — so it carries the app's own colour */
+.groups-jump-latest.unread {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #fff;
+  font-weight: 600;
 }
 
 .groups-chat-header {
@@ -7843,6 +7933,255 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   gap: var(--spacing-md);
   padding: var(--spacing-md);
   border-bottom: 1px solid var(--border-color);
+}
+
+.groups-chat-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
+}
+
+.groups-chat-action {
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 6px 12px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.groups-chat-action:hover {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+/* A server and what can be done with it, in one row */
+.groups-relay-row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  margin-bottom: var(--spacing-xs);
+}
+
+.groups-relay-row .groups-relay {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A muted server is kept, and looks kept rather than gone */
+.groups-relay-row.muted .groups-relay {
+  opacity: 0.5;
+  font-style: italic;
+}
+
+.groups-relay-more {
+  flex-shrink: 0;
+  width: 26px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.groups-relay-more:hover {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.groups-relay-menu {
+  z-index: 30;
+  min-width: 170px;
+  display: flex;
+  flex-direction: column;
+  background: var(--light-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.groups-relay-menu button {
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.groups-relay-menu button:last-child { border-bottom: none; }
+.groups-relay-menu button:hover { background: var(--card-hover-bg); }
+.groups-relay-menu .groups-relay-remove { color: var(--error-color); }
+
+/* An invitation waiting in the column: a room this account has been handed
+   the keys to but has not yet said yes to */
+.groups-invitation {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  margin-bottom: var(--spacing-xs);
+  border: 1px dashed var(--primary-color);
+  border-radius: var(--border-radius);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.groups-invitation:hover { background: var(--card-hover-bg); }
+
+/* Who to invite, offered while typing rather than only pasted */
+.groups-invite-people {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.groups-invite-people .groups-empty { padding: var(--spacing-sm) var(--spacing-md); }
+
+.groups-invite-person {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 6px var(--spacing-md);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Who is about to be invited, standing where the field was */
+.groups-invite-picked {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 6px 10px;
+  border: 1px solid var(--primary-color);
+  border-radius: var(--border-radius);
+  background: var(--card-hover-bg);
+  font-size: 0.85rem;
+}
+
+.groups-invite-picked button {
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 0 2px;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.groups-invite-picked button:hover { color: var(--primary-color); }
+
+.groups-invite-picked img,
+.groups-invite-picked .groups-invite-face {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  display: grid;
+  place-items: center;
+  background: var(--light-bg);
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+}
+
+.groups-invite-person:last-child { border-bottom: none; }
+.groups-invite-person:hover { background: var(--card-hover-bg); }
+.groups-invite-person:disabled { opacity: 0.5; cursor: default; }
+
+/* The face is a face, not a photograph: a picture with no size of its own
+   here was drawn at whatever the server sent */
+.groups-invite-person img,
+.groups-invite-face {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  display: grid;
+  place-items: center;
+  background: var(--light-bg);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
+.groups-invite-person span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The channels inside a community, when there is more than one */
+.groups-channels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.groups-channels button {
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.groups-channels button.active {
+  color: var(--text-primary);
+  border-color: var(--primary-color);
+  background: var(--card-hover-bg);
+}
+
+/* Bringing somebody into a community that already exists */
+.groups-invite {
+  display: flex;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.groups-invite input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--dark-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.85rem;
 }
 
 .groups-chat-header h2 { margin: 0; font-size: 1.05rem; }
@@ -8117,6 +8456,75 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   color: var(--text-primary);
   font-size: 0.86rem;
 }
+
+/* The way to start a group, named. A bare "+" beside the server's name was
+   the only way in, and read as nothing at all. */
+.groups-make-way {
+  margin: 0 var(--spacing-md) var(--spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.groups-make-way strong { color: var(--text-primary); font-size: 0.82rem; }
+.groups-make-way span { font-size: 0.72rem; line-height: 1.35; }
+
+.groups-make-way:hover {
+  border-color: var(--primary-color);
+  background: var(--card-hover-bg);
+}
+
+/* Public or private, said in words rather than left to two checkboxes */
+.groups-make-kind {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.groups-make-kind button {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.groups-make-kind button strong { color: var(--text-primary); font-size: 0.9rem; }
+.groups-make-kind button span { font-size: 0.75rem; line-height: 1.4; }
+
+.groups-make-kind button.chosen {
+  border-color: var(--primary-color);
+  background: var(--card-hover-bg);
+}
+
+/* The form stacks its labels above their fields, which a checkbox does not
+   want: it belongs beside the words it is about */
+.groups-make .groups-make-flag {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--spacing-sm);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.groups-make .groups-make-flag input { width: auto; }
 
 .groups-make-buttons {
   display: flex;

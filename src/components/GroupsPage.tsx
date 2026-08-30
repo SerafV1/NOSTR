@@ -50,6 +50,16 @@ import { customEmojiMap } from '../utils/customEmoji';
 import EmojiPicker from './EmojiPicker';
 import GifPicker from './GifPicker';
 import { BlossomClient } from '../nostr/blossom';
+import CommunityRoom from './CommunityRoom';
+import ServerRow from './ServerRow';
+import { Community } from '../nostr/concordCommunity';
+import {
+  heldCommunities,
+  makeCommunity,
+  makeChannel,
+  pendingInvites,
+  acceptInvite
+} from '../nostr/concordStore';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 
 interface GroupsPageProps {
@@ -124,11 +134,19 @@ const plural = (role: string): string => {
 const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
   // A server and a group each have an address of their own, so either can be
   // linked to and opened straight into
-  const { server, groupId } = useParams();
+  const { server, groupId, communityId } = useParams();
   const navigate = useNavigate();
   const linkedRelay = server ? `wss://${decodeURIComponent(server)}` : null;
 
   const [relays, setRelays] = useState<string[]>(getGroupRelays);
+  /** Which servers are set aside */
+  const [muted, setMuted] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('nostr_group_relays_muted') || '[]') as string[];
+    } catch {
+      return [];
+    }
+  });
   const [activeRelay, setActiveRelay] = useState<string>(() => linkedRelay || getGroupRelays()[0] || '');
   // The first server to turn up — found or added — is the one opened
   useEffect(() => {
@@ -204,6 +222,17 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
   // Making one of your own
   const [making, setMaking] = useState(false);
   const [newGroup, setNewGroup] = useState({ name: '', about: '', picture: '', open: true, publicGroup: true });
+  /**
+   * Communities nobody hosts (Concord): the ones this account holds keys for,
+   * the one being read, and any invitation waiting in the inbox.
+   */
+  const [communities, setCommunities] = useState<Community[]>([]);
+  const [openCommunity, setOpenCommunity] = useState<string | null>(communityId || null);
+  const [openChannel, setOpenChannel] = useState<string | null>(null);
+  const [makingCommunity, setMakingCommunity] = useState<{ name: string; about: string } | null>(null);
+  const [communityBusy, setCommunityBusy] = useState(false);
+  const [communityError, setCommunityError] = useState<string | null>(null);
+  const [invitations, setInvitations] = useState<{ from: string; invite: any }[]>([]);
   const [makingBusy, setMakingBusy] = useState(false);
   const [makeError, setMakeError] = useState<string | null>(null);
 
@@ -213,6 +242,26 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
   const [askingForCode, setAskingForCode] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  /**
+   * Whether the reader is at the newest message. Scrolling up to read
+   * something used to be undone by the next arrival — the room dragged them
+   * back down, mid-sentence, every time anyone said anything.
+   */
+  const atBottomRef = useRef(true);
+  /** How many have arrived since they scrolled away, for the way back */
+  const [missed, setMissed] = useState(0);
+  const [awayFromBottom, setAwayFromBottom] = useState(false);
+  const countedRef = useRef(0);
+  /** Until when a scroll counts as the reader's own doing, not the page's */
+  const drivenUntil = useRef(0);
+  /**
+   * How many messages the room holds right now. The scroll listener is
+   * attached once per room, so reading the count through it would read the
+   * number the room had when it opened — and coming back to the bottom and
+   * leaving again would then announce the whole history as new.
+   */
+  const lengthRef = useRef(0);
   const draftRef = useRef<HTMLTextAreaElement>(null);
   const emoji = useAnchoredPopup(showEmoji, () => setShowEmoji(false));
   const gifs = useAnchoredPopup(showGifs, () => setShowGifs(false));
@@ -298,7 +347,9 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
       ...joined.map(g => g.relay),
       ...KNOWN_GROUP_RELAYS,
       ...aroundTheNetwork
-    ]));
+    // A muted server is kept but not read from, which is the whole of what
+    // muting one means
+    ])).filter(relay => !muted.includes(relay));
 
     for (const relay of asked) {
       fetchMyGroupsOn(relay, ownPubkey)
@@ -310,7 +361,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     }
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [relays.join(','), joined.length, aroundTheNetwork.join(','), ownPubkey]);
+  }, [relays.join(','), joined.length, aroundTheNetwork.join(','), ownPubkey, muted.join(',')]);
 
   // A group of one's own on a relay whose list has not been read carries no
   // name yet, and a row of hex is not a group anybody recognises
@@ -331,6 +382,44 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mine.map(groupKey).join(',')]);
+
+  // Arriving by address, or leaving one: the community open is whatever the
+  // address names, and nothing when it names a server instead
+  useEffect(() => {
+    setOpenCommunity(communityId || null);
+    if (communityId) { setActive(null); setMakingCommunity(null); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [communityId]);
+
+  // What this account holds, and who has asked it in
+  useEffect(() => {
+    if (!canSign) return;
+    setCommunities(heldCommunities());
+    if (!relaysConnected) return;
+    void pendingInvites()
+      .then(setInvitations)
+      .catch(error => console.error('[Concord] Could not read invitations:', error));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSign, relaysConnected]);
+
+  const startCommunity = async () => {
+    if (!makingCommunity || communityBusy) return;
+    const name = makingCommunity.name.trim();
+    if (!name) return;
+    setCommunityBusy(true);
+    setCommunityError(null);
+    try {
+      const made = await makeCommunity(name, makingCommunity.about.trim());
+      setCommunities(heldCommunities());
+      setMakingCommunity(null);
+      setActive(null);
+      navigate(`/c/${made.id}`);
+    } catch (error) {
+      setCommunityError(error instanceof Error ? error.message : 'Could not make it');
+    } finally {
+      setCommunityBusy(false);
+    }
+  };
 
   // A group's conversation, and whatever is said while it is open
   useEffect(() => {
@@ -388,8 +477,130 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.relay, active?.id]);
 
+  /**
+   * To the newest message, and stay there while the room settles.
+   *
+   * Messages are marked skippable while off screen, so their height is a
+   * guess until the browser draws them — one scroll to the bottom landed two
+   * thousand pixels short of it as the guesses turned into real rows, and a
+   * picture finishing does the same. So it is nudged each frame until the
+   * room stops growing, for at most a second.
+   *
+   * A scroll up during that second ends it: the reader has said where they
+   * want to be, and nothing here may argue.
+   */
+  const stickToBottom = () => {
+    const list = messagesRef.current;
+    if (!list) return;
+    list.scrollTop = list.scrollHeight;
+  };
+
+  lengthRef.current = messages.length;
+
+  const jumpToLatest = () => {
+    atBottomRef.current = true;
+    setAwayFromBottom(false);
+    setMissed(0);
+    countedRef.current = messages.length;
+    stickToBottom();
+  };
+
+  /**
+   * A room settles for a while after it opens: messages are marked skippable
+   * while off screen, so their height is a guess until they are drawn, and
+   * every picture that finishes moves the bottom further down. One scroll,
+   * or even a second of them, landed two thousand pixels short in a room of
+   * two hundred messages.
+   *
+   * So while the reader is at the newest message, the room is held there —
+   * and the moment they scroll away it stops, which is the whole point of
+   * the button below.
+   */
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' });
+    const list = messagesRef.current;
+    if (!list) return;
+    let lastHeight = 0;
+    const hold = setInterval(() => {
+      if (!atBottomRef.current) return;
+      if (list.scrollHeight === lastHeight) return;
+      lastHeight = list.scrollHeight;
+      stickToBottom();
+    }, 250);
+    return () => clearInterval(hold);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.relay, active?.id]);
+
+  /**
+   * Reading further up is a decision, and it holds: what arrives while it
+   * holds is counted rather than scrolled to, and the count is the way back.
+   *
+   * Only the reader takes the room off its newest message. A scroll on its
+   * own does not say who did it, and the page does plenty of its own —
+   * every picture that finishes drawing moves the bottom. Read as the
+   * reader's, those scrolls stopped the page mid-scroll and left the room
+   * hanging fifteen hundred pixels above the last message. So a hand on the
+   * wheel, a finger on the glass or a key opens a moment in which a scroll
+   * away from the bottom counts; outside it, only arriving at the bottom
+   * does.
+   */
+  useEffect(() => {
+    const list = messagesRef.current;
+    if (!list) return;
+
+    const atBottom = () => list.scrollHeight - list.scrollTop - list.clientHeight < 60;
+
+    const read = () => {
+      if (atBottom()) {
+        atBottomRef.current = true;
+        setAwayFromBottom(false);
+        setMissed(0);
+        countedRef.current = lengthRef.current;
+        return;
+      }
+      if (performance.now() < drivenUntil.current) {
+        atBottomRef.current = false;
+        setAwayFromBottom(true);
+      }
+    };
+
+    // A gesture, and the moment after it in which the scrolling it caused
+    // actually happens
+    const driving = () => { drivenUntil.current = performance.now() + 500; };
+
+    list.addEventListener('scroll', read, { passive: true });
+    list.addEventListener('wheel', driving, { passive: true });
+    list.addEventListener('touchmove', driving, { passive: true });
+    list.addEventListener('mousedown', driving, { passive: true });
+    list.addEventListener('keydown', driving);
+    return () => {
+      list.removeEventListener('scroll', read);
+      list.removeEventListener('wheel', driving);
+      list.removeEventListener('touchmove', driving);
+      list.removeEventListener('mousedown', driving);
+      list.removeEventListener('keydown', driving);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.relay, active?.id]);
+
+  // A room just opened is read from its newest message, whatever the last
+  // one was doing
+  useEffect(() => {
+    atBottomRef.current = true;
+    setAwayFromBottom(false);
+    setMissed(0);
+    countedRef.current = 0;
+  }, [active?.relay, active?.id]);
+
+  useEffect(() => {
+    if (atBottomRef.current) {
+      stickToBottom();
+      countedRef.current = messages.length;
+      return;
+    }
+    // Arrivals while reading further up: counted from where they stopped
+    // following, so a burst of ten says ten
+    const since = messages.length - countedRef.current;
+    if (since > 0) setMissed(since);
   }, [messages.length, active?.id]);
 
   // What has been said about what is on screen. Asked once the messages are
@@ -691,6 +902,36 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
   };
 
   /**
+   * A muted server stays in the list and keeps its groups, but is not read
+   * from — the quiet way to keep one without it filling the column.
+   */
+  const toggleMuted = (url: string) => {
+    const next = muted.includes(url) ? muted.filter(held => held !== url) : [...muted, url];
+    setMuted(next);
+    try {
+      localStorage.setItem('nostr_group_relays_muted', JSON.stringify(next));
+    } catch {
+      // Storage full: it simply comes back unmuted next time
+    }
+    if (!muted.includes(url) && activeRelay === url) {
+      setActiveRelay(next.length > 0 ? relays.find(r => !next.includes(r)) || '' : relays[0] || '');
+      setActive(null);
+    }
+  };
+
+  const removeServer = (url: string) => {
+    const next = relays.filter(held => held !== url);
+    setRelays(next);
+    setGroupRelays(next);
+    if (activeRelay === url) {
+      const first = next[0] || '';
+      setActiveRelay(first);
+      setActive(null);
+      navigate(first ? addressOf(first) : '/s');
+    }
+  };
+
+  /**
    * Adding a community, however it was handed over: the relay's own address,
    * a link from this app, or the `naddr` other clients pass around — which
    * carries the group and the relay holding it inside itself.
@@ -725,31 +966,87 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
             here, or add one below.
           </div>
         )}
+        {/* What can be done with a server belongs to that server, not to a
+            row underneath the list: with several of them, one button below
+            said nothing about which one it meant. */}
         {relays.map(url => (
-          <button
+          <ServerRow
             key={url}
-            type="button"
-            className={`groups-relay ${url === activeRelay ? 'active' : ''}`}
-            onClick={() => { setActiveRelay(url); setActive(null); navigate(addressOf(url)); }}
-            title={url}
-          >
-            {relayLabel(url)}
-          </button>
+            url={url}
+            label={relayLabel(url)}
+            // Only one place can be the place you are: with a community open,
+            // the server behind it is where you were, not where you are
+            active={!openCommunity && url === activeRelay}
+            muted={muted.includes(url)}
+            shared={copied === `server:${url}`}
+            onOpen={() => {
+              // Leaving the community behind is the point: its channels were
+              // standing where this server's groups belong
+              setOpenCommunity(null);
+              setOpenChannel(null);
+              setActiveRelay(url);
+              setActive(null);
+              navigate(addressOf(url));
+            }}
+            onShare={() => void shareLink(addressOf(url), `server:${url}`)}
+            onToggleMute={() => toggleMuted(url)}
+            onRemove={() => removeServer(url)}
+          />
         ))}
-        {activeRelay && (
-          <button
-            type="button"
-            className="groups-share-server"
-            onClick={() => void shareLink(addressOf(activeRelay), 'server')}
-            title={`Copy a link to ${relayLabel(activeRelay)}`}
-          >
-            {copied === 'server' ? 'Link copied' : 'Share server'}
-          </button>
+
+        {canSign && (
+          <div className="groups-encrypted">
+            <h2>No server</h2>
+            {communities.map(info => (
+              <button
+                key={info.id}
+                type="button"
+                className={`groups-relay ${info.id === openCommunity ? 'active' : ''}`}
+                onClick={() => {
+                  setOpenChannel(null);
+                  navigate(`/c/${info.id}`);
+                }}
+                title={info.description || 'Encrypted community'}
+              >
+                🔒 {info.name}
+              </button>
+            ))}
+
+            {invitations.map(({ from, invite }) => (
+              <button
+                key={invite.community_id}
+                type="button"
+                className="groups-invitation"
+                title={`Invited by ${formatAddress(from)}`}
+                onClick={async () => {
+                  const joined = await acceptInvite(invite);
+                  setInvitations(current => current.filter(i => i.invite.community_id !== invite.community_id));
+                  setCommunities(heldCommunities());
+                  setActive(null);
+                  navigate(`/c/${joined.id}`);
+                }}
+              >
+                ✉ Join {invite.name}
+              </button>
+            ))}
+
+            <button
+              type="button"
+              className="groups-add-community"
+              onClick={() => {
+                setMakingCommunity({ name: '', about: '' });
+                setOpenCommunity(null);
+                setActive(null);
+              }}
+            >
+              + Encrypted community
+            </button>
+          </div>
         )}
 
         {!adding ? (
           <button type="button" className="groups-add-community" onClick={() => setAdding(true)}>
-            + Add community
+            + Add server
           </button>
         ) : (
           <div className="groups-add-community-form">
@@ -777,23 +1074,76 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
         )}
       </aside>
 
-      {/* What that server holds */}
+      {/* What is open: a community's channels, or the server's groups. Both
+          lists in the same column at once was the confusion — the groups of a
+          server nobody was reading stayed on screen beside a community. */}
+      {openCommunity ? (
+        <nav className="groups-list">
+          {(() => {
+            const info = communities.find(c => c.id === openCommunity);
+            if (!info) return null;
+            return (
+              <>
+                <h3>{info.name}</h3>
+                {info.channels.map(channel => (
+                  <button
+                    key={channel.id}
+                    type="button"
+                    className={`groups-item ${channel.id === openChannel ? 'active' : ''}`}
+                    onClick={() => setOpenChannel(channel.id)}
+                  >
+                    <span className="groups-item-name">#{channel.name}</span>
+                    {channel.private && <span className="groups-item-in" title="Private channel">🔒</span>}
+                  </button>
+                ))}
+                {/* Anyone holding the control key can add one; for now that
+                    is the founder, until grants are written (CORD-04) */}
+                {info.ownerPubkey === ownPubkey && (
+                  <button
+                    type="button"
+                    className="groups-add-community"
+                    onClick={async () => {
+                      const name = window.prompt('What is the channel called?')?.trim();
+                      if (!name) return;
+                      try {
+                        const updated = await makeChannel(info, name.replace(/^#/, ''));
+                        setCommunities(heldCommunities());
+                        setOpenChannel(updated.channels[updated.channels.length - 1].id);
+                      } catch (error) {
+                        alert(error instanceof Error ? error.message : 'Could not add that channel');
+                      }
+                    }}
+                  >
+                    + New channel
+                  </button>
+                )}
+
+                <p className="groups-empty">
+                  No server holds this one. Only the people with its key can read a word of it.
+                </p>
+              </>
+            );
+          })()}
+        </nav>
+      ) : (
       <nav className="groups-list">
         {activeRelay && (
           <>
             <h3>
               On {relayLabel(activeRelay)}
-              {canSign && (
-                <button
-                  type="button"
-                  className="groups-new-btn"
-                  onClick={() => { setMaking(true); setMakeError(null); }}
-                  title="Make a group here"
-                >
-                  +
-                </button>
-              )}
             </h3>
+
+            {canSign && (
+              <button
+                type="button"
+                className="groups-make-way"
+                onClick={() => { setMaking(true); setMakeError(null); }}
+                title={`Make a group on ${relayLabel(activeRelay)}`}
+              >
+                <strong>+ New group</strong>
+                <span>Public or private, held by this server</span>
+              </button>
+            )}
             <input
               className="groups-search"
               type="text"
@@ -827,6 +1177,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
           </button>
         ))}
       </nav>
+      )}
 
       {making && (
         <div className="groups-make-overlay" onClick={() => !makingBusy && setMaking(false)}>
@@ -865,16 +1216,33 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
               )}
             </div>
 
-            <div className="groups-make-flags">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={newGroup.publicGroup}
-                  onChange={e => setNewGroup({ ...newGroup, publicGroup: e.target.checked })}
-                />
-                Anyone may read it
-              </label>
-              <label>
+            {/* The two flags a NIP-29 relay actually keeps were a pair of
+                checkboxes nobody read as "make this private". They are the
+                same two flags; this says what they mean together. */}
+            <div className="groups-make-kind">
+              <button
+                type="button"
+                className={newGroup.publicGroup ? 'chosen' : ''}
+                onClick={() => setNewGroup({ ...newGroup, publicGroup: true, open: true })}
+              >
+                <strong>Public</strong>
+                <span>Anyone may read it, and anyone may join</span>
+              </button>
+              <button
+                type="button"
+                className={!newGroup.publicGroup ? 'chosen' : ''}
+                onClick={() => setNewGroup({ ...newGroup, publicGroup: false, open: false })}
+              >
+                <strong>Private</strong>
+                <span>
+                  Only members may read it, and joining is by invitation. The server
+                  holding it enforces that — and can read what is said.
+                </span>
+              </button>
+            </div>
+
+            {newGroup.publicGroup && (
+              <label className="groups-make-flag">
                 <input
                   type="checkbox"
                   checked={newGroup.open}
@@ -882,7 +1250,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                 />
                 Anyone may join without being asked in
               </label>
-            </div>
+            )}
 
             {makeError && <div className="groups-notice">{makeError}</div>}
 
@@ -901,8 +1269,78 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
         </div>
       )}
 
+      {/* Founding one */}
+      {makingCommunity && (
+        <div className="groups-make-overlay">
+          <div className="groups-make">
+            <h3>New encrypted community</h3>
+            <p className="dm-make-note">
+              No server holds this one. Its messages are readable only by the people holding
+              its key — not by any relay, and not by whoever runs one. You are its owner, and
+              what it is stays inside the community's own signed state, where no relay can
+              change it.
+            </p>
+
+            <label>
+              Name
+              <input
+                type="text"
+                value={makingCommunity.name}
+                autoFocus
+                maxLength={64}
+                onChange={e => setMakingCommunity({ ...makingCommunity, name: e.target.value })}
+              />
+            </label>
+
+            <label>
+              What it is for
+              <input
+                type="text"
+                value={makingCommunity.about}
+                maxLength={200}
+                onChange={e => setMakingCommunity({ ...makingCommunity, about: e.target.value })}
+              />
+            </label>
+
+            {communityError && <div className="groups-notice">{communityError}</div>}
+
+            <div className="groups-make-buttons">
+              <button type="button" onClick={() => setMakingCommunity(null)} disabled={communityBusy}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="groups-join-btn"
+                onClick={() => void startCommunity()}
+                disabled={communityBusy || !makingCommunity.name.trim()}
+              >
+                {communityBusy ? 'Making…' : 'Make it'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {openCommunity && (
+        <CommunityRoom
+          communityId={openCommunity}
+          relaysConnected={relaysConnected}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNote={onNavigateToNote}
+          onNavigateToTopic={onNavigateToTopic}
+          channelId={openChannel}
+          onChannelChange={channel => setOpenChannel(channel.id)}
+          onLeft={() => {
+            setOpenChannel(null);
+            setCommunities(heldCommunities());
+            navigate(activeRelay ? addressOf(activeRelay) : '/s');
+          }}
+          onChanged={() => setCommunities(heldCommunities())}
+        />
+      )}
+
       {/* The conversation */}
-      <section className="groups-chat">
+      {!openCommunity && <section className="groups-chat">
         {!active ? (
           <div className="groups-empty groups-nothing-open">
             <p>Pick a group to read it.</p>
@@ -954,7 +1392,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
 
             {notice && <div className="groups-notice">{notice}</div>}
 
-            <div className="groups-messages">
+            <div className="groups-messages" ref={messagesRef}>
               {loadingChat && <div className="groups-empty">Reading…</div>}
               {!loadingChat && messages.length === 0 && (
                 <div className="groups-empty">Nobody has said anything yet.</div>
@@ -1075,6 +1513,20 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
               <div ref={bottomRef} />
             </div>
 
+            {/* Only while it is of any use: at the newest message there is
+                nowhere to jump to */}
+            {awayFromBottom && messages.length > 0 && (
+              <button
+                type="button"
+                className={`groups-jump-latest${missed > 0 ? ' unread' : ''}`}
+                onClick={jumpToLatest}
+              >
+                ↓ {missed > 0
+                  ? `${missed} new message${missed === 1 ? '' : 's'}`
+                  : 'Jump to latest'}
+              </button>
+            )}
+
             {canSign ? (
               <div className="groups-composer">
                 {replyingTo && (
@@ -1165,10 +1617,10 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
             )}
           </>
         )}
-      </section>
+      </section>}
 
       {/* Who is in it */}
-      <aside className="groups-members">
+      {!openCommunity && <aside className="groups-members">
         {active && (
           <>
             <h3>
@@ -1212,7 +1664,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
             ))}
           </>
         )}
-      </aside>
+      </aside>}
     </div>
   );
 };

@@ -145,6 +145,38 @@ const ask = async (address: string, pubkey: string): Promise<Nip05Verdict> => {
 };
 
 /**
+ * The account an address belongs to, asked of the domain itself.
+ *
+ * The other direction from the check above: there, an account claims an
+ * address and the domain confirms it; here, only the address is known and
+ * the domain says whose it is. That is what makes "seraf@razr.social" usable
+ * anywhere a key would be.
+ */
+export async function pubkeyForNip05(address: string): Promise<string | null> {
+  const [name, domain] = address.trim().replace(/^@/, '').split('@');
+  if (!name || !domain || !LOCAL_PART.test(name) || domain.includes('/')) return null;
+
+  try {
+    const answer = await fetch(
+      `https://${domain}/.well-known/nostr.json?name=${encodeURIComponent(name)}`,
+      { redirect: 'error' }
+    );
+    if (!answer.ok) return null;
+    const body = await answer.json() as { names?: Record<string, string> };
+    const names = body?.names;
+    if (!names) return null;
+
+    const wanted = name.toLowerCase();
+    const found = names[name]
+      ?? names[wanted]
+      ?? Object.entries(names).find(([listed]) => listed.toLowerCase() === wanted)?.[1];
+    return typeof found === 'string' && /^[0-9a-f]{64}$/i.test(found) ? found.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Whether this address answers for this account. Asked once per address and
  * kept, so a feed scrolled twice does not ask a domain twice.
  */
