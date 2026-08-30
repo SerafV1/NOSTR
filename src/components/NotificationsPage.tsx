@@ -51,18 +51,22 @@ const reactionIcon = (content: string): string => {
 /**
  * The note a reaction, repost or zap is actually about.
  *
- * These carry NIP-10 'e' tags, and a client that includes the thread's root
- * alongside the note being reacted to writes the root first. Reading the
- * first tag then named the wrong note — someone liking a reply showed up as
- * liking the post it hung under, which is often their own.
+ * A reaction carries the 'e' tags of the note it is about as well as the
+ * note itself, so the thread's root is usually in there too — and a tag
+ * marked "root" is the top of the conversation, never the thing being
+ * reacted to. Preferring it named the wrong note: someone liking a reply
+ * showed up as liking the post it hung under, which is often their own.
+ * Seen exactly that way in the wild, on
+ * ["e", <"is primal down?">, "", "root"], ["e", <the reply to it>].
  *
- * The marked tag wins where there is one; otherwise the last, which is what
- * NIP-25 says the reaction is for.
+ * A tag marked "reply" is the note being answered, and where a reaction
+ * copies one it is the note being reacted to. Otherwise the last 'e' tag,
+ * which is what NIP-25 says the reaction is for.
  */
 const reactedNoteId = (event: { tags: string[][] }): string | undefined => {
   const eTags = event.tags.filter(t => t[0] === 'e' && t[1]);
   if (eTags.length === 0) return undefined;
-  const marked = eTags.find(t => t[3] === 'reply') || eTags.find(t => t[3] === 'root');
+  const marked = eTags.find(t => t[3] === 'reply');
   return (marked || eTags[eTags.length - 1])[1];
 };
 
