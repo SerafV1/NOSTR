@@ -1,5 +1,15 @@
 import * as nostrTools from 'nostr-tools';
+// The NIP-44 shipped with the pinned nostr-tools is an early draft: it
+// derives a different key, so what it writes reads as "invalid MAC" in every
+// other client and theirs does the same here — proven by cross-decrypting
+// both ways. Private messages are only private if somebody else can read
+// them, so they go through the modern implementation, which is already in
+// the tree for the same reason (see bunker.ts).
+import { nip44 as modernNip44 } from 'nostr-tools-v2';
 import { NostrEvent, NostrEventSigned } from '../types';
+
+const hexToBytes = (hex: string): Uint8Array =>
+  Uint8Array.from((hex.match(/.{1,2}/g) || []).map(byte => parseInt(byte, 16)));
 
 export class NostrCrypto {
   /**
@@ -154,6 +164,13 @@ export class NostrCrypto {
   static getConversationKey(privateKey: string, publicKey: string): Uint8Array {
     const normalized = this.normalizePrivateKey(privateKey);
     if (!normalized) throw new Error('Private key is not valid hex or nsec format');
+    return modernNip44.v2.utils.getConversationKey(hexToBytes(normalized), publicKey);
+  }
+
+  /** The key the early draft derived, kept only for reading what it wrote */
+  private static draftConversationKey(privateKey: string, publicKey: string): Uint8Array {
+    const normalized = this.normalizePrivateKey(privateKey);
+    if (!normalized) throw new Error('Private key is not valid hex or nsec format');
     return (nostrTools as any).nip44.utils.v2.getConversationKey(normalized, publicKey);
   }
 
@@ -162,16 +179,29 @@ export class NostrCrypto {
    * direct messages instead of the legacy NIP-04 scheme above.
    */
   static encryptNip44(message: string, privateKey: string, publicKey: string): string {
-    const key = this.getConversationKey(privateKey, publicKey);
-    return (nostrTools as any).nip44.encrypt(key, message);
+    return modernNip44.v2.encrypt(message, this.getConversationKey(privateKey, publicKey));
   }
 
   /**
-   * Decrypt a message from a sender (NIP-44)
+   * Decrypt a message from a sender (NIP-44).
+   *
+   * Anything this app sent before the draft was swapped out is still on the
+   * relays and still someone's conversation, so that key is tried after the
+   * real one rather than leaving those messages unreadable.
    */
   static decryptNip44(ciphertext: string, privateKey: string, publicKey: string): string {
-    const key = this.getConversationKey(privateKey, publicKey);
-    return (nostrTools as any).nip44.decrypt(key, ciphertext);
+    try {
+      return modernNip44.v2.decrypt(ciphertext, this.getConversationKey(privateKey, publicKey));
+    } catch (error) {
+      try {
+        return (nostrTools as any).nip44.decrypt(
+          this.draftConversationKey(privateKey, publicKey),
+          ciphertext
+        );
+      } catch {
+        throw error;
+      }
+    }
   }
 
   /**
