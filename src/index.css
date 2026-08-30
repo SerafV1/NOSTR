@@ -1115,16 +1115,37 @@ textarea {
   border-radius: var(--border-radius);
 }
 
-.home-main .events-list .event-card,
-.profile-notes .events-list /* A feed read for an hour holds hundreds of cards, and every one of them
+/* A feed read for an hour holds hundreds of cards, and every one of them
    costs the browser layout, paint and the memory behind both — even scrolled
    far out of sight. This lets it skip all of that for anything off screen and
    keep only what is being read, while the card itself stays in the page so
-   scrolling back is instant and the height does not jump. */
+   scrolling back is instant and the height does not jump.
+
+   The comment used to sit inside the selector list, which swallowed the comma
+   after it and quietly changed which cards this applied to. */
 .event-card,
 .groups-message {
   content-visibility: auto;
   contain-intrinsic-size: auto 320px;
+}
+
+/* What that costs, and why it has to stop at the edge of anything a card
+   opens. `content-visibility` contains paint and layout, which makes the card
+   the containing block for whatever is positioned inside it — so a menu, an
+   emoji picker or a reply window drawn from a card was laid out inside that
+   card and clipped at its edge: Reply opened a window inside the post, the
+   repost menu came out cut, and the emoji picker never appeared at all. While
+   one of them is open, the card gives its containment up. */
+.event-card:has(.reply-options-menu),
+.event-card:has(.reactions-menu),
+.event-card:has(.zap-menu),
+.event-card:has(.compose-modal-overlay),
+.event-card:has(.image-modal),
+.groups-message:has(.reactions-menu),
+.groups-message:has(.zap-menu),
+.groups-message:has(.emoji-picker) {
+  content-visibility: visible;
+  contain: none;
 }
 
 .groups-message { contain-intrinsic-size: auto 72px; }
