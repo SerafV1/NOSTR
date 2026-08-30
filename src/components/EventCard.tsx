@@ -67,6 +67,16 @@ const EventCard: React.FC<EventCardProps> = ({
   // page is several seconds of a post looking as if nobody had touched it.
   const cardRef = useRef<HTMLDivElement>(null);
   const remembered = NostrCore.rememberedEngagement(event.id);
+  /**
+   * What this reader has just done, which the relays do not know yet.
+   *
+   * The authoritative count waits for every relay, so it can land seconds
+   * after a tap — carrying the numbers as they were before it. Applied
+   * blindly it undid the reaction that had just been published: the emoji
+   * went back to nothing and the count to zero, and the button read as
+   * broken while the reaction sat on the relays.
+   */
+  const mineRef = useRef<{ reaction: string | null; reposted: boolean }>({ reaction: null, reposted: false });
   const [replyCount, setReplyCount] = useState(remembered?.replies ?? 0);
   const [repostCount, setRepostCount] = useState(remembered?.reposts ?? 0);
   const [reposted, setReposted] = useState(false);
@@ -241,14 +251,18 @@ const EventCard: React.FC<EventCardProps> = ({
     myReaction: string | null;
     myRepost: boolean;
   }) => {
+    const mine = mineRef.current;
+    // Anything done here counts, whether or not the answer knows about it yet
+    const myReactionMissing = Boolean(mine.reaction) && !engagement.myReaction;
+    const myRepostMissing = mine.reposted && !engagement.myRepost;
+
     setReplyCount(engagement.replies);
-    setRepostCount(engagement.reposts);
-    setReposted(engagement.myRepost);
-    setLikeCount(engagement.likes);
+    setRepostCount(engagement.reposts + (myRepostMissing ? 1 : 0));
+    setReposted(engagement.myRepost || mine.reposted);
+    setLikeCount(engagement.likes + (myReactionMissing ? 1 : 0));
     setZapSats(engagement.zapSats);
-    if (engagement.myReaction) {
-      setReactionEmoji(engagement.myReaction);
-    }
+    const reaction = engagement.myReaction || mine.reaction;
+    if (reaction) setReactionEmoji(reaction);
   };
 
   const loadMentionedProfiles = async () => {
@@ -529,19 +543,44 @@ const EventCard: React.FC<EventCardProps> = ({
 
 
 
+  /**
+   * A key kept in an extension or in a signer app answers when the person
+   * says so, and sometimes never — the popup was missed, the app is asleep,
+   * the pairing has lapsed. Nothing here can hurry that, but a button that
+   * simply does nothing reads as broken, so it says what it is waiting for.
+   */
+  const beforeItIsSilly = async <T,>(work: Promise<T>): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout>;
+    const patience = new Promise<never>((_, refuse) => {
+      timer = setTimeout(
+        () => refuse(new Error(
+          'No answer from whatever holds your key. If it is a browser extension or a signer app, ' +
+          'it may be waiting for you to approve this there.'
+        )),
+        20000
+      );
+    });
+    try {
+      return await Promise.race([work, patience]);
+    } finally {
+      clearTimeout(timer!);
+    }
+  };
+
   const handleReaction = async (emoji: string) => {
     setShowReactions(false);
     try {
-      const published = await NostrCore.addReaction(event.id, emoji, event.pubkey);
+      const published = await beforeItIsSilly(NostrCore.addReaction(event.id, emoji, event.pubkey));
       if (published) {
         if (!reactionEmoji) setLikeCount(count => count + 1);
+        mineRef.current.reaction = emoji;
         setReactionEmoji(emoji);
       } else {
         alert('Reaction was not accepted by any relay — check your connection');
       }
     } catch (error) {
       console.error('Failed to add reaction:', error);
-      alert('Failed to publish reaction');
+      alert(error instanceof Error ? error.message : 'Failed to publish reaction');
     }
   };
 
@@ -551,8 +590,9 @@ const EventCard: React.FC<EventCardProps> = ({
 
     setReposting(true);
     try {
-      const published = await NostrCore.repostEvent(event);
+      const published = await beforeItIsSilly(NostrCore.repostEvent(event));
       if (published) {
+        mineRef.current.reposted = true;
         setReposted(true);
         setRepostCount(count => count + 1);
       } else {
@@ -560,7 +600,7 @@ const EventCard: React.FC<EventCardProps> = ({
       }
     } catch (error) {
       console.error('Failed to repost:', error);
-      alert('Failed to repost');
+      alert(error instanceof Error ? error.message : 'Failed to repost');
     } finally {
       setReposting(false);
     }
