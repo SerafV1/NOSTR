@@ -567,19 +567,31 @@ const EventCard: React.FC<EventCardProps> = ({
     }
   };
 
+  /**
+   * Shown at once, then published.
+   *
+   * A publish waits on every relay it writes to, and a slow one holds the
+   * whole thing for its five seconds — so a tap that only changed the screen
+   * afterwards looked like it had missed. What is shown here is undone only
+   * if the message genuinely landed nowhere, which is rare and worth saying
+   * out loud when it happens.
+   */
   const handleReaction = async (emoji: string) => {
     setShowReactions(false);
+
+    const had = reactionEmoji;
+    if (!had) setLikeCount(count => count + 1);
+    mineRef.current.reaction = emoji;
+    setReactionEmoji(emoji);
+
     try {
       const published = await beforeItIsSilly(NostrCore.addReaction(event.id, emoji, event.pubkey));
-      if (published) {
-        if (!reactionEmoji) setLikeCount(count => count + 1);
-        mineRef.current.reaction = emoji;
-        setReactionEmoji(emoji);
-      } else {
-        alert('Reaction was not accepted by any relay — check your connection');
-      }
+      if (!published) throw new Error('Reaction was not accepted by any relay — check your connection');
     } catch (error) {
       console.error('Failed to add reaction:', error);
+      mineRef.current.reaction = had || null;
+      setReactionEmoji(had);
+      if (!had) setLikeCount(count => Math.max(0, count - 1));
       alert(error instanceof Error ? error.message : 'Failed to publish reaction');
     }
   };
@@ -588,18 +600,20 @@ const EventCard: React.FC<EventCardProps> = ({
     setShowRepostOptions(false);
     if (reposted || reposting) return;
 
+    // Same as a reaction: on screen now, taken back only if it landed nowhere
     setReposting(true);
+    mineRef.current.reposted = true;
+    setReposted(true);
+    setRepostCount(count => count + 1);
+
     try {
       const published = await beforeItIsSilly(NostrCore.repostEvent(event));
-      if (published) {
-        mineRef.current.reposted = true;
-        setReposted(true);
-        setRepostCount(count => count + 1);
-      } else {
-        alert('Repost was not accepted by any relay — check your connection');
-      }
+      if (!published) throw new Error('Repost was not accepted by any relay — check your connection');
     } catch (error) {
       console.error('Failed to repost:', error);
+      mineRef.current.reposted = false;
+      setReposted(false);
+      setRepostCount(count => Math.max(0, count - 1));
       alert(error instanceof Error ? error.message : 'Failed to repost');
     } finally {
       setReposting(false);

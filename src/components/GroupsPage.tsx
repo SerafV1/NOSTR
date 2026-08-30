@@ -58,7 +58,8 @@ import {
   makeCommunity,
   makeChannel,
   pendingInvites,
-  acceptInvite
+  acceptInvite,
+  syncCommunityList
 } from '../nostr/concordStore';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 
@@ -391,11 +392,16 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [communityId]);
 
-  // What this account holds, and who has asked it in
+  // What this account is in, and who has asked it in. The list is the
+  // account's own, published encrypted to itself, so a community made in
+  // another browser — or on a phone — turns up here too.
   useEffect(() => {
     if (!canSign) return;
     setCommunities(heldCommunities());
     if (!relaysConnected) return;
+    void syncCommunityList()
+      .then(setCommunities)
+      .catch(error => console.error('[Concord] Could not read the community list:', error));
     void pendingInvites()
       .then(setInvitations)
       .catch(error => console.error('[Concord] Could not read invitations:', error));
