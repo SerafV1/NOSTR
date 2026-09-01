@@ -2332,28 +2332,40 @@ export class NostrCore {
    * something here this one does not know about, and replacing the event is
    * not a reason to throw it away.
    */
-  static async publishPaymentTargets(targets: { type: string; address: string }[]): Promise<NostrEventSigned | null> {
+  static async publishPaymentTargets(targets: { type: string; address: string }[]): Promise<NostrEventSigned> {
     const owner = CredentialManager.getPublicKey();
-    if (!owner) return null;
+    if (!owner) throw new Error('Not signed in');
+
+    // Reading what is already there is a courtesy — it keeps tags another
+    // client put in the event — but it must not be able to stop the write.
+    // A relay that hangs is not a reason to fail to publish an address.
+    const existing = await this.fetchPaymentTargets(owner).catch(() => null);
+    const kept = (existing?.tags || []).filter(tag => tag[0] !== PAYTO_TAG);
+
+    // Errors travel: this used to be swallowed, and an address that never
+    // reached a relay looked exactly like one that had — which is precisely
+    // the bug it hid
+    const signed = await this.signAnyMode({
+      kind: PAYMENT_TARGETS_KIND,
+      content: existing?.content || '',
+      tags: [...kept, ...paytoTags(targets)]
+    });
+    if (!signed) throw new Error('Nothing signed the payment targets');
+
+    const results = await getRelayPool().publishEvent(signed);
+    const accepted = Array.from(results.values()).filter(Boolean).length;
+    if (accepted === 0) {
+      throw new Error(
+        `No relay took the payment targets (kind ${PAYMENT_TARGETS_KIND}) — tried ${results.size}`
+      );
+    }
 
     try {
-      const existing = await this.fetchPaymentTargets(owner);
-      const kept = (existing?.tags || []).filter(tag => tag[0] !== PAYTO_TAG);
-
-      const signed = await this.signAnyMode({
-        kind: PAYMENT_TARGETS_KIND,
-        content: existing?.content || '',
-        tags: [...kept, ...paytoTags(targets)]
-      });
-      if (!signed) return null;
-
-      await getRelayPool().publishEvent(signed);
       EventCache.addAddressable(signed);
-      return signed;
-    } catch (error) {
-      console.error('Failed to publish payment targets:', error);
-      return null;
+    } catch {
+      // Caching is not what this call is for
     }
+    return signed;
   }
 
   /**

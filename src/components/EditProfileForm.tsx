@@ -28,6 +28,8 @@ const EditProfileForm: React.FC<EditProfileFormProps> = ({ profile, onSave }) =>
     xmr: cleanAddress(profile.xmr)
   });
   const [saving, setSaving] = useState(false);
+  /** What went wrong publishing the addresses, in the page rather than the console */
+  const [targetsError, setTargetsError] = useState<string | null>(null);
 
   // The event is the source of truth; the kind-0 fields are only what this
   // client wrote before the kind existed
@@ -85,12 +87,26 @@ const EditProfileForm: React.FC<EditProfileFormProps> = ({ profile, onSave }) =>
       const published = await NostrCore.publishProfile(updatedProfile);
 
       // And the event other clients actually read. Published even when the
-      // addresses are empty, so removing one here removes it there.
+      // addresses are empty, so removing one here removes it there. It is
+      // signed separately from the profile, so with an extension or a signer
+      // app it asks a second time — and if that second answer never comes,
+      // the page has to say so rather than look saved.
+      setTargetsError(null);
       if (paytoLoaded || tidied.btc || tidied.xmr) {
-        await NostrCore.publishPaymentTargets([
-          ...(tidied.btc ? [{ type: 'bitcoin', address: tidied.btc }] : []),
-          ...(tidied.xmr ? [{ type: 'monero', address: tidied.xmr }] : [])
-        ]);
+        try {
+          await NostrCore.publishPaymentTargets([
+            ...(tidied.btc ? [{ type: 'bitcoin', address: tidied.btc }] : []),
+            ...(tidied.xmr ? [{ type: 'monero', address: tidied.xmr }] : [])
+          ]);
+        } catch (failure) {
+          setTargetsError(
+            `The profile was saved, but the addresses were not published: ${
+              failure instanceof Error ? failure.message : 'unknown reason'
+            }. Other clients read them from that event, so try Save again.`
+          );
+          setSaving(false);
+          return;
+        }
       }
 
       if (published) {
@@ -238,6 +254,8 @@ const EditProfileForm: React.FC<EditProfileFormProps> = ({ profile, onSave }) =>
           address written here is read by this client and by anyone who
           copies the convention, and by nobody else. In the bio it is read
           everywhere, because everyone shows a bio. */}
+      {targetsError && <div className="error-message">{targetsError}</div>}
+
       <p className="settings-hint">
         Published as a payment-targets event of its own (NIP-A3, kind 10133), which is
         what Amethyst reads and writes — so an address set here shows up there too.
