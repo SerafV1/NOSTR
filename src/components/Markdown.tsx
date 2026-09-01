@@ -1,5 +1,7 @@
 import React from 'react';
 import RichText from './RichText';
+import MediaEmbed from './MediaEmbed';
+import { extractEmbeds, extractVideoUrls } from '../utils/media';
 
 interface MarkdownProps {
   /** The article's body, as NIP-23 says it is written: markdown */
@@ -243,8 +245,24 @@ const Markdown: React.FC<MarkdownProps> = ({ content, ...rest }) => {
             );
           case 'rule':
             return <hr key={index} />;
-          default:
-            return <p key={index}><Inline text={block.text} {...rest} /></p>;
+          default: {
+            // A video in an article is a video. The card in the feed lifts
+            // these out of the text and plays them; a page of writing did
+            // not, so a link to one was a line of URL with nothing to press.
+            const embeds = extractEmbeds(block.text);
+            const videos = extractVideoUrls(block.text);
+            return (
+              <React.Fragment key={index}>
+                <p><Inline text={block.text} {...rest} /></p>
+                {embeds.map(embed => (
+                  <MediaEmbed key={embed.src} embed={embed} className="markdown-embed" />
+                ))}
+                {videos.map(url => (
+                  <video key={url} className="markdown-video" src={url} controls playsInline preload="metadata" />
+                ))}
+              </React.Fragment>
+            );
+          }
         }
       })}
     </div>

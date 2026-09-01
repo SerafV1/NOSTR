@@ -410,9 +410,22 @@ function App() {
       }, 5000);
 
       // Connect to all relays in parallel — serial connects made startup
-      // take up to 10s per slow relay
+      // take up to 10s per slow relay.
+      //
+      // Reading starts at the first relay that answers, not at the last. The
+      // page used to wait for every one of them, so a relay refusing
+      // connections or timing out held up the whole app: the popped-out chat
+      // measured 2.5s before it even asked for a message, most of it spent
+      // waiting on relays that were never going to answer.
+      let opened = false;
       const results = await Promise.all(
-        allRelayUrls.map(relay => relayPool.addRelay(relay))
+        allRelayUrls.map(relay => relayPool.addRelay(relay).then(ok => {
+          if (ok && !opened) {
+            opened = true;
+            setRelaysConnected(true);
+          }
+          return ok;
+        }))
       );
       connectedCount = results.filter(Boolean).length;
 

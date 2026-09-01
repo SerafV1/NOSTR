@@ -180,16 +180,12 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   const naddrParam = encodeLiveNaddr(kind, stream.pubkey, stream.dTag);
 
   /**
-   * What the windows meant for OBS are opened at. While the stream is on
-   * air that is the broadcaster's npub rather than this broadcast's naddr,
-   * so the address in the window — the one that ends up in OBS — is the one
-   * that still works for the next stream and the one after it. A broadcast
-   * that has ended has no "now" to follow, so those windows stay pinned to
-   * it.
+   * What the windows meant for OBS are opened at: always the broadcaster's
+   * npub, never this one broadcast's naddr. The address in the window is the
+   * address that ends up in OBS, and it has to be the one that still works
+   * for the next stream and the one after it.
    */
-  const widgetParam = stream.status === 'live'
-    ? encodeHostParam(stream.pubkey)
-    : naddrParam;
+  const widgetParam = encodeHostParam(stream.pubkey);
 
 
 

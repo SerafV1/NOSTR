@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import LiveChatPanel from './LiveChatPanel';
 import {
-  decodeLiveNaddr,
   encodeHostParam,
-  encodeLiveNaddr,
   liveEventAddress,
   parseLiveEvent,
   readdressed
@@ -42,13 +40,6 @@ const LiveChatPage: React.FC<LiveChatPageProps> = ({
   const [transparent, setTransparent] = useState(() => params.get('transparent') === '1');
   // Over a moving picture, heavier text carries better
   const [bold, setBold] = useState(() => params.get('bold') === '1');
-  // Whether this window is on the broadcaster or on this one broadcast. A
-  // stream gets a new `d` tag every time it starts, so an address built on
-  // one is a link that has to be pasted into OBS again tomorrow; an npub in
-  // its place is set up once and left alone.
-  const [following, setFollowing] = useState(
-    () => !decodeLiveNaddr(window.location.pathname.split('/')[2] || '')
-  );
   // Who runs the stream, so this window honours its mute list too — and
   // offers it, if the person watching here is the one who runs it. Without
   // this the popped-out chat, the one an overlay actually shows, ignored
@@ -69,24 +60,25 @@ const LiveChatPage: React.FC<LiveChatPageProps> = ({
     return query ? `?${query}` : '';
   };
 
-  // The two ways to say the same window: this broadcast, or whoever is
-  // presenting it
-  const pathFor = (follow: boolean) => readdressed(
-    window.location.pathname,
-    follow ? encodeHostParam(pubkey) : encodeLiveNaddr(kind, pubkey, identifier)
-  );
+  /**
+   * The address this window hands out. Always the broadcaster's, never this
+   * one broadcast's: a stream gets a new `d` tag every time it starts, so an
+   * address built on one is a link that has to be pasted into OBS again
+   * tomorrow. There used to be a choice about it, which was a choice nobody
+   * wanted to get wrong at the start of a stream.
+   */
+  const widgetPath = readdressed(window.location.pathname, encodeHostParam(pubkey));
 
   const obsLink = readOnly
     ? undefined
-    : `${window.location.origin}${pathFor(following)}${search({ transparent, bold })}`;
+    : `${window.location.origin}${widgetPath}${search({ transparent, bold })}`;
 
   // Kept in the address so a reload — and the copied link — agree with what
   // is on screen
-  const choose = (opts: { transparent: boolean; bold: boolean; following: boolean }) => {
+  const choose = (opts: { transparent: boolean; bold: boolean }) => {
     setTransparent(opts.transparent);
     setBold(opts.bold);
-    setFollowing(opts.following);
-    window.history.replaceState({}, '', pathFor(opts.following) + search(opts));
+    window.history.replaceState({}, '', widgetPath + search(opts));
   };
 
   useEffect(() => {
@@ -125,7 +117,6 @@ const LiveChatPage: React.FC<LiveChatPageProps> = ({
       obsLink={obsLink}
       transparent={readOnly ? undefined : transparent}
       bold={readOnly ? undefined : bold}
-      following={readOnly ? undefined : following}
       onDisplayChange={readOnly ? undefined : choose}
       onNavigateToProfile={onNavigateToProfile}
       onNavigateToNote={onNavigateToNote}

@@ -21,6 +21,40 @@ export type StreamTarget =
 const ASK_AGAIN_MS = 30_000;
 
 /**
+ * The last stream each broadcaster was seen on.
+ *
+ * A browser source in OBS is reopened constantly — every scene reload, every
+ * restart — and each time it sat blank for a couple of seconds while the
+ * relays were asked which stream to show. The last answer is kept so the
+ * window can start on it immediately; if the relays disagree, the newer
+ * stream replaces it a moment later, which is the same thing that happens
+ * when a broadcast starts while the window is open.
+ */
+const REMEMBERED = 'razr_host_stream';
+
+const rememberedFor = (host: string): StreamAddress | null => {
+  try {
+    const held = JSON.parse(localStorage.getItem(REMEMBERED) || '{}') as Record<string, StreamAddress>;
+    const found = held[host];
+    return found?.pubkey && typeof found.identifier === 'string' ? found : null;
+  } catch {
+    return null;
+  }
+};
+
+const remember = (host: string, address: StreamAddress): void => {
+  try {
+    const held = JSON.parse(localStorage.getItem(REMEMBERED) || '{}') as Record<string, StreamAddress>;
+    held[host] = address;
+    // Only the last few matter; nobody watches thirty broadcasters at once
+    const trimmed = Object.fromEntries(Object.entries(held).slice(-10));
+    localStorage.setItem(REMEMBERED, JSON.stringify(trimmed));
+  } catch {
+    // A browser that will not store it simply asks again next time
+  }
+};
+
+/**
  * What a `/live/<something>/…` link points at.
  *
  * The something is either one broadcast (an naddr, which changes every time
@@ -38,14 +72,14 @@ export function useHostStream(param: string | undefined, relaysConnected: boolea
   const pinned = param ? decodeLiveNaddr(param) : null;
   const host = !pinned && param ? decodeHostParam(param) : null;
 
-  const [found, setFound] = useState<StreamAddress | null>(null);
+  const [found, setFound] = useState<StreamAddress | null>(() => (host ? rememberedFor(host) : null));
   // What the current pick is worth, so a stale copy of an old stream cannot
   // pull the window back off a newer one
   const standing = useRef<{ address: string; at: number; live: boolean } | null>(null);
 
   useEffect(() => {
     standing.current = null;
-    setFound(null);
+    setFound(host ? rememberedFor(host) : null);
   }, [host]);
 
   useEffect(() => {
@@ -74,7 +108,9 @@ export function useHostStream(param: string | undefined, relaysConnected: boolea
       if (held?.live && held.at > at) return;
 
       standing.current = { address, at, live };
-      setFound({ kind: EVENT_KINDS.LIVE_EVENT, pubkey: event.pubkey, identifier: dTag });
+      const now = { kind: EVENT_KINDS.LIVE_EVENT, pubkey: event.pubkey, identifier: dTag };
+      remember(host, now);
+      setFound(now);
     };
 
     const ask = async () => {

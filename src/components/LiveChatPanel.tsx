@@ -101,16 +101,75 @@ interface LiveChatPanelProps {
   /** Overlay preview: given only where the choice is the viewer's to make */
   transparent?: boolean;
   bold?: boolean;
-  /**
-   * Whether this window follows the broadcaster or is pinned to one
-   * broadcast. Given only where there is an address to change.
-   */
-  following?: boolean;
-  onDisplayChange?: (opts: { transparent: boolean; bold: boolean; following: boolean }) => void;
+  onDisplayChange?: (opts: { transparent: boolean; bold: boolean }) => void;
 }
 
-const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, onPeoplePresent, hideComposer, obsLink, owners = [], identifier, transparent, bold, following, onDisplayChange }) => {
-  const [messages, setMessages] = useState<NostrEventSigned[]>([]);
+/**
+ * The last lines of a chat, kept so a window that reopens has something to
+ * show at once.
+ *
+ * A browser source in OBS is reloaded constantly, and every reload asked the
+ * relays from nothing: measured at three and a half seconds of an empty
+ * overlay before the first message appeared. These are that stream's own
+ * messages under that stream's own address, so what comes back is the same
+ * chat, filled in and replaced the moment the relays answer.
+ */
+const CHAT_MEMORY = 'razr_livechat';
+/**
+ * The stream's own mute list, kept for the same reason.
+ *
+ * Nothing is drawn until this list is known — showing a line and taking it
+ * back once the host's mutes arrive is worse than a moment's wait — and that
+ * wait was most of the delay before an overlay showed anything. A list from
+ * the last time this window was open is a far better starting point than
+ * none, and the relays replace it a second later.
+ */
+const MUTE_MEMORY = 'razr_stream_mutes';
+const CHAT_MEMORY_LINES = 60;
+const CHAT_MEMORY_STREAMS = 3;
+
+const rememberedMutes = (address: string): string[] | null => {
+  try {
+    const held = JSON.parse(localStorage.getItem(MUTE_MEMORY) || '{}') as Record<string, string[]>;
+    return Array.isArray(held[address]) ? held[address] : null;
+  } catch {
+    return null;
+  }
+};
+
+const rememberMutes = (address: string, muted: string[]): void => {
+  try {
+    const held = JSON.parse(localStorage.getItem(MUTE_MEMORY) || '{}') as Record<string, string[]>;
+    held[address] = muted;
+    localStorage.setItem(MUTE_MEMORY, JSON.stringify(Object.fromEntries(Object.entries(held).slice(-CHAT_MEMORY_STREAMS))));
+  } catch {
+    // Then it is read from the relays, as before
+  }
+};
+
+const rememberedChat = (address: string): NostrEventSigned[] => {
+  try {
+    const held = JSON.parse(localStorage.getItem(CHAT_MEMORY) || '{}') as Record<string, NostrEventSigned[]>;
+    const lines = held[address];
+    return Array.isArray(lines) ? lines : [];
+  } catch {
+    return [];
+  }
+};
+
+const rememberChat = (address: string, messages: NostrEventSigned[]): void => {
+  try {
+    const held = JSON.parse(localStorage.getItem(CHAT_MEMORY) || '{}') as Record<string, NostrEventSigned[]>;
+    held[address] = messages.slice(-CHAT_MEMORY_LINES);
+    const trimmed = Object.fromEntries(Object.entries(held).slice(-CHAT_MEMORY_STREAMS));
+    localStorage.setItem(CHAT_MEMORY, JSON.stringify(trimmed));
+  } catch {
+    // A window that cannot store them simply waits for the relays, as before
+  }
+};
+
+const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, onPeoplePresent, hideComposer, obsLink, owners = [], identifier, transparent, bold, onDisplayChange }) => {
+  const [messages, setMessages] = useState<NostrEventSigned[]>(() => rememberedChat(address));
   const [zaps, setZaps] = useState<NostrEventSigned[]>([]);
   const [reactions, setReactions] = useState<NostrEventSigned[]>([]);
   const [profiles, setProfiles] = useState<Map<string, UserProfile>>(new Map());
@@ -124,11 +183,13 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   const [muted, setMuted] = useState<Set<string>>(() => new Set(NostrCore.getBlockedPubkeys()));
   // Whoever the stream's owner has thrown out — hidden for everyone watching
   // through this client, not only for whoever muted them
-  const [streamMuted, setStreamMuted] = useState<Set<string>>(new Set());
+  const [streamMuted, setStreamMuted] = useState<Set<string>>(() => new Set(rememberedMutes(address) || []));
   // Until the list has been read, showing the chat would show whoever was
   // thrown out — for the second or two the read takes — and then take them
   // back off screen. Better to hold the messages for that moment.
-  const [muteListRead, setMuteListRead] = useState(false);
+  // A list already known is a list read: the relays are asked again anyway,
+  // and what they say replaces it
+  const [muteListRead, setMuteListRead] = useState(() => rememberedMutes(address) !== null);
   /**
    * What this window has just decided, until the relays agree. Publishing a
    * change takes seconds, and in the meantime the subscription delivers the
@@ -188,7 +249,10 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
         NostrCore.fetchLiveZaps(address)
       ]);
       if (cancelled) return;
-      setMessages(history);
+      if (history.length > 0) {
+        setMessages(history);
+        rememberChat(address, history);
+      }
       setZaps(zapHistory);
 
       // Then the same question again, this time waiting for every relay: the
@@ -200,7 +264,9 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
         setMessages(prev => {
           const byId = new Map(prev.map(m => [m.id, m]));
           for (const message of complete) byId.set(message.id, message);
-          return [...byId.values()].sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+          const merged = [...byId.values()].sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+          rememberChat(address, merged);
+          return merged;
         });
         NostrCore.fetchProfiles(complete.map(m => m.pubkey)).then(found => {
           if (!cancelled) setProfiles(prev => new Map([...prev, ...found]));
@@ -293,7 +359,9 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
 
     NostrCore.fetchStreamMuteList(owners, identifier).then(list => {
       if (cancelled) return;
-      setStreamMuted(applyPending(list));
+      const applied = applyPending(list);
+      setStreamMuted(applied);
+      rememberMutes(address, [...applied]);
       setMuteListRead(true);
     });
 
@@ -301,7 +369,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     // it takes to notice something is wrong
     const giveUp = setTimeout(() => {
       if (!cancelled) setMuteListRead(true);
-    }, 4000);
+    }, 1500);
 
     // Read once, the list was whatever it said when this window opened: a
     // host muting someone from the stream page never reached the popped-out
@@ -742,7 +810,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
               <input
                 type="checkbox"
                 checked={!!transparent}
-                onChange={(e) => onDisplayChange({ transparent: e.target.checked, bold: !!bold, following: !!following })}
+                onChange={(e) => onDisplayChange({ transparent: e.target.checked, bold: !!bold })}
               />
               Transparent
             </label>
@@ -750,20 +818,10 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
               <input
                 type="checkbox"
                 checked={!!bold}
-                onChange={(e) => onDisplayChange({ transparent: !!transparent, bold: e.target.checked, following: !!following })}
+                onChange={(e) => onDisplayChange({ transparent: !!transparent, bold: e.target.checked })}
               />
               Bold
             </label>
-            {following !== undefined && (
-              <label title="Keep this address on whoever is streaming, not on this one broadcast — then OBS never needs a new link">
-                <input
-                  type="checkbox"
-                  checked={following}
-                  onChange={(e) => onDisplayChange({ transparent: !!transparent, bold: !!bold, following: e.target.checked })}
-                />
-                Every stream
-              </label>
-            )}
           </span>
         )}
 
@@ -773,9 +831,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
           <button
             type="button"
             className="live-chat-obs-btn"
-            title={following
-              ? "Copy this address for an OBS browser source. It stays the same for every stream you do: the chat empties and refills on its own when the next one starts."
-              : "Copy this window's address — with the options chosen here — for an OBS browser source"}
+            title="Copy this address for an OBS browser source. It stays the same for every stream you do: the chat empties and refills on its own when the next one starts."
             onClick={async () => {
               await navigator.clipboard.writeText(obsLink);
               setObsLinkCopied(true);
