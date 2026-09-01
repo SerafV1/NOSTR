@@ -329,6 +329,11 @@ function App() {
   );
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  // Whoever writes this client, for the Tip button — their own name and
+  // face, not the app's, since it is their wallet the sats land in
+  const [devProfile, setDevProfile] = useState<UserProfile | null>(
+    () => EventCache.getProfile(TIP_PUBKEY) || null
+  );
   const [showComposeFab, setShowComposeFab] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   // Small screens collapse the destinations behind one button
@@ -338,6 +343,15 @@ function App() {
   const [awaitingSignature, setAwaitingSignature] = useState(0);
 
   useEffect(() => onSigningWait(setAwaitingSignature), []);
+
+  useEffect(() => {
+    if (!relaysConnected || devProfile) return;
+    let dropped = false;
+    NostrCore.fetchUserProfile(TIP_PUBKEY)
+      .then(profile => { if (!dropped && profile) setDevProfile(profile); })
+      .catch(() => { /* the name below stands in */ });
+    return () => { dropped = true; };
+  }, [relaysConnected, devProfile]);
   const mainRef = useRef<HTMLElement>(null);
 
   const navigate = useNavigate();
@@ -698,7 +712,9 @@ function App() {
             <ZapButton
               lud16={TIP_ADDRESS}
               recipientPubkey={TIP_PUBKEY}
-              recipientName="RAZR"
+              recipientName={devProfile?.display_name || devProfile?.name || 'Seraf'}
+              recipientPicture={devProfile?.picture}
+              recipientEmojis={devProfile?.emojis}
               triggerClassName="btn btn-secondary btn-small btn-with-icon header-tip-btn"
               triggerTitle="Tip whoever writes this client"
             >
