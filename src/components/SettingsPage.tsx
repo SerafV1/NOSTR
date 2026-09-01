@@ -4,6 +4,7 @@ import RelaySettings from './RelaySettings';
 import MediaServerSettings from './MediaServerSettings';
 import MutedSettings from './MutedSettings';
 import BackupSettings from './BackupSettings';
+import WalletSettings from './WalletSettings';
 
 interface SettingsPageProps {
   relaysConnected: boolean;
@@ -15,7 +16,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ relaysConnected }) => {
     ? 'media'
     : location.pathname.endsWith('/muted')
       ? 'muted'
-      : location.pathname.endsWith('/backup') ? 'backup' : 'relays';
+      : location.pathname.endsWith('/wallet')
+        ? 'wallet'
+        : location.pathname.endsWith('/backup') ? 'backup' : 'relays';
 
   return (
     <div className="settings-page">
@@ -42,6 +45,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ relaysConnected }) => {
             Muted
           </Link>
           <Link
+            to="/settings/wallet"
+            className={`settings-tab ${section === 'wallet' ? 'active' : ''}`}
+          >
+            Wallet
+          </Link>
+          <Link
             to="/settings/backup"
             className={`settings-tab ${section === 'backup' ? 'active' : ''}`}
           >
@@ -52,6 +61,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ relaysConnected }) => {
         {section === 'relays' && <RelaySettings />}
         {section === 'media' && <MediaServerSettings />}
         {section === 'muted' && <MutedSettings relaysConnected={relaysConnected} />}
+        {section === 'wallet' && <WalletSettings />}
         {section === 'backup' && <BackupSettings />}
       </div>
     </div>

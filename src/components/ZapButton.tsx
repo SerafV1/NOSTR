@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { resolveLnurlInvoice, payWithWebln } from '../utils/zap';
+import { payInvoice as payFromWallet, walletCanPay } from '../nostr/nwc';
 import { NostrCore } from '../nostr/core';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 import EmojiText from './EmojiText';
@@ -52,6 +53,8 @@ const ZapButton: React.FC<ZapButtonProps> = ({
   const [loading, setLoading] = useState(false);
   const [invoice, setInvoice] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // What the connected wallet said, when it said no
+  const [walletError, setWalletError] = useState<string | null>(null);
   const { containerRef, triggerRef, popupRef, style, openPopup, render } =
     useAnchoredPopup(showMenu, () => setShowMenu(false), [invoice, loading]);
 
@@ -84,6 +87,27 @@ const ZapButton: React.FC<ZapButtonProps> = ({
         comment.trim()
       );
 
+      // A wallet connected over NIP-47 is the one the user set up here on
+      // purpose, so it goes first. The amount is checked against the invoice
+      // inside payFromWallet: what comes back from someone else's LNURL
+      // server is not taken on trust.
+      if (walletCanPay()) {
+        try {
+          await payFromWallet(invoice, amountSats);
+          setShowMenu(false);
+          setCustomAmount('');
+          setComment('');
+          return;
+        } catch (failure) {
+          // Refused, over a limit, or the wallet never answered — say so and
+          // fall through to the invoice, rather than paying twice by another
+          // route
+          setWalletError(failure instanceof Error ? failure.message : 'The wallet could not pay this');
+          setInvoice(invoice);
+          return;
+        }
+      }
+
       // An extension wallet answers over WebLN, not the `lightning:` scheme
       const paid = await payWithWebln(invoice);
       if (paid) {
@@ -110,6 +134,7 @@ const ZapButton: React.FC<ZapButtonProps> = ({
     setCustomAmount('');
     setComment('');
     setCopied(false);
+    setWalletError(null);
   };
 
   return (
@@ -136,8 +161,11 @@ const ZapButton: React.FC<ZapButtonProps> = ({
           {invoice ? (
             // Nothing here can pay it, so the invoice itself is the answer
             <div className="zap-invoice">
+              {walletError && <div className="zap-wallet-error">{walletError}</div>}
               <div className="zap-invoice-hint">
-                No lightning wallet in this browser — pay this invoice from your wallet:
+                {walletError
+                  ? 'Nothing was paid. The invoice is here if you want to pay it another way:'
+                  : 'No lightning wallet in this browser — pay this invoice from your wallet:'}
               </div>
               <textarea className="zap-invoice-text" readOnly value={invoice} rows={4} />
               <div className="zap-invoice-actions">
@@ -226,6 +254,11 @@ const ZapButton: React.FC<ZapButtonProps> = ({
                   {loading ? '...' : `Zap${amountToSend > 0 ? ` ${amountToSend.toLocaleString()}` : ''}`}
                 </button>
               </div>
+              {/* Pressing Zap spends, with nothing further to confirm — so
+                  the button says where the money is coming from */}
+              {walletCanPay() && (
+                <div className="zap-from-wallet">Paid from your connected wallet</div>
+              )}
             </>
           )}
         </div>

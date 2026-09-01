@@ -1,6 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import LiveChatPanel from './LiveChatPanel';
-import { liveEventAddress, parseLiveEvent } from '../utils/liveStream';
+import {
+  decodeLiveNaddr,
+  encodeHostParam,
+  encodeLiveNaddr,
+  liveEventAddress,
+  parseLiveEvent,
+  readdressed
+} from '../utils/liveStream';
 import { CredentialManager } from '../nostr/crypto';
 import { NostrCore } from '../nostr/core';
 
@@ -35,6 +42,13 @@ const LiveChatPage: React.FC<LiveChatPageProps> = ({
   const [transparent, setTransparent] = useState(() => params.get('transparent') === '1');
   // Over a moving picture, heavier text carries better
   const [bold, setBold] = useState(() => params.get('bold') === '1');
+  // Whether this window is on the broadcaster or on this one broadcast. A
+  // stream gets a new `d` tag every time it starts, so an address built on
+  // one is a link that has to be pasted into OBS again tomorrow; an npub in
+  // its place is set up once and left alone.
+  const [following, setFollowing] = useState(
+    () => !decodeLiveNaddr(window.location.pathname.split('/')[2] || '')
+  );
   // Who runs the stream, so this window honours its mute list too — and
   // offers it, if the person watching here is the one who runs it. Without
   // this the popped-out chat, the one an overlay actually shows, ignored
@@ -55,16 +69,24 @@ const LiveChatPage: React.FC<LiveChatPageProps> = ({
     return query ? `?${query}` : '';
   };
 
+  // The two ways to say the same window: this broadcast, or whoever is
+  // presenting it
+  const pathFor = (follow: boolean) => readdressed(
+    window.location.pathname,
+    follow ? encodeHostParam(pubkey) : encodeLiveNaddr(kind, pubkey, identifier)
+  );
+
   const obsLink = readOnly
     ? undefined
-    : `${window.location.origin}${window.location.pathname}${search({ transparent, bold })}`;
+    : `${window.location.origin}${pathFor(following)}${search({ transparent, bold })}`;
 
   // Kept in the address so a reload — and the copied link — agree with what
   // is on screen
-  const choose = (opts: { transparent: boolean; bold: boolean }) => {
+  const choose = (opts: { transparent: boolean; bold: boolean; following: boolean }) => {
     setTransparent(opts.transparent);
     setBold(opts.bold);
-    window.history.replaceState({}, '', window.location.pathname + search(opts));
+    setFollowing(opts.following);
+    window.history.replaceState({}, '', pathFor(opts.following) + search(opts));
   };
 
   useEffect(() => {
@@ -103,6 +125,7 @@ const LiveChatPage: React.FC<LiveChatPageProps> = ({
       obsLink={obsLink}
       transparent={readOnly ? undefined : transparent}
       bold={readOnly ? undefined : bold}
+      following={readOnly ? undefined : following}
       onDisplayChange={readOnly ? undefined : choose}
       onNavigateToProfile={onNavigateToProfile}
       onNavigateToNote={onNavigateToNote}

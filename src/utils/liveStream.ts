@@ -180,6 +180,47 @@ export function decodeLiveNaddr(naddr: string): { kind: number; pubkey: string; 
 }
 
 /**
+ * The other way to name a stream: by whoever is presenting it.
+ *
+ * Every stream is a new `d` tag, so its naddr changes each time somebody
+ * goes on air — and a widget address built on one has to be pasted into OBS
+ * again for every broadcast. An npub in the same place says "whatever this
+ * person is streaming now", which is the address a broadcaster can set up
+ * once and leave alone.
+ */
+export function encodeHostParam(pubkey: string): string {
+  try {
+    return nip19.npubEncode(pubkey);
+  } catch {
+    return pubkey;
+  }
+}
+
+/** An npub — or bare hex, for a hand-typed link — as a pubkey */
+export function decodeHostParam(param: string): string | null {
+  if (/^[0-9a-f]{64}$/i.test(param)) return param.toLowerCase();
+  try {
+    const decoded = nip19.decode(param);
+    return decoded.type === 'npub' ? (decoded.data as string) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The same page, addressed the other way: `/live/<naddr>/chat` and
+ * `/live/<npub>/chat` are the same widget, one pinned to this broadcast and
+ * one following the broadcaster.
+ */
+export function readdressed(pathname: string, param: string): string {
+  const parts = pathname.split('/');
+  // ['', 'live', '<param>', …]
+  if (parts.length < 3 || parts[1] !== 'live') return pathname;
+  parts[2] = param;
+  return parts.join('/');
+}
+
+/**
  * The stream a link points at, if it points at one.
  *
  * A stream gets shared as a page address far more often than as a bare

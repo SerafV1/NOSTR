@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
-import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr, streamShareText } from '../utils/liveStream';
+import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr, encodeHostParam, streamShareText } from '../utils/liveStream';
 import { formatAddress } from '../utils/helpers';
 import StreamSurface from './StreamSurface';
 import LiveChatPanel, { PresentPerson } from './LiveChatPanel';
@@ -178,6 +178,18 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
 
   const address = liveEventAddress(kind, stream.pubkey, stream.dTag);
   const naddrParam = encodeLiveNaddr(kind, stream.pubkey, stream.dTag);
+
+  /**
+   * What the windows meant for OBS are opened at. While the stream is on
+   * air that is the broadcaster's npub rather than this broadcast's naddr,
+   * so the address in the window — the one that ends up in OBS — is the one
+   * that still works for the next stream and the one after it. A broadcast
+   * that has ended has no "now" to follow, so those windows stay pinned to
+   * it.
+   */
+  const widgetParam = stream.status === 'live'
+    ? encodeHostParam(stream.pubkey)
+    : naddrParam;
 
 
 
@@ -429,7 +441,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                   className="live-stream-copy-link"
                   title="Open the viewer count on its own, to set up as an OBS browser source"
                   onClick={() => window.open(
-                    `${window.location.origin}/live/${naddrParam}/viewers`,
+                    `${window.location.origin}/live/${widgetParam}/viewers`,
                     `viewers-${naddrParam}`,
                     'width=420,height=320,menubar=no,toolbar=no'
                   )}
@@ -474,7 +486,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
             // Desktop only: the chat as its own window, to keep beside the
             // video or on a second screen
             onPopOut={() => window.open(
-              `${window.location.origin}/live/${naddrParam}/chat`,
+              `${window.location.origin}/live/${widgetParam}/chat`,
               `chat-${naddrParam}`,
               'width=420,height=760,menubar=no,toolbar=no'
             )}
@@ -519,7 +531,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                 className="live-chat-obs-btn"
                 title="Open the zappers on their own, to set up as an OBS browser source"
                 onClick={() => window.open(
-                  `${window.location.origin}/live/${naddrParam}/zappers`,
+                  `${window.location.origin}/live/${widgetParam}/zappers`,
                   `zappers-${naddrParam}`,
                   'width=380,height=520,menubar=no,toolbar=no'
                 )}

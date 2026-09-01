@@ -38,6 +38,8 @@ import { BellIcon, MessageIcon, SettingsIcon, ZapIcon } from './components/Icons
 import ZapButton from './components/ZapButton';
 import RazrWordmark from './components/RazrWordmark';
 import { decodeLiveNaddr, encodeLiveNaddr } from './utils/liveStream';
+import { useHostStream } from './hooks/useHostStream';
+import WaitingForStream from './components/WaitingForStream';
 
 /**
  * Where a tip for this app goes. Kept here rather than in a profile, because
@@ -150,14 +152,22 @@ function SearchRoute({ relaysConnected, onNavigateToProfile, onNavigateToNote }:
 
 function LiveStreamRoute({ relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }: RouteCallbacks) {
   const { naddr } = useParams();
-  const address = naddr ? decodeLiveNaddr(naddr) : null;
+  const target = useHostStream(naddr, relaysConnected);
 
-  if (!address) {
+  if (target.state === 'unreadable') {
     return <div className="live-stream-page"><div className="error">Invalid stream link</div></div>;
   }
+  if (target.state === 'waiting') {
+    return <WaitingForStream host={target.host} className="live-stream-page" />;
+  }
+  const address = target.address;
 
   return (
     <LiveStreamPage
+      // A link that follows the broadcaster hands the same page a different
+      // stream when they next go on air, and everything watching one — the
+      // chat, the counts — has to start over rather than be topped up
+      key={`${address.pubkey}:${address.identifier}`}
       kind={address.kind}
       pubkey={address.pubkey}
       identifier={address.identifier}
@@ -193,14 +203,19 @@ function LiveTogetherRoute({ relaysConnected, onNavigateToProfile, onNavigateToN
 
 function LiveChatRoute({ relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }: RouteCallbacks) {
   const { naddr } = useParams();
-  const address = naddr ? decodeLiveNaddr(naddr) : null;
+  const target = useHostStream(naddr, relaysConnected);
 
-  if (!address) {
+  if (target.state === 'unreadable') {
     return <div className="live-chat-page"><div className="error">Invalid stream link</div></div>;
   }
+  if (target.state === 'waiting') {
+    return <WaitingForStream host={target.host} className="live-chat-page" />;
+  }
+  const address = target.address;
 
   return (
     <LiveChatPage
+      key={`${address.pubkey}:${address.identifier}`}
       kind={address.kind}
       pubkey={address.pubkey}
       identifier={address.identifier}
@@ -214,14 +229,19 @@ function LiveChatRoute({ relaysConnected, onNavigateToProfile, onNavigateToNote,
 
 function LiveViewersRoute({ relaysConnected }: RouteCallbacks) {
   const { naddr } = useParams();
-  const address = naddr ? decodeLiveNaddr(naddr) : null;
+  const target = useHostStream(naddr, relaysConnected);
 
-  if (!address) {
+  if (target.state === 'unreadable') {
     return <div className="live-viewers-page"><div className="error">Invalid stream link</div></div>;
   }
+  if (target.state === 'waiting') {
+    return <WaitingForStream host={target.host} className="live-viewers-page" />;
+  }
+  const address = target.address;
 
   return (
     <LiveViewersPage
+      key={`${address.pubkey}:${address.identifier}`}
       kind={address.kind}
       pubkey={address.pubkey}
       identifier={address.identifier}
@@ -232,14 +252,19 @@ function LiveViewersRoute({ relaysConnected }: RouteCallbacks) {
 
 function LiveZappersRoute({ relaysConnected, onNavigateToProfile }: RouteCallbacks) {
   const { naddr } = useParams();
-  const address = naddr ? decodeLiveNaddr(naddr) : null;
+  const target = useHostStream(naddr, relaysConnected);
 
-  if (!address) {
+  if (target.state === 'unreadable') {
     return <div className="live-chat-page"><div className="error">Invalid stream link</div></div>;
   }
+  if (target.state === 'waiting') {
+    return <WaitingForStream host={target.host} className="live-chat-page live-zappers-page" />;
+  }
+  const address = target.address;
 
   return (
     <LiveZappersPage
+      key={`${address.pubkey}:${address.identifier}`}
       kind={address.kind}
       pubkey={address.pubkey}
       identifier={address.identifier}
@@ -717,6 +742,7 @@ function App() {
           <Route path="/settings/backup" element={<SettingsPage relaysConnected={relaysConnected} />} />
           <Route path="/settings/media" element={<SettingsPage relaysConnected={relaysConnected} />} />
           <Route path="/settings/muted" element={<SettingsPage relaysConnected={relaysConnected} />} />
+          <Route path="/settings/wallet" element={<SettingsPage relaysConnected={relaysConnected} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

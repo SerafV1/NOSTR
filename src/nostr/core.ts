@@ -11,7 +11,7 @@ import { NostrCrypto, CredentialManager, ExtensionManager } from './crypto';
 import { getRelayPool, RelayPool } from './relay';
 import { replyTags } from './replyTags';
 import { bunkerSignEvent } from './bunker';
-import { isEffectivelyLive } from '../utils/liveStream';
+import { isEffectivelyLive, parseLiveEvent } from '../utils/liveStream';
 import { quoteRefRegex } from '../utils/media';
 import { customEmojiMap } from '../utils/customEmoji';
 
@@ -2271,6 +2271,40 @@ export class NostrCore {
       return results.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
       console.error('Failed to fetch live events:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Whatever this person is streaming now.
+   *
+   * Two filters, because a live event is not always signed by the person on
+   * camera: a platform that publishes on a streamer's behalf signs it
+   * itself and marks the streamer with a `p` tag whose role is "Host". A
+   * link that follows a broadcaster has to find them either way.
+   */
+  static async fetchStreamsHostedBy(pubkey: string): Promise<NostrEventSigned[]> {
+    try {
+      const events = await getRelayPool().fetchEvents([
+        { kinds: [EVENT_KINDS.LIVE_EVENT], authors: [pubkey], limit: 20 },
+        { kinds: [EVENT_KINDS.LIVE_EVENT], '#p': [pubkey], limit: 20 }
+      ], true);
+
+      // Relays answer at different revisions, and the newest copy of an
+      // address is the one that says whether it is still on air
+      const latest = new Map<string, NostrEventSigned>();
+      events.forEach(event => {
+        const address = `${event.pubkey}:${event.tags.find(t => t[0] === 'd')?.[1] || ''}`;
+        const held = latest.get(address);
+        if (!held || (event.created_at || 0) > (held.created_at || 0)) latest.set(address, event);
+      });
+
+      const mine = Array.from(latest.values()).filter(event =>
+        event.pubkey === pubkey || parseLiveEvent(event).hostPubkey === pubkey);
+      mine.forEach(event => EventCache.addAddressable(event));
+      return mine.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+    } catch (error) {
+      console.error('Failed to fetch this host\'s streams:', error);
       return [];
     }
   }

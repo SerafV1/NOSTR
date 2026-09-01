@@ -1,7 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { NostrCore } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
-import { parseLiveEvent } from '../utils/liveStream';
+import {
+  decodeLiveNaddr,
+  encodeHostParam,
+  encodeLiveNaddr,
+  parseLiveEvent,
+  readdressed
+} from '../utils/liveStream';
 import { EVENT_KINDS } from '../types';
 
 /** How long after speaking someone still counts as being in the chat */
@@ -31,6 +37,11 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
   const params = new URLSearchParams(window.location.search);
   const [transparent, setTransparent] = useState(() => params.get('transparent') === '1');
   const [bold, setBold] = useState(() => params.get('bold') === '1');
+  // On the broadcaster rather than on one broadcast — the address OBS keeps
+  // (see LiveChatPage)
+  const [following, setFollowing] = useState(
+    () => !decodeLiveNaddr(window.location.pathname.split('/')[2] || '')
+  );
   const [published, setPublished] = useState<number | null>(null);
   /** When the copy the number came from was published, so an older one cannot replace it */
   const latestAt = useRef(0);
@@ -148,14 +159,20 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
     return query ? `?${query}` : '';
   };
 
-  const choose = (opts: { transparent: boolean; bold: boolean }) => {
+  const pathFor = (follow: boolean) => readdressed(
+    window.location.pathname,
+    follow ? encodeHostParam(pubkey) : encodeLiveNaddr(kind, pubkey, identifier)
+  );
+
+  const choose = (opts: { transparent: boolean; bold: boolean; following: boolean }) => {
     setTransparent(opts.transparent);
     setBold(opts.bold);
-    window.history.replaceState({}, '', window.location.pathname + search(opts));
+    setFollowing(opts.following);
+    window.history.replaceState({}, '', pathFor(opts.following) + search(opts));
   };
 
   const copyLink = async () => {
-    const url = `${window.location.origin}${window.location.pathname}${search({ transparent, bold })}`;
+    const url = `${window.location.origin}${pathFor(following)}${search({ transparent, bold })}`;
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
@@ -186,7 +203,7 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
             <input
               type="checkbox"
               checked={transparent}
-              onChange={(e) => choose({ transparent: e.target.checked, bold })}
+              onChange={(e) => choose({ transparent: e.target.checked, bold, following })}
             />
             Transparent
           </label>
@@ -194,9 +211,17 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
             <input
               type="checkbox"
               checked={bold}
-              onChange={(e) => choose({ transparent, bold: e.target.checked })}
+              onChange={(e) => choose({ transparent, bold: e.target.checked, following })}
             />
             Bold
+          </label>
+          <label title="Keep this address on whoever is streaming, not on this one broadcast — then OBS never needs a new link">
+            <input
+              type="checkbox"
+              checked={following}
+              onChange={(e) => choose({ transparent, bold, following: e.target.checked })}
+            />
+            Every stream
           </label>
           <button type="button" className="live-chat-obs-btn" onClick={copyLink}>
             {copied ? '✓ Copied' : '🔗 Copy link'}

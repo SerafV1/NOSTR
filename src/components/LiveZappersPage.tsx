@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import LiveZappersPanel from './LiveZappersPanel';
-import { liveEventAddress } from '../utils/liveStream';
+import {
+  decodeLiveNaddr,
+  encodeHostParam,
+  encodeLiveNaddr,
+  liveEventAddress,
+  readdressed
+} from '../utils/liveStream';
 import { CredentialManager } from '../nostr/crypto';
 
 interface LiveZappersPageProps {
@@ -33,6 +39,11 @@ const LiveZappersPage: React.FC<LiveZappersPageProps> = ({
     const asked = Number(params.get('top'));
     return Number.isFinite(asked) && asked > 0 ? Math.min(asked, 100) : 10;
   });
+  // On the broadcaster rather than on one broadcast — the address OBS keeps
+  // (see LiveChatPage)
+  const [following, setFollowing] = useState(
+    () => !decodeLiveNaddr(window.location.pathname.split('/')[2] || '')
+  );
   const readOnly = !CredentialManager.isLoggedIn();
   const isOverlaySource = readOnly && transparent;
 
@@ -45,15 +56,21 @@ const LiveZappersPage: React.FC<LiveZappersPageProps> = ({
     return query ? `?${query}` : '';
   };
 
-  const choose = (opts: { transparent: boolean; bold: boolean; top: number }) => {
+  const pathFor = (follow: boolean) => readdressed(
+    window.location.pathname,
+    follow ? encodeHostParam(pubkey) : encodeLiveNaddr(kind, pubkey, identifier)
+  );
+
+  const choose = (opts: { transparent: boolean; bold: boolean; top: number; following: boolean }) => {
     setTransparent(opts.transparent);
     setBold(opts.bold);
     setTop(opts.top);
-    window.history.replaceState({}, '', window.location.pathname + search(opts));
+    setFollowing(opts.following);
+    window.history.replaceState({}, '', pathFor(opts.following) + search(opts));
   };
 
   const copyLink = async () => {
-    const url = `${window.location.origin}${window.location.pathname}${search({ transparent, bold, top })}`;
+    const url = `${window.location.origin}${pathFor(following)}${search({ transparent, bold, top })}`;
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
@@ -93,7 +110,7 @@ const LiveZappersPage: React.FC<LiveZappersPageProps> = ({
               <input
                 type="checkbox"
                 checked={transparent}
-                onChange={(e) => choose({ transparent: e.target.checked, bold, top })}
+                onChange={(e) => choose({ transparent: e.target.checked, bold, top, following })}
               />
               Transparent
             </label>
@@ -101,7 +118,7 @@ const LiveZappersPage: React.FC<LiveZappersPageProps> = ({
               <input
                 type="checkbox"
                 checked={bold}
-                onChange={(e) => choose({ transparent, bold: e.target.checked, top })}
+                onChange={(e) => choose({ transparent, bold: e.target.checked, top, following })}
               />
               Bold
             </label>
@@ -110,12 +127,20 @@ const LiveZappersPage: React.FC<LiveZappersPageProps> = ({
               <select
                 className="live-zappers-count"
                 value={top}
-                onChange={(e) => choose({ transparent, bold, top: Number(e.target.value) })}
+                onChange={(e) => choose({ transparent, bold, top: Number(e.target.value), following })}
               >
                 {[5, 10, 20, 40, 80].map(n => (
                   <option key={n} value={n}>{n}</option>
                 ))}
               </select>
+            </label>
+            <label title="Keep this address on whoever is streaming, not on this one broadcast — then OBS never needs a new link">
+              <input
+                type="checkbox"
+                checked={following}
+                onChange={(e) => choose({ transparent, bold, top, following: e.target.checked })}
+              />
+              Every stream
             </label>
             <button type="button" className="live-chat-obs-btn" onClick={copyLink}>
               {copied ? '✓ Copied' : '🔗 Copy link'}

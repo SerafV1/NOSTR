@@ -7675,6 +7675,143 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   background: transparent;
 }
 
+/* The wallet, in settings and where it pays */
+.wallet-warning {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-md);
+  border: 1px solid var(--warning, #b7791f);
+  border-radius: var(--radius-md, 8px);
+  background: rgba(183, 121, 31, 0.08);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.wallet-warning strong {
+  color: var(--text-primary);
+}
+
+.wallet-connected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md, 8px);
+  margin-top: var(--spacing-md);
+}
+
+.wallet-connected-who {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.wallet-dot {
+  font-size: 1.4rem;
+}
+
+.wallet-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.wallet-relay {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.wallet-disconnect {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--error, #e53e3e);
+  cursor: pointer;
+}
+
+.wallet-limits {
+  margin-top: var(--spacing-lg);
+}
+
+.wallet-limits h3 {
+  margin-bottom: var(--spacing-xs);
+}
+
+.wallet-limit {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.wallet-limit span:first-child {
+  min-width: 130px;
+}
+
+.wallet-limit input {
+  width: 130px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.wallet-limit-unit {
+  color: var(--text-secondary);
+}
+
+/* In the zap menu: where the sats leave from, and what stopped them */
+.zap-from-wallet {
+  margin-top: var(--spacing-xs);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.zap-wallet-error {
+  margin-bottom: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm, 6px);
+  background: rgba(229, 62, 62, 0.1);
+  color: var(--error, #e53e3e);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+/* Between broadcasts, where a link that follows the broadcaster waits */
+.stream-waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  min-height: 240px;
+  height: 100%;
+  padding: var(--spacing-lg);
+  text-align: center;
+}
+
+.stream-waiting-line {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.stream-waiting-note {
+  margin: 0;
+  max-width: 340px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
 /* ?bold=1 — text set heavier, to hold up against whatever is behind it */
 .live-chat-page.bold-text .live-chat-text,
 .live-chat-page.bold-text .live-chat-zap-line {

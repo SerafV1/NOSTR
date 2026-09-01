@@ -101,10 +101,15 @@ interface LiveChatPanelProps {
   /** Overlay preview: given only where the choice is the viewer's to make */
   transparent?: boolean;
   bold?: boolean;
-  onDisplayChange?: (opts: { transparent: boolean; bold: boolean }) => void;
+  /**
+   * Whether this window follows the broadcaster or is pinned to one
+   * broadcast. Given only where there is an address to change.
+   */
+  following?: boolean;
+  onDisplayChange?: (opts: { transparent: boolean; bold: boolean; following: boolean }) => void;
 }
 
-const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, onPeoplePresent, hideComposer, obsLink, owners = [], identifier, transparent, bold, onDisplayChange }) => {
+const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, onPeoplePresent, hideComposer, obsLink, owners = [], identifier, transparent, bold, following, onDisplayChange }) => {
   const [messages, setMessages] = useState<NostrEventSigned[]>([]);
   const [zaps, setZaps] = useState<NostrEventSigned[]>([]);
   const [reactions, setReactions] = useState<NostrEventSigned[]>([]);
@@ -737,7 +742,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
               <input
                 type="checkbox"
                 checked={!!transparent}
-                onChange={(e) => onDisplayChange({ transparent: e.target.checked, bold: !!bold })}
+                onChange={(e) => onDisplayChange({ transparent: e.target.checked, bold: !!bold, following: !!following })}
               />
               Transparent
             </label>
@@ -745,10 +750,20 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
               <input
                 type="checkbox"
                 checked={!!bold}
-                onChange={(e) => onDisplayChange({ transparent: !!transparent, bold: e.target.checked })}
+                onChange={(e) => onDisplayChange({ transparent: !!transparent, bold: e.target.checked, following: !!following })}
               />
               Bold
             </label>
+            {following !== undefined && (
+              <label title="Keep this address on whoever is streaming, not on this one broadcast — then OBS never needs a new link">
+                <input
+                  type="checkbox"
+                  checked={following}
+                  onChange={(e) => onDisplayChange({ transparent: !!transparent, bold: !!bold, following: e.target.checked })}
+                />
+                Every stream
+              </label>
+            )}
           </span>
         )}
 
@@ -758,7 +773,9 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
           <button
             type="button"
             className="live-chat-obs-btn"
-            title="Copy this window's address — with the options chosen here — for an OBS browser source"
+            title={following
+              ? "Copy this address for an OBS browser source. It stays the same for every stream you do: the chat empties and refills on its own when the next one starts."
+              : "Copy this window's address — with the options chosen here — for an OBS browser source"}
             onClick={async () => {
               await navigator.clipboard.writeText(obsLink);
               setObsLinkCopied(true);
