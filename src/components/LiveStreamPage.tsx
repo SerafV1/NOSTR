@@ -49,6 +49,17 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   const dragFrom = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const [present, setPresent] = useState<PresentPerson[]>([]);
   /** How many zappers to list beside the stream, remembered between visits */
+  /**
+   * Whether the zappers stand beside the chat. Hidden, the dock is only the
+   * chat's width and the picture takes the room back — which is the point of
+   * hiding them.
+   */
+  const [showZappers, setShowZappers] = useState(() => localStorage.getItem('razr_hide_zappers') !== '1');
+  const hideZappers = (hidden: boolean) => {
+    setShowZappers(!hidden);
+    localStorage.setItem('razr_hide_zappers', hidden ? '1' : '0');
+  };
+
   const [topZappers, setTopZappers] = useState(() => {
     const held = Number(localStorage.getItem('razr_top_zappers'));
     return Number.isFinite(held) && held > 0 ? held : 10;
@@ -476,7 +487,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
           </div>
         </div>
 
-        <div className={`live-chat-dock ${chatOpen ? 'open' : ''}`}>
+        <div className={`live-chat-dock ${chatOpen ? 'open' : ''} ${showZappers ? '' : 'no-zappers'}`}>
           <LiveChatPanel
             address={address}
             // Desktop only: the chat as its own window, to keep beside the
@@ -499,8 +510,19 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
           />
 
           {/* Beside the chat, since it is the same zaps counted up rather
-              than watched going past */}
-          <LiveZappersPanel
+              than watched going past — until somebody would rather have the
+              room for the picture */}
+          {!showZappers && (
+            <button
+              type="button"
+              className="live-zappers-show"
+              title="Show the top zappers"
+              onClick={() => hideZappers(false)}
+            >
+              ⚡
+            </button>
+          )}
+          {showZappers && <LiveZappersPanel
             address={address}
             relaysConnected={relaysConnected}
             limit={topZappers}
@@ -534,8 +556,17 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
               >
                 <PopOutIcon />
               </button>
+
+              <button
+                type="button"
+                className="live-chat-obs-btn"
+                title="Hide the top zappers and give the room to the video"
+                onClick={() => hideZappers(true)}
+              >
+                ✕
+              </button>
             </>)}
-          />
+          />}
 
           <button
             type="button"

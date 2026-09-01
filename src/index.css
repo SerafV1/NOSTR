@@ -2822,6 +2822,35 @@ button.poll-option-vote:disabled {
   max-height: calc(100vh - var(--spacing-xl) * 2);
 }
 
+/* With the zappers put away the dock is only the chat, and the ~258px they
+   were holding go back to the picture */
+.live-chat-dock.no-zappers {
+  width: 340px;
+}
+
+.live-chat-dock.no-zappers .live-chat-panel {
+  width: 100%;
+}
+
+/* What brings them back: a small mark at the top of the dock */
+.live-zappers-show {
+  position: absolute;
+  right: -2px;
+  top: -30px;
+  padding: 2px 8px;
+  border: 1px solid rgba(247, 147, 26, 0.45);
+  border-radius: var(--border-radius);
+  background: rgba(247, 147, 26, 0.08);
+  color: var(--text-secondary);
+  cursor: pointer;
+  z-index: 2;
+}
+
+.live-zappers-show:hover {
+  color: var(--text-primary);
+  border-color: rgba(247, 147, 26, 0.8);
+}
+
 .live-zappers-panel {
   position: absolute;
   right: 0;
@@ -5775,7 +5804,7 @@ a.capability-indicator.paid:hover {
 }
 
 .live-stream-page-layout {
-  max-width: 1400px;
+  max-width: 1600px;
   margin: 0 auto;
   display: flex;
   /* Stretch, so the chat and the zappers end where the video and its
@@ -5787,7 +5816,7 @@ a.capability-indicator.paid:hover {
 .live-stream-page-container {
   flex: 1;
   min-width: 0;
-  max-width: 900px;
+  max-width: 1100px;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-lg);

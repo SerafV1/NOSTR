@@ -2,7 +2,34 @@
 
 import { streamNaddrFromUrl } from './liveStream';
 
-const IMAGE_URL_SOURCE = 'https?:\\/\\/[^\\s]+\\.(?:jpg|jpeg|png|gif|webp|bmp|svg)(?:\\?[^\\s]*)?';
+/**
+ * A picture, by its file ending — and the places that serve pictures without
+ * one.
+ *
+ * An image proxy hands out a URL whose path is the original address in
+ * base64 with no extension anywhere in it (Brave's search results do exactly
+ * this), and blossom servers name a file by the hash of its contents. Judged
+ * by the ending alone, both were links rather than pictures.
+ */
+const IMAGE_HOSTS = [
+  'imgs\\.search\\.brave\\.com',
+  'i\\.pinimg\\.com',
+  'pbs\\.twimg\\.com',
+  'i\\.imgur\\.com',
+  'media[0-9]*\\.tenor\\.com',
+  'media[0-9]*\\.giphy\\.com',
+  'image\\.nostr\\.build',
+  'images\\.unsplash\\.com'
+].join('|');
+
+/** A file named by the hash of its contents, which is how blossom serves one */
+const HASH_NAMED = 'https?:\\/\\/[^\\s]+\\/[0-9a-f]{64}(?:\\?[^\\s]*)?';
+
+const IMAGE_URL_SOURCE = [
+  'https?:\\/\\/[^\\s]+\\.(?:jpg|jpeg|png|gif|webp|bmp|svg)(?:\\?[^\\s]*)?',
+  `https?:\\/\\/(?:${IMAGE_HOSTS})\\/[^\\s]+`,
+  HASH_NAMED
+].join('|');
 const VIDEO_URL_SOURCE = 'https?:\\/\\/[^\\s]+\\.(?:mp4|webm|mov|m4v|ogv)(?:\\?[^\\s]*)?';
 // A live stream is a playlist, not a file: outside Safari the browser cannot
 // open it without hls.js, so it is kept apart from the video URLs above and
