@@ -249,9 +249,18 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
         NostrCore.fetchLiveZaps(address)
       ]);
       if (cancelled) return;
+      // Merged with what is already there — the remembered lines, or what a
+      // subscription delivered while this was in flight. A quick answer from
+      // one relay holds less than the last window did, and replacing with it
+      // made the chat empty itself and fill again a moment later.
       if (history.length > 0) {
-        setMessages(history);
-        rememberChat(address, history);
+        setMessages(prev => {
+          const byId = new Map(prev.map(m => [m.id, m]));
+          for (const message of history) byId.set(message.id, message);
+          const merged = [...byId.values()].sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+          rememberChat(address, merged);
+          return merged;
+        });
       }
       setZaps(zapHistory);
 

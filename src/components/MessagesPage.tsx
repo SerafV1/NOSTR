@@ -86,8 +86,17 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
       const contactProfiles = await NostrCore.fetchProfiles(people);
       setProfiles(prev => ({ ...prev, ...Object.fromEntries(contactProfiles) }));
 
-      setMessages(fetched);
-      PersistentCache.set(`dm_${pubkey}`, fetched.slice(-300));
+      // Merged, never replaced. A fetch answers with whatever the relays
+      // that replied happened to hold, which is routinely less than what is
+      // already on screen — replacing made messages vanish and come back on
+      // the next refresh.
+      setMessages(prev => {
+        const byId = new Map(prev.map(message => [message.id, message]));
+        for (const message of fetched) byId.set(message.id, message);
+        const merged = Array.from(byId.values()).sort((a, b) => a.createdAt - b.createdAt);
+        PersistentCache.set(`dm_${pubkey}`, merged.slice(-300));
+        return merged;
+      });
     } catch (error) {
       console.error('Failed to load messages:', error);
     } finally {
