@@ -1201,6 +1201,98 @@ textarea {
   border-bottom: 1px solid var(--border-color);
 }
 
+/* The one-line facts under a bio — website, lightning, addresses — each on
+   a line of its own. As inline elements they shared rows with each other. */
+.profile-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-xs);
+}
+
+/* Ways to be paid that are not lightning, under a profile */
+.profile-payments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm) var(--spacing-lg);
+  margin-top: var(--spacing-xs);
+}
+
+.profile-payment {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.profile-payment-icon {
+  vertical-align: -3px;
+}
+
+.profile-payment-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.profile-payment-label:hover {
+  color: var(--primary-color);
+  text-decoration: underline;
+}
+
+.profile-payment-address {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+  color: var(--text-tertiary, var(--text-secondary));
+  overflow-wrap: anywhere;
+}
+
+.profile-payment-copy {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.profile-payment-copy:hover {
+  color: var(--primary-color);
+}
+
+/* What a form says when an address will not do */
+.form-error {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: var(--error-color, #e53e3e);
+}
+
+/* The reposter's name inside that label: a name to point at and follow,
+   not a button — the label reads as one line either way */
+.reposted-by {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.reposted-by:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
 .reposted-avatar {
   width: 18px;
   height: 18px;

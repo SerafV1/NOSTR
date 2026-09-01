@@ -210,3 +210,24 @@ export const PipIcon: React.FC<IconProps> = ({ className }) => (
     <rect x="12" y="12" width="8" height="6" rx="1" fill="currentColor" />
   </svg>
 );
+
+/**
+ * The two currency marks that go beside an address on a profile.
+ *
+ * Monero's own sign is ɱ — a small m with a hook — which in most of the fonts
+ * a browser reaches for is drawn as a plain m and reads as a typo rather than
+ * as a currency. Its wheel is what people recognise, so both marks are the
+ * logos themselves (paths from simple-icons, CC0), each drawn in its own
+ * colour rather than the surrounding text's.
+ */
+export const MoneroIcon: React.FC<IconProps> = ({ className }) => (
+  <svg className={className} width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+    <path fill="#ff6600" d="M12 0C5.365 0 0 5.373 0 12.015c0 1.335.228 2.607.618 3.81h3.577V5.729L12 13.545l7.805-7.815v10.095h3.577c.389-1.203.618-2.475.618-3.81C24 5.375 18.635 0 12 0zm-1.788 15.307l-3.417-3.421v6.351H1.758C3.87 21.689 7.678 24 12 24s8.162-2.311 10.245-5.764h-5.04v-6.351l-3.386 3.421-1.788 1.79-1.814-1.79h-.005z" />
+  </svg>
+);
+
+export const BitcoinIcon: React.FC<IconProps> = ({ className }) => (
+  <svg className={className} width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+    <path fill="#f7931a" d="M23.638 14.904c-1.602 6.43-8.113 10.34-14.542 8.736C2.67 22.05-1.244 15.525.362 9.105 1.962 2.67 8.475-1.243 14.9.358c6.43 1.605 10.342 8.115 8.738 14.548v-.002zm-6.35-4.613c.24-1.59-.974-2.45-2.64-3.03l.54-2.153-1.315-.33-.525 2.107c-.345-.087-.705-.167-1.064-.25l.526-2.127-1.32-.33-.54 2.165c-.285-.067-.565-.132-.84-.2l-1.815-.45-.35 1.407s.975.225.955.236c.535.136.63.486.615.766l-1.477 5.92c-.075.166-.24.406-.614.314.015.02-.96-.24-.96-.24l-.66 1.51 1.71.426.93.242-.54 2.19 1.32.327.54-2.17c.36.1.705.19 1.05.273l-.51 2.154 1.32.33.545-2.19c2.24.427 3.93.257 4.64-1.774.57-1.637-.03-2.58-1.217-3.196.854-.193 1.5-.76 1.68-1.93h.01zm-3.01 4.22c-.404 1.64-3.157.75-4.05.53l.72-2.9c.896.23 3.757.67 3.33 2.37zm.41-4.24c-.37 1.49-2.662.735-3.405.55l.654-2.64c.744.18 3.137.524 2.75 2.084v.006z" />
+  </svg>
+);

@@ -4,6 +4,7 @@ import { NostrEventSigned, NostrFilter, EVENT_KINDS, UserProfile } from '../type
 import { NostrCore, PersistentCache, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
 import EmojiText from './EmojiText';
+import ProfileHoverCard from './ProfileHoverCard';
 import { formatAddress } from '../utils/helpers';
 import { loadCustomFeeds, saveCustomFeeds } from '../utils/customFeeds';
 import { parseLiveEvent, encodeLiveNaddr, LiveStreamInfo } from '../utils/liveStream';
@@ -961,11 +962,28 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
                 const reposterName = reposterProfile?.display_name || reposterProfile?.name || 'Someone you follow';
                 return (
                   <div key={item.key} className="reposted-item">
+                    {/* The person who reposted answers to a hover like any
+                        other name on the page: who they are, and whether to
+                        follow or mute them */}
                     <div className="reposted-label">
-                      {reposterProfile?.picture && (
-                        <img src={reposterProfile.picture} alt="" className="reposted-avatar"  loading="lazy" decoding="async" />
-                      )}
-                      {reposterName} Reposted
+                      <ProfileHoverCard
+                        pubkey={item.repost.pubkey}
+                        profile={reposterProfile}
+                        onNavigateToProfile={onNavigateToProfile}
+                        onBlocked={() => fetchFeed()}
+                      >
+                        <button
+                          type="button"
+                          className="reposted-by"
+                          onClick={() => onNavigateToProfile(item.repost.pubkey)}
+                        >
+                          {reposterProfile?.picture && (
+                            <img src={reposterProfile.picture} alt="" className="reposted-avatar"  loading="lazy" decoding="async" />
+                          )}
+                          <EmojiText text={reposterName} emojis={reposterProfile?.emojis} />
+                        </button>
+                      </ProfileHoverCard>
+                      {' '}Reposted
                     </div>
                     <EventCard
                       event={item.original}

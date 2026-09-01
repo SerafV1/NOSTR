@@ -12,7 +12,9 @@ import EditProfileForm from './EditProfileForm';
 import ZapButton from './ZapButton';
 import Nip05Handle from './Nip05Handle';
 import EmojiText from './EmojiText';
-import { ZapIcon, MessageIcon, CopyIcon, CheckIcon } from './Icons';
+import ProfileHoverCard from './ProfileHoverCard';
+import { ZapIcon, MessageIcon, CopyIcon, CheckIcon, BitcoinIcon, MoneroIcon } from './Icons';
+import { paymentTargets, shortAddress } from '../utils/paymentTargets';
 
 interface MediaThumbnail {
   noteId: string;
@@ -90,6 +92,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const [isBlocked, setIsBlocked] = useState(() => NostrCore.isBlocked(pubkey));
   const [blockLoading, setBlockLoading] = useState(false);
   const [npubCopied, setNpubCopied] = useState(false);
+  const [copiedTarget, setCopiedTarget] = useState<string | null>(null);
   // The following list doubles as the count in the header, so the Following
   // tab needs no second lookup. Followers are only fetched when that tab is
   // opened — it's a scan across every contact list the relays have indexed
@@ -597,6 +600,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const displayName = profile.display_name || profile.name || formatAddress(pubkey);
   const coverImage = profile.banner || 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
   const npubHandle = NostrCrypto.npubEncode(pubkey) || pubkey;
+  const targets = paymentTargets(profile);
 
   return (
     <div className="profile-page">
@@ -708,19 +712,66 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                   />
                 </p>
               )}
-              {profile.website && (() => {
-                const site = describeWebsite(profile.website);
-                return site.href ? (
-                  <a href={site.href} target="_blank" rel="noopener noreferrer" className="profile-website">
-                    🔗 {site.label}
-                  </a>
-                ) : (
-                  <span className="profile-website">🔗 {site.label}</span>
-                );
-              })()}
-              {profile.lud16 && (
-                <span className="profile-lightning">⚡ {profile.lud16}</span>
-              )}
+              {/* The one-line facts about somebody, each on its own line.
+                  Left inline they queued up beside each other — a website
+                  and a lightning address sharing a row read as one thing. */}
+              <div className="profile-meta">
+                {profile.website && (() => {
+                  const site = describeWebsite(profile.website);
+                  return site.href ? (
+                    <a href={site.href} target="_blank" rel="noopener noreferrer" className="profile-website">
+                      🔗 {site.label}
+                    </a>
+                  ) : (
+                    <span className="profile-website">🔗 {site.label}</span>
+                  );
+                })()}
+                {profile.lud16 && (
+                  <span className="profile-lightning">⚡ {profile.lud16}</span>
+                )}
+                {/* The ways to pay that are not lightning: an address to copy,
+                    and a link a wallet on this device can pick up. Only what
+                    reads as an address of that kind is shown — "here is where
+                    to send money" is the wrong place to print whatever the
+                    field happened to contain. */}
+                {targets.length > 0 && (
+                  <div className="profile-payments">
+                    {targets.map(target => (
+                    <span key={target.address} className="profile-payment">
+                      <a
+                        className="profile-payment-label"
+                        href={target.uri}
+                        title={`Open ${target.label} in a wallet on this device`}
+                      >
+                        {target.kind === 'bitcoin'
+                          ? <BitcoinIcon className="profile-payment-icon" />
+                          : <MoneroIcon className="profile-payment-icon" />}
+                        {' '}{target.label}
+                      </a>
+                      <code className="profile-payment-address" title={target.address}>
+                        {shortAddress(target.address)}
+                      </code>
+                      <button
+                        type="button"
+                        className="profile-payment-copy"
+                        title={`Copy the ${target.label} address`}
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(target.address);
+                            setCopiedTarget(target.address);
+                            setTimeout(() => setCopiedTarget(null), 2000);
+                          } catch {
+                            prompt(`Copy this ${target.label} address:`, target.address);
+                          }
+                        }}
+                      >
+                        {copiedTarget === target.address ? <CheckIcon /> : <CopyIcon />}
+                      </button>
+                    </span>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="profile-stats">
                 <div className="stat">
                   {/* What the relays count, where they will count (NIP-45).
@@ -839,8 +890,21 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                   {timelineItems.map((item) => item.type === 'repost' ? (
                     <div key={item.key} className="reposted-item">
                       <div className="reposted-label">
-                        {profile.picture && <img src={profile.picture} alt="" className="reposted-avatar"  loading="lazy" decoding="async" />}
-                        <EmojiText text={displayName} emojis={profile.emojis} /> Reposted
+                        <ProfileHoverCard
+                          pubkey={pubkey}
+                          profile={profile}
+                          onNavigateToProfile={onNavigateToProfile}
+                        >
+                          <button
+                            type="button"
+                            className="reposted-by"
+                            onClick={() => onNavigateToProfile(pubkey)}
+                          >
+                            {profile.picture && <img src={profile.picture} alt="" className="reposted-avatar"  loading="lazy" decoding="async" />}
+                            <EmojiText text={displayName} emojis={profile.emojis} />
+                          </button>
+                        </ProfileHoverCard>
+                        {' '}Reposted
                       </div>
                       <EventCard
                         event={item.original}

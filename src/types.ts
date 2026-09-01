@@ -45,6 +45,13 @@ export interface UserProfile {
   banner?: string;
   display_name?: string;
   lud16?: string;
+  /**
+   * Somewhere to send that is not lightning. No NIP names these fields;
+   * `btc` and `xmr` are the spellings that turn up in profiles in the wild,
+   * and the reader in utils/paymentTargets understands the others.
+   */
+  btc?: string;
+  xmr?: string;
   /** NIP-30 shortcode → picture, from the metadata event's `emoji` tags */
   emojis?: Record<string, string>;
 }
