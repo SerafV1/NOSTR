@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { NostrEventSigned, UserProfile } from '../types';
+import { NostrEventSigned, UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import {
   NotificationCore,
@@ -31,8 +31,8 @@ interface NotificationsPageProps {
 const TYPE_META: Record<NotificationType, { icon: string; verb: string }> = {
   reply: { icon: '💬', verb: 'replied to your note' },
   mention: { icon: '📣', verb: 'mentioned you' },
-  reaction: { icon: '❤️', verb: 'reacted to your note' },
-  repost: { icon: '🔄', verb: 'reposted your note' },
+  reaction: { icon: '❤️', verb: 'reacted to' },
+  repost: { icon: '🔄', verb: 'reposted' },
   zap: { icon: '⚡', verb: 'zapped you' },
   livechat: { icon: '📺', verb: 'tagged you in a stream chat' },
   follow: { icon: '👤', verb: 'started following you' },
@@ -68,6 +68,45 @@ const reactedNoteId = (event: { tags: string[][] }): string | undefined => {
   if (eTags.length === 0) return undefined;
   const marked = eTags.find(t => t[3] === 'reply');
   return (marked || eTags[eTags.length - 1])[1];
+};
+
+/**
+ * What the thing being reacted to actually is.
+ *
+ * Anything can be reacted to, not only a note: someone liked a profile and
+ * the row said "reacted to your note" and then printed the whole kind-0
+ * event as its text — the JSON, addresses and all. So the target's kind
+ * decides both what the row says and what, if anything, is worth previewing.
+ */
+const describeTarget = (
+  target: { kind: number; content: string; tags: string[][] } | undefined,
+  fallback: string
+): { noun: string; preview?: string; tags?: string[][] } => {
+  if (!target) return { noun: fallback };
+
+  const titleTag = (name: string) => target.tags.find(t => t[0] === name)?.[1];
+
+  switch (target.kind) {
+    case 0: {
+      // A profile's content is JSON, which is nobody's idea of a preview
+      let name = '';
+      try {
+        const parsed = JSON.parse(target.content || '{}');
+        name = parsed.display_name || parsed.name || '';
+      } catch {
+        // A profile that will not parse still is not a note
+      }
+      return { noun: 'your profile', preview: name ? `Profile: ${name}` : undefined };
+    }
+    case EVENT_KINDS.LONG_FORM:
+      return { noun: 'your article', preview: titleTag('title'), tags: target.tags };
+    case EVENT_KINDS.LIVE_EVENT:
+      return { noun: 'your stream', preview: titleTag('title'), tags: target.tags };
+    case EVENT_KINDS.LIVE_CHAT_MESSAGE:
+      return { noun: 'your message in a stream', preview: target.content, tags: target.tags };
+    default:
+      return { noun: fallback, preview: target.content, tags: target.tags };
+  }
 };
 
 const NotificationsPage: React.FC<NotificationsPageProps> = ({
@@ -211,11 +250,27 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
       return;
     }
     const targetId = reactedNoteId(notification.event);
+    const target = targetOf(notification);
+    // A reaction to a profile leads to the profile, not to a page trying to
+    // read a kind 0 as if it were a note
+    if (target?.kind === 0) {
+      onNavigateToProfile(target.pubkey);
+      return;
+    }
     if (targetId) {
       onNavigateToNote(targetId);
     } else {
       onNavigateToProfile(notification.event.pubkey);
     }
+  };
+
+  /** The event a reaction, repost or zap is about, if it is to hand */
+  const targetOf = (notification: NostrNotification) => {
+    const targetId = reactedNoteId(notification.event);
+    // The note this is about is often already in memory — from the feed, or
+    // from an earlier visit — so read it straight out rather than showing an
+    // empty preview until the network answers
+    return targetId ? (targetNotes[targetId] || EventCache.getEvent(targetId)) : undefined;
   };
 
   const renderPreview = (notification: NostrNotification): React.ReactNode => {
@@ -230,13 +285,9 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
       rawContent = notification.event.content;
       sourceTags = notification.event.tags;
     } else {
-      const targetId = reactedNoteId(notification.event);
-      // The note this is about is often already in memory — from the feed,
-      // or from an earlier visit — so read it straight out rather than
-      // showing an empty preview until the network answers
-      const target = targetId ? (targetNotes[targetId] || EventCache.getEvent(targetId)) : undefined;
-      rawContent = target?.content;
-      sourceTags = target?.tags;
+      const described = describeTarget(targetOf(notification), 'your note');
+      rawContent = described.preview;
+      sourceTags = described.tags;
     }
     if (!rawContent) return null;
 
@@ -327,6 +378,9 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
                     <EmojiText text={displayName} emojis={profile?.emojis} />
                   </button>{' '}
                   {meta.verb}
+                  {(notification.type === 'reaction' || notification.type === 'repost')
+                    ? ` ${describeTarget(targetOf(notification), 'your note').noun}`
+                    : ''}
                   {notification.type === 'zap' && amountSats > 0 ? ` (${amountSats.toLocaleString()} sats)` : ''}
                 </div>
                 {preview && <div className="notification-preview">{preview}</div>}

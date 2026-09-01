@@ -1201,6 +1201,17 @@ textarea {
   border-bottom: 1px solid var(--border-color);
 }
 
+/* A profile reached where a post was expected — reacted to, usually */
+.event-profile-update {
+  margin: 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.event-profile-about {
+  font-style: normal;
+}
+
 /* Long-form articles (NIP-23): a title, a picture and a body of markdown */
 .article-page {
   max-width: 720px;

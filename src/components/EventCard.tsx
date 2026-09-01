@@ -792,7 +792,27 @@ const EventCard: React.FC<EventCardProps> = ({
             )}
           </div>
         )}
-        {!isArticle && (() => {
+        {/* A profile is JSON, and printing it as a post's text put someone's
+            whole kind 0 — addresses and all — on screen as if they had
+            written it. Reachable because anything can be reacted to. */}
+        {event.kind === EVENT_KINDS.SET_METADATA && (() => {
+          let named = '';
+          let says = '';
+          try {
+            const parsed = JSON.parse(event.content || '{}');
+            named = parsed.display_name || parsed.name || '';
+            says = parsed.about || '';
+          } catch {
+            // Then there is nothing to say about it
+          }
+          return (
+            <p className="event-profile-update">
+              Updated their profile{named ? `: ${named}` : ''}
+              {says ? <span className="event-profile-about"> — {says.slice(0, 140)}</span> : null}
+            </p>
+          );
+        })()}
+        {!isArticle && event.kind !== EVENT_KINDS.SET_METADATA && (() => {
           const stripped = stripMediaUrls(noteContent);
           if (!stripped) return null;
           const isLong = stripped.length > CONTENT_TRUNCATE_LENGTH;
