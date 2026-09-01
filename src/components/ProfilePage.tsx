@@ -78,7 +78,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const emptyRunsRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState(false);
-  const [contentTab, setContentTab] = useState<'posts' | 'replies' | 'media' | 'zaps' | 'bookmarks' | 'following' | 'followers'>('posts');
+  const [contentTab, setContentTab] = useState<'posts' | 'articles' | 'replies' | 'media' | 'zaps' | 'bookmarks' | 'following' | 'followers'>('posts');
+  // Long-form articles (NIP-23), fetched when the tab is first opened
+  const [articles, setArticles] = useState<NostrEventSigned[]>([]);
+  const [articlesLoaded, setArticlesLoaded] = useState(false);
   // Only your own list is worth a tab: a bookmark list is published publicly,
   // but it is a list of what you meant to come back to
   const [bookmarks, setBookmarks] = useState<NostrEventSigned[]>([]);
@@ -93,6 +96,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const [blockLoading, setBlockLoading] = useState(false);
   const [npubCopied, setNpubCopied] = useState(false);
   const [copiedTarget, setCopiedTarget] = useState<string | null>(null);
+  // NIP-A3: how this person says they can be paid, in an event of its own
+  const [paytoEvent, setPaytoEvent] = useState<NostrEventSigned | null>(null);
   // The following list doubles as the count in the header, so the Following
   // tab needs no second lookup. Followers are only fetched when that tab is
   // opened — it's a scan across every contact list the relays have indexed
@@ -419,6 +424,31 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   // tab is actually opened
   // Fetched when the tab is first opened, not on every profile visit
   useEffect(() => {
+    if (!relaysConnected) return;
+    let cancelled = false;
+    NostrCore.fetchPaymentTargets(pubkey)
+      .then(event => { if (!cancelled) setPaytoEvent(event); })
+      .catch(() => { /* nobody has to publish one */ });
+    return () => { cancelled = true; };
+  }, [pubkey, relaysConnected]);
+
+  useEffect(() => {
+    if (contentTab !== 'articles' || articlesLoaded || !relaysConnected) return;
+    let cancelled = false;
+    NostrCore.fetchArticlesBy(pubkey)
+      .then(found => {
+        if (cancelled) return;
+        setArticles(found);
+        setArticlesLoaded(true);
+      })
+      .catch(error => {
+        console.error('Failed to load articles:', error);
+        if (!cancelled) setArticlesLoaded(true);
+      });
+    return () => { cancelled = true; };
+  }, [contentTab, articlesLoaded, relaysConnected, pubkey]);
+
+  useEffect(() => {
     if (contentTab !== 'bookmarks' || bookmarksLoaded || !relaysConnected) return;
     let cancelled = false;
     NostrCore.fetchBookmarkedNotes()
@@ -600,7 +630,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const displayName = profile.display_name || profile.name || formatAddress(pubkey);
   const coverImage = profile.banner || 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
   const npubHandle = NostrCrypto.npubEncode(pubkey) || pubkey;
-  const targets = paymentTargets(profile);
+  const targets = paymentTargets(profile, paytoEvent);
 
   return (
     <div className="profile-page">
@@ -743,9 +773,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                         href={target.uri}
                         title={`Open ${target.label} in a wallet on this device`}
                       >
-                        {target.kind === 'bitcoin'
-                          ? <BitcoinIcon className="profile-payment-icon" />
-                          : <MoneroIcon className="profile-payment-icon" />}
+                        {target.label === 'Bitcoin' ? (
+                          <BitcoinIcon className="profile-payment-icon" />
+                        ) : target.label === 'Monero' ? (
+                          <MoneroIcon className="profile-payment-icon" />
+                        ) : (
+                          <span className="profile-payment-generic" aria-hidden="true">◈</span>
+                        )}
                         {' '}{target.label}
                       </a>
                       <code className="profile-payment-address" title={target.address}>
@@ -833,6 +867,12 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                 onClick={() => setContentTab('posts')}
               >
                 Posts
+              </button>
+              <button
+                className={`feed-tab ${contentTab === 'articles' ? 'active' : ''}`}
+                onClick={() => setContentTab('articles')}
+              >
+                Articles
               </button>
               <button
                 className={`feed-tab ${contentTab === 'replies' ? 'active' : ''}`}
@@ -936,6 +976,28 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                     ? 'That is as far back as the relays go'
                     : ''}
               </div>
+            )}
+
+            {contentTab === 'articles' && (
+              !articlesLoaded ? (
+                <div className="loading">Looking for articles…</div>
+              ) : articles.length === 0 ? (
+                <div className="empty-state">
+                  <p>No long-form articles</p>
+                </div>
+              ) : (
+                <div className="events-list">
+                  {articles.map(article => (
+                    <EventCard
+                      key={article.id}
+                      event={article}
+                      onNavigateToProfile={onNavigateToProfile}
+                      onNavigateToNote={onNavigateToNote}
+                      onNavigateToTopic={onNavigateToTopic}
+                    />
+                  ))}
+                </div>
+              )
             )}
 
             {contentTab === 'media' && (

@@ -69,16 +69,20 @@ const ADDRESSABLE_KINDS: Record<number, string> = {
  */
 const describeAddressRef = (
   ref: string
-): { naddr: string; label: string; openable: boolean } | null => {
+): { naddr: string; label: string; openable: boolean; path: string } | null => {
   try {
     const naddr = bareRef(ref);
     const decoded = nip19.decode(naddr);
     if (decoded.type !== 'naddr') return null;
     const { kind } = decoded.data as { kind: number };
+    // Both of these have a page of their own here now; the rest still only
+    // say what they are
+    const path = kind === 30311 ? `/live/${naddr}` : kind === 30023 ? `/a/${naddr}` : '';
     return {
       naddr,
       label: ADDRESSABLE_KINDS[kind] || '🔗 nostr address',
-      openable: kind === 30311
+      openable: Boolean(path),
+      path
     };
   } catch {
     return null;
@@ -318,14 +322,15 @@ const RichText: React.FC<RichTextProps> = ({
               {addressRef.label}
             </span>
           );
-        } else if (inlineQuotes) {
+        } else if (inlineQuotes && addressRef.path.startsWith('/live/')) {
           // The stream itself, the same as a link to its page — this is how
           // a note shared from another client carries one
           parts.push(<InlineLiveStream key={key++} naddr={addressRef.naddr} />);
         } else {
           // Where no navigation was handed in, the address is still a real
           // page on this app — a plain link reaches it
-          parts.push(onNavigateToStream ? (
+          const openHere = onNavigateToStream && addressRef.path.startsWith('/live/');
+          parts.push(openHere ? (
             <button
               key={key++}
               type="button"
@@ -337,7 +342,7 @@ const RichText: React.FC<RichTextProps> = ({
           ) : (
             <a
               key={key++}
-              href={`/live/${addressRef.naddr}`}
+              href={addressRef.path}
               className="mention-link"
               onClick={(e) => e.stopPropagation()}
             >

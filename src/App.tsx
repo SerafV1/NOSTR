@@ -15,7 +15,7 @@ import { NotificationCore, NotificationStore, cacheNotifications, dropMuted } fr
 import { DirectMessageCore, DirectMessageStore } from './nostr/dm';
 import { NostrCore, EventCache } from './nostr/core';
 import { clearSession as clearBunkerSession, onSigningWait } from './nostr/bunker';
-import { UserProfile } from './types';
+import { UserProfile, EVENT_KINDS } from './types';
 import './fonts.css';
 import './index.css';
 import LoginPage from './components/LoginPage';
@@ -40,12 +40,18 @@ import RazrWordmark from './components/RazrWordmark';
 import { decodeLiveNaddr, encodeLiveNaddr } from './utils/liveStream';
 import { useHostStream } from './hooks/useHostStream';
 import WaitingForStream from './components/WaitingForStream';
+import ArticlePage from './components/ArticlePage';
 
 /**
  * Where a tip for this app goes. Kept here rather than in a profile, because
  * the button in the header is the app asking, not one of its users.
+ *
+ * It was `sera@` until measured: that name has no LNURL behind it and the
+ * provider answers 404, so every tip failed before an invoice existed.
  */
-const TIP_ADDRESS = 'sera@getalby.com';
+const TIP_ADDRESS = 'seraf@getalby.com';
+/** Who the tip is for, so the zap becomes a real one with a receipt */
+const TIP_PUBKEY = '5eb2c642d40a58795422121625be7fbe47e8901485a1a8bc01e1907b8aea0a9b';
 
 // URL-safe encode/decode for note ids and pubkeys — bech32 (note1.../npub1...)
 // with a raw-hex fallback so malformed or hand-typed links still resolve
@@ -146,6 +152,28 @@ function SearchRoute({ relaysConnected, onNavigateToProfile, onNavigateToNote }:
       onNavigateToProfile={onNavigateToProfile}
       onNavigateToNote={onNavigateToNote}
       initialTopic={topic}
+    />
+  );
+}
+
+function ArticleRoute({ relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }: RouteCallbacks) {
+  const { naddr } = useParams();
+  const address = naddr ? decodeLiveNaddr(naddr) : null;
+
+  // The same bech32 as a stream's, pointing at a different kind
+  if (!address || address.kind !== EVENT_KINDS.LONG_FORM) {
+    return <div className="article-page"><div className="error">That is not an article link</div></div>;
+  }
+
+  return (
+    <ArticlePage
+      kind={address.kind}
+      pubkey={address.pubkey}
+      identifier={address.identifier}
+      relaysConnected={relaysConnected}
+      onNavigateToProfile={onNavigateToProfile}
+      onNavigateToNote={onNavigateToNote}
+      onNavigateToTopic={onNavigateToTopic}
     />
   );
 }
@@ -656,10 +684,12 @@ function App() {
           <div className="header-right">
             <ZapButton
               lud16={TIP_ADDRESS}
+              recipientPubkey={TIP_PUBKEY}
+              recipientName="RAZR"
               triggerClassName="btn btn-secondary btn-small btn-with-icon header-tip-btn"
-              triggerTitle="Tip RAZR"
+              triggerTitle="Tip whoever writes this client"
             >
-              <ZapIcon /> Tip
+              <ZapIcon /> Tip dev
             </ZapButton>
             {browsingAnonymously ? (
               <Link to="/" className="btn btn-primary btn-small">Log in</Link>
@@ -702,6 +732,7 @@ function App() {
           />
           <Route path="/p/:npub" element={<ProfileRoute {...callbacks} />} />
           <Route path="/e/:noteId" element={<NoteRoute {...callbacks} />} />
+          <Route path="/a/:naddr" element={<ArticleRoute {...callbacks} />} />
           <Route path="/search" element={<SearchRoute {...callbacks} />} />
           <Route path="/live" element={<LivePage relaysConnected={relaysConnected} />} />
           {/* A server has an address of its own, and so does a group on it.

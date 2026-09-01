@@ -19,6 +19,8 @@ import RelayBadges from './RelayBadges';
 import MediaEmbed from './MediaEmbed';
 import Nip05Handle from './Nip05Handle';
 import ProfileHoverCard from './ProfileHoverCard';
+import Markdown from './Markdown';
+import { useNavigate } from 'react-router-dom';
 import VideoPlayer from './VideoPlayer';
 import InlineStreamPlayer from './InlineStreamPlayer';
 import InlineLiveStream from './InlineLiveStream';
@@ -61,11 +63,39 @@ const EventCard: React.FC<EventCardProps> = ({
   // as the note itself rather than as a line of URL nobody can follow here.
   const noteContent = foldNostrWebLinks(event.content);
 
+  // NIP-23: the article's own furniture lives in tags, not in the content
+  const isArticle = event.kind === EVENT_KINDS.LONG_FORM;
+  const tag = (name: string) => event.tags.find(t => t[0] === name)?.[1];
+  /**
+   * An article's own address. Its author can publish a corrected version at
+   * the same one, so that — not this copy's event id — is where a link to it
+   * should lead.
+   */
+  const articleNaddr = isArticle
+    ? (() => {
+        try {
+          return nip19.naddrEncode({
+            kind: event.kind,
+            pubkey: event.pubkey,
+            identifier: tag('d') || ''
+          });
+        } catch {
+          return '';
+        }
+      })()
+    : '';
+  const article = {
+    title: tag('title') || '',
+    summary: tag('summary') || '',
+    image: tag('image') || ''
+  };
+
   const [profile, setProfile] = useState<UserProfile | null>(null);
   // What these numbers were the last time this post was read. Starting at
   // nought meant a feed of noughts until the relays answered, which on a busy
   // page is several seconds of a post looking as if nobody had touched it.
   const cardRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
   const remembered = NostrCore.rememberedEngagement(event.id);
   /**
    * What this reader has just done, which the relays do not know yet.
@@ -729,8 +759,40 @@ const EventCard: React.FC<EventCardProps> = ({
         </div>
       </div>
 
-      <div className="event-content" onClick={() => onNavigateToNote?.(event.id)} style={{ cursor: 'pointer' }}>
-        {(() => {
+      <div
+        className="event-content"
+        onClick={() => {
+          if (isArticle && articleNaddr) navigate(`/a/${articleNaddr}`);
+          else onNavigateToNote?.(event.id);
+        }}
+        style={{ cursor: 'pointer' }}
+      >
+        {/* A long-form article (NIP-23) is a different shape of thing: a
+            title, a picture, a summary and a body written in markdown. Opened
+            it is read in full; in a feed it is a card with the summary, since
+            an article inlined whole would be the whole feed. */}
+        {isArticle && (
+          <div className="event-article">
+            {article.image && (
+              <img className="event-article-image" src={article.image} alt="" loading="lazy" decoding="async" />
+            )}
+            {article.title && <h2 className="event-article-title">{article.title}</h2>}
+            {focused ? (
+              <Markdown
+                content={event.content}
+                emojis={profile?.emojis}
+                onNavigateToProfile={onNavigateToProfile}
+                onNavigateToNote={onNavigateToNote}
+                onNavigateToTopic={onNavigateToTopic}
+              />
+            ) : (
+              <p className="event-article-summary">
+                {article.summary || `${event.content.replace(/[#*>`_[\]]/g, '').slice(0, 240).trim()}…`}
+              </p>
+            )}
+          </div>
+        )}
+        {!isArticle && (() => {
           const stripped = stripMediaUrls(noteContent);
           if (!stripped) return null;
           const isLong = stripped.length > CONTENT_TRUNCATE_LENGTH;

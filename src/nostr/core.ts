@@ -13,6 +13,7 @@ import { replyTags } from './replyTags';
 import { bunkerSignEvent } from './bunker';
 import { isEffectivelyLive, parseLiveEvent } from '../utils/liveStream';
 import { invoiceAmountMsats } from '../utils/bolt11';
+import { PAYMENT_TARGETS_KIND, PAYTO_TAG, paytoTags } from '../utils/paymentTargets';
 import { quoteRefRegex } from '../utils/media';
 import { customEmojiMap } from '../utils/customEmoji';
 
@@ -2301,6 +2302,91 @@ export class NostrCore {
       return results.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     } catch (error) {
       console.error('Failed to fetch live events:', error);
+      return [];
+    }
+  }
+
+  /**
+   * How this person says they can be paid, other than by zap (NIP-A3).
+   *
+   * A replaceable kind 10133 whose `payto` tags each name a type and an
+   * address. Amethyst publishes and reads the same event, so an address set
+   * in either client shows up in the other.
+   */
+  static async fetchPaymentTargets(pubkey: string): Promise<NostrEventSigned | null> {
+    try {
+      const events = await getRelayPool().fetchEvents([
+        { kinds: [PAYMENT_TARGETS_KIND], authors: [pubkey], limit: 3 }
+      ], true);
+      // Replaceable: the newest copy is the one that counts
+      return events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0] || null;
+    } catch (error) {
+      console.error('Failed to fetch payment targets:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Publish this account's own list. Everything already in the event that is
+   * not a `payto` tag rides through untouched — another client may keep
+   * something here this one does not know about, and replacing the event is
+   * not a reason to throw it away.
+   */
+  static async publishPaymentTargets(targets: { type: string; address: string }[]): Promise<NostrEventSigned | null> {
+    const owner = CredentialManager.getPublicKey();
+    if (!owner) return null;
+
+    try {
+      const existing = await this.fetchPaymentTargets(owner);
+      const kept = (existing?.tags || []).filter(tag => tag[0] !== PAYTO_TAG);
+
+      const signed = await this.signAnyMode({
+        kind: PAYMENT_TARGETS_KIND,
+        content: existing?.content || '',
+        tags: [...kept, ...paytoTags(targets)]
+      });
+      if (!signed) return null;
+
+      await getRelayPool().publishEvent(signed);
+      EventCache.addAddressable(signed);
+      return signed;
+    } catch (error) {
+      console.error('Failed to publish payment targets:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Somebody's long-form articles (NIP-23), newest edition of each.
+   *
+   * An article is addressable, so the same piece can be republished at the
+   * same address after a correction — and relays keep both. Only the newest
+   * copy of each address is worth showing; a list where an essay appears
+   * three times because it was edited twice is a list nobody can read.
+   */
+  static async fetchArticlesBy(pubkey: string, limit: number = 50): Promise<NostrEventSigned[]> {
+    try {
+      const events = await getRelayPool().fetchEvents([
+        { kinds: [EVENT_KINDS.LONG_FORM], authors: [pubkey], limit }
+      ], true);
+
+      const newest = new Map<string, NostrEventSigned>();
+      for (const event of events) {
+        const address = event.tags.find(t => t[0] === 'd')?.[1] || '';
+        const held = newest.get(address);
+        if (!held || (event.created_at || 0) > (held.created_at || 0)) newest.set(address, event);
+      }
+
+      Array.from(newest.values()).forEach(event => EventCache.addAddressable(event));
+      return Array.from(newest.values()).sort((a, b) => {
+        // Articles carry when they were published, which is not when this
+        // copy of them was signed
+        const at = (event: NostrEventSigned) =>
+          Number(event.tags.find(t => t[0] === 'published_at')?.[1]) || event.created_at || 0;
+        return at(b) - at(a);
+      });
+    } catch (error) {
+      console.error('Failed to fetch articles:', error);
       return [];
     }
   }

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { UserProfile } from '../types';
 import { NostrCore } from '../nostr/core';
-import { cleanAddress, isPayable } from '../utils/paymentTargets';
+import { cleanAddress, isPayable, fromPaytoEvent } from '../utils/paymentTargets';
 
 interface EditProfileFormProps {
   profile: UserProfile;
@@ -9,6 +9,9 @@ interface EditProfileFormProps {
 }
 
 const EditProfileForm: React.FC<EditProfileFormProps> = ({ profile, onSave }) => {
+  // What is already published for this account in its own event (NIP-A3),
+  // which is where the addresses belong and where other clients read them
+  const [paytoLoaded, setPaytoLoaded] = useState(false);
   const [formData, setFormData] = useState({
     name: profile.name || '',
     display_name: profile.display_name || '',
@@ -25,6 +28,29 @@ const EditProfileForm: React.FC<EditProfileFormProps> = ({ profile, onSave }) =>
     xmr: cleanAddress(profile.xmr)
   });
   const [saving, setSaving] = useState(false);
+
+  // The event is the source of truth; the kind-0 fields are only what this
+  // client wrote before the kind existed
+  useEffect(() => {
+    let cancelled = false;
+    const owner = profile.pubkey;
+    if (!owner) return;
+    NostrCore.fetchPaymentTargets(owner)
+      .then(event => {
+        if (cancelled) return;
+        const published = fromPaytoEvent(event);
+        const bitcoin = published.find(target => target.label === 'Bitcoin');
+        const monero = published.find(target => target.label === 'Monero');
+        setFormData(current => ({
+          ...current,
+          btc: bitcoin?.address || current.btc,
+          xmr: monero?.address || current.xmr
+        }));
+        setPaytoLoaded(true);
+      })
+      .catch(() => { if (!cancelled) setPaytoLoaded(true); });
+    return () => { cancelled = true; };
+  }, [profile.pubkey]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -57,6 +83,16 @@ const EditProfileForm: React.FC<EditProfileFormProps> = ({ profile, onSave }) =>
         .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {} as Partial<UserProfile>);
 
       const published = await NostrCore.publishProfile(updatedProfile);
+
+      // And the event other clients actually read. Published even when the
+      // addresses are empty, so removing one here removes it there.
+      if (paytoLoaded || tidied.btc || tidied.xmr) {
+        await NostrCore.publishPaymentTargets([
+          ...(tidied.btc ? [{ type: 'bitcoin', address: tidied.btc }] : []),
+          ...(tidied.xmr ? [{ type: 'monero', address: tidied.xmr }] : [])
+        ]);
+      }
+
       if (published) {
         onSave(updatedProfile);
       }
@@ -195,6 +231,17 @@ const EditProfileForm: React.FC<EditProfileFormProps> = ({ profile, onSave }) =>
         />
         {badXmr && <span className="form-error">That is not a monero address</span>}
       </div>
+
+      {/* Measured, not assumed: Amethyst's profile model (quartz
+          UserMetadata) parses name, picture, banner, website, about, nip05,
+          lud06, lud16 and a few others — and no on-chain field at all. So an
+          address written here is read by this client and by anyone who
+          copies the convention, and by nobody else. In the bio it is read
+          everywhere, because everyone shows a bio. */}
+      <p className="settings-hint">
+        Published as a payment-targets event of its own (NIP-A3, kind 10133), which is
+        what Amethyst reads and writes — so an address set here shows up there too.
+      </p>
 
       <button 
         type="submit" 
