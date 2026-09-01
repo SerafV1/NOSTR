@@ -20,6 +20,13 @@ interface ZapButtonProps {
   recipientPicture?: string;
   /** Their name may be written with NIP-30 emoji */
   recipientEmojis?: Record<string, string>;
+  /**
+   * Paid — with how much. A zap only shows up on a note when the recipient's
+   * provider publishes a receipt, which is seconds later at best and never
+   * at worst, so whoever drew this button gets told at the moment the money
+   * actually leaves rather than waiting to read about it.
+   */
+  onPaid?: (sats: number) => void;
 }
 
 
@@ -41,7 +48,8 @@ const ZapButton: React.FC<ZapButtonProps> = ({
   eventAddress,
   recipientName,
   recipientPicture,
-  recipientEmojis
+  recipientEmojis,
+  onPaid
 }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [customAmount, setCustomAmount] = useState('');
@@ -94,6 +102,7 @@ const ZapButton: React.FC<ZapButtonProps> = ({
       if (walletCanPay()) {
         try {
           await payFromWallet(invoice, amountSats);
+          onPaid?.(amountSats);
           setShowMenu(false);
           setCustomAmount('');
           setComment('');
@@ -111,6 +120,7 @@ const ZapButton: React.FC<ZapButtonProps> = ({
       // An extension wallet answers over WebLN, not the `lightning:` scheme
       const paid = await payWithWebln(invoice);
       if (paid) {
+        onPaid?.(amountSats);
         setShowMenu(false);
         setCustomAmount('');
         setComment('');

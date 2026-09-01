@@ -682,6 +682,12 @@ textarea {
   font-weight: 600;
 }
 
+/* Zapped state: this account paid one, the same mark a like carries */
+.action-btn.zapped {
+  color: var(--warning-color, #f5a623);
+  font-weight: 600;
+}
+
 /* Reposted state on the repost button */
 .action-btn.reposted {
   color: var(--success-color);

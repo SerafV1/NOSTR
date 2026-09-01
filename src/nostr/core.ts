@@ -12,6 +12,7 @@ import { getRelayPool, RelayPool } from './relay';
 import { replyTags } from './replyTags';
 import { bunkerSignEvent } from './bunker';
 import { isEffectivelyLive, parseLiveEvent } from '../utils/liveStream';
+import { invoiceAmountMsats } from '../utils/bolt11';
 import { quoteRefRegex } from '../utils/media';
 import { customEmojiMap } from '../utils/customEmoji';
 
@@ -1771,16 +1772,14 @@ export class NostrCore {
    * Extract the amount in sats from a zap receipt (kind 9735)
    */
   static parseZapAmountSats(zapReceipt: NostrEventSigned): number {
-    // Primary source: the bolt11 invoice amount (lnbc<amount><multiplier>1...)
+    // Primary source: the invoice's own amount. Read in millisats and by
+    // whole numbers — working in bitcoin and multiplying back left a 500 sat
+    // zap showing as 499, because 5 × 10⁻⁶ × 10⁸ is not quite 500 in floating
+    // point.
     const bolt11 = zapReceipt.tags.find(t => t[0] === 'bolt11')?.[1];
     if (bolt11) {
-      const match = /^ln(?:bc|tbs|tb|bcrt)?(\d+)([munp]?)1/i.exec(bolt11);
-      if (match) {
-        const digits = parseInt(match[1], 10);
-        const multipliers: Record<string, number> = { '': 1, m: 1e-3, u: 1e-6, n: 1e-9, p: 1e-12 };
-        const btc = digits * (multipliers[match[2].toLowerCase()] ?? 1);
-        return Math.floor(btc * 1e8);
-      }
+      const msats = invoiceAmountMsats(bolt11);
+      if (msats !== null) return Math.floor(msats / 1000);
     }
 
     // Fallback: the embedded zap request's amount tag (millisats)
@@ -1810,21 +1809,37 @@ export class NostrCore {
    * absent from the next engagement query — and the card would drop it,
    * showing nothing for something that did happen.
    */
-  private static ownActionsKey(kind: 'reactions' | 'reposts'): string {
+  private static ownActionsKey(kind: 'reactions' | 'reposts' | 'zaps'): string {
     return `own_${kind}_${CredentialManager.getPublicKey() || 'anon'}`;
   }
 
-  private static readOwnActions(kind: 'reactions' | 'reposts'): Record<string, string> {
+  private static readOwnActions(kind: 'reactions' | 'reposts' | 'zaps'): Record<string, string> {
     return PersistentCache.get<Record<string, string>>(this.ownActionsKey(kind)) || {};
   }
 
-  private static rememberOwnAction(kind: 'reactions' | 'reposts', eventId: string, value: string): void {
+  private static rememberOwnAction(kind: 'reactions' | 'reposts' | 'zaps', eventId: string, value: string): void {
     const all = this.readOwnActions(kind);
     all[eventId] = value;
     // Bounded: only the recent ones matter, since older notes come back from
     // the relays reliably by then
     const trimmed = Object.entries(all).slice(-300);
     PersistentCache.set(this.ownActionsKey(kind), Object.fromEntries(trimmed));
+  }
+
+  /**
+   * A zap paid from this browser, kept for the same reason a like is: the
+   * receipt that proves it comes from the recipient's payment provider, not
+   * from us, and it arrives seconds later — or never, from a provider that
+   * publishes none. Without this the mark on the button would come and go.
+   */
+  static rememberOwnZap(eventId: string, sats: number): void {
+    const already = Number(this.readOwnActions('zaps')[eventId]) || 0;
+    this.rememberOwnAction('zaps', eventId, String(already + sats));
+  }
+
+  /** What this account has zapped this note, as far as this browser knows */
+  static ownZapSats(eventId: string): number {
+    return Number(this.readOwnActions('zaps')[eventId]) || 0;
   }
 
   /**
@@ -1939,6 +1954,7 @@ export class NostrCore {
     zapSats: number;
     myReaction: string | null;
     myRepost: boolean;
+    myZapSats: number;
   }> {
     const result = {
       replies: 0,
@@ -1946,7 +1962,8 @@ export class NostrCore {
       likes: 0,
       zapSats: 0,
       myReaction: null as string | null,
-      myRepost: false
+      myRepost: false,
+      myZapSats: 0
     };
 
     try {
@@ -1988,7 +2005,13 @@ export class NostrCore {
             result.myReaction = ev.content || '❤️';
           }
         } else if (ev.kind === EVENT_KINDS.ZAP_RECEIPT) {
-          result.zapSats += this.parseZapAmountSats(ev);
+          const sats = this.parseZapAmountSats(ev);
+          result.zapSats += sats;
+          // Who paid is in the zap request the receipt carries, not in the
+          // receipt's own author — that is the provider
+          if (ownPubkey && this.zapSenderPubkey(ev) === ownPubkey) {
+            result.myZapSats += sats;
+          }
         }
       }
     } catch (error) {
@@ -2006,6 +2029,13 @@ export class NostrCore {
     if (this.readOwnActions('reposts')[eventId] && !result.myRepost) {
       result.myRepost = true;
       result.reposts += 1;
+    }
+    // A zap of ours the receipts do not show yet — or will never show,
+    // because that provider publishes none
+    const ownZap = this.ownZapSats(eventId);
+    if (ownZap > result.myZapSats) {
+      result.zapSats += ownZap - result.myZapSats;
+      result.myZapSats = ownZap;
     }
 
     this.rememberEngagement(eventId, {

@@ -76,12 +76,20 @@ const EventCard: React.FC<EventCardProps> = ({
    * went back to nothing and the count to zero, and the button read as
    * broken while the reaction sat on the relays.
    */
-  const mineRef = useRef<{ reaction: string | null; reposted: boolean }>({ reaction: null, reposted: false });
+  const mineRef = useRef<{
+    reaction: string | null;
+    reposted: boolean;
+    /** Sats paid from here, and the total before they were */
+    zapped: number;
+    zapBaseline: number;
+  }>({ reaction: null, reposted: false, zapped: 0, zapBaseline: 0 });
   const [replyCount, setReplyCount] = useState(remembered?.replies ?? 0);
   const [repostCount, setRepostCount] = useState(remembered?.reposts ?? 0);
   const [reposted, setReposted] = useState(false);
   const [likeCount, setLikeCount] = useState(remembered?.likes ?? 0);
   const [zapSats, setZapSats] = useState(remembered?.zapSats ?? 0);
+  // Marked the way a like and a repost are: this is a note I zapped
+  const [zapped, setZapped] = useState(() => NostrCore.ownZapSats(event.id) > 0);
   const [showRepostOptions, setShowRepostOptions] = useState(false);
   const [composeMode, setComposeMode] = useState<'reply' | 'quote' | null>(null);
   const [reposting, setReposting] = useState(false);
@@ -250,17 +258,24 @@ const EventCard: React.FC<EventCardProps> = ({
     zapSats: number;
     myReaction: string | null;
     myRepost: boolean;
+    myZapSats: number;
   }) => {
     const mine = mineRef.current;
     // Anything done here counts, whether or not the answer knows about it yet
     const myReactionMissing = Boolean(mine.reaction) && !engagement.myReaction;
     const myRepostMissing = mine.reposted && !engagement.myRepost;
+    // A zap is counted from the receipt the recipient's provider publishes,
+    // which arrives seconds after the money does — or never, from a provider
+    // that publishes none. Until the total has grown by at least what was
+    // paid from here, it is added on.
+    const myZapMissing = mine.zapped > 0 && engagement.zapSats < mine.zapBaseline + mine.zapped;
 
     setReplyCount(engagement.replies);
     setRepostCount(engagement.reposts + (myRepostMissing ? 1 : 0));
     setReposted(engagement.myRepost || mine.reposted);
     setLikeCount(engagement.likes + (myReactionMissing ? 1 : 0));
-    setZapSats(engagement.zapSats);
+    setZapSats(engagement.zapSats + (myZapMissing ? mine.zapped : 0));
+    if (engagement.myZapSats > 0 || mine.zapped > 0) setZapped(true);
     const reaction = engagement.myReaction || mine.reaction;
     if (reaction) setReactionEmoji(reaction);
   };
@@ -1038,10 +1053,23 @@ const EventCard: React.FC<EventCardProps> = ({
           recipientEmojis={profile?.emojis}
           recipientPicture={profile?.picture}
           eventId={event.id}
-          triggerClassName="action-btn"
-          triggerTitle="Zap with lightning"
+          triggerClassName={`action-btn ${zapped ? 'zapped' : ''}`}
+          triggerTitle={zapped ? 'You zapped this — zap again' : 'Zap with lightning'}
+          onPaid={(sats) => {
+            const mine = mineRef.current;
+            if (mine.zapped === 0) mine.zapBaseline = zapSats;
+            mine.zapped += sats;
+            setZapSats(total => total + sats);
+            setZapped(true);
+            // Kept for the next time this note is drawn, receipt or no receipt
+            NostrCore.rememberOwnZap(event.id, sats);
+            // And ask again shortly, for the receipt itself: once it lands,
+            // the count above stops being a local guess
+            window.setTimeout(() => { void loadEngagement(); }, 6000);
+            window.setTimeout(() => { void loadEngagement(); }, 20000);
+          }}
         >
-          <ZapIcon className="action-icon" filled={zapSats > 0} />
+          <ZapIcon className="action-icon" filled={zapped || zapSats > 0} />
           <span className="action-count">{formatSats(zapSats)}</span>
         </ZapButton>
 
