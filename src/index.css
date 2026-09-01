@@ -1201,6 +1201,29 @@ textarea {
   border-bottom: 1px solid var(--border-color);
 }
 
+/* An address a post carries that the card draws nothing else for — a group
+   invitation, most often */
+.event-addresses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  margin: var(--spacing-xs) 0;
+}
+
+.event-address-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.event-address-chip:hover {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
 /* A profile reached where a post was expected — reacted to, usually */
 .event-profile-update {
   margin: 0;

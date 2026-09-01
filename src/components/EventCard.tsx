@@ -20,6 +20,7 @@ import MediaEmbed from './MediaEmbed';
 import Nip05Handle from './Nip05Handle';
 import ProfileHoverCard from './ProfileHoverCard';
 import Markdown from './Markdown';
+import { describeAddressRef } from '../utils/nostrLinks';
 import { useNavigate } from 'react-router-dom';
 import VideoPlayer from './VideoPlayer';
 import InlineStreamPlayer from './InlineStreamPlayer';
@@ -84,6 +85,7 @@ const EventCard: React.FC<EventCardProps> = ({
         }
       })()
     : '';
+
   const article = {
     title: tag('title') || '',
     summary: tag('summary') || '',
@@ -134,6 +136,7 @@ const EventCard: React.FC<EventCardProps> = ({
   // you read the rest of the feed
   const reactionPicker = useAnchoredPopup(showReactions, () => setShowReactions(false));
   const repostMenu = useAnchoredPopup(showRepostOptions, () => setShowRepostOptions(false));
+
   const [mentionedProfiles, setMentionedProfiles] = useState<Record<string, UserProfile>>({});
   const [enlargedIndex, setEnlargedIndex] = useState<number | null>(null);
   const [quotedNote, setQuotedNote] = useState<NostrEventSigned | null>(null);
@@ -142,6 +145,32 @@ const EventCard: React.FC<EventCardProps> = ({
   // plain note — the repost gets unwrapped down to the actual content,
   // but who reposted it is still worth showing
   const [quotedNoteRepostedBy, setQuotedNoteRepostedBy] = useState<string | null>(null);
+
+  /**
+   * Addresses in the text that this card draws nothing else for.
+   *
+   * A stream becomes a player and a quotable note becomes a quote card, and
+   * the stripper takes both out of the text on that understanding. A group
+   * invitation is neither, so it was taken out and nothing put back — the
+   * post read as if the invitation had never been written.
+   */
+  const quotedAddress = quotedNote
+    ? `${quotedNote.kind}:${quotedNote.pubkey}:${quotedNote.tags.find(t => t[0] === 'd')?.[1] || ''}`
+    : '';
+  const loneAddresses = (noteContent.match(/(?:nostr:)?naddr1[a-z0-9]{20,}/gi) || [])
+    .map(ref => describeAddressRef(ref))
+    .filter((found): found is NonNullable<typeof found> =>
+      Boolean(found) && !found!.path.startsWith('/live/'))
+    // Whatever the quote card is already showing does not need a chip too
+    .filter(found => {
+      try {
+        const decoded = nip19.decode(found.naddr).data as { kind: number; pubkey: string; identifier: string };
+        return `${decoded.kind}:${decoded.pubkey}:${decoded.identifier}` !== quotedAddress;
+      } catch {
+        return true;
+      }
+    })
+    .filter((found, at, all) => all.findIndex(other => other.naddr === found.naddr) === at);
   const [pollResponses, setPollResponses] = useState<NostrEventSigned[]>([]);
   const [votingOption, setVotingOption] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -795,6 +824,21 @@ const EventCard: React.FC<EventCardProps> = ({
         {/* A profile is JSON, and printing it as a post's text put someone's
             whole kind 0 — addresses and all — on screen as if they had
             written it. Reachable because anything can be reacted to. */}
+        {loneAddresses.length > 0 && (
+          <div className="event-addresses">
+            {loneAddresses.map(address => (
+              <a
+                key={address.naddr}
+                className="event-address-chip"
+                href={address.path || `/e/${address.naddr}`}
+                title={address.naddr}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {address.label}
+              </a>
+            ))}
+          </div>
+        )}
         {event.kind === EVENT_KINDS.SET_METADATA && (() => {
           let named = '';
           let says = '';

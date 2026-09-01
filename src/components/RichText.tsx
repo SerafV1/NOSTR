@@ -7,7 +7,7 @@ import { splitContentTokens, extractImageUrls, extractVideoUrls, extractStreamUr
 import InlineStreamPlayer from './InlineStreamPlayer';
 import MediaEmbed from './MediaEmbed';
 import InlineLiveStream from './InlineLiveStream';
-import { foldNostrWebLinks } from '../utils/nostrLinks';
+import { foldNostrWebLinks, describeAddressRef } from '../utils/nostrLinks';
 import { streamNaddrFromUrl } from '../utils/liveStream';
 import { CustomEmojiMap, customEmojiMap, splitCustomEmoji } from '../utils/customEmoji';
 import InlineQuotedNote from './InlineQuotedNote';
@@ -53,41 +53,6 @@ const decodeProfileRef = (ref: string): string | null => {
   return null;
 };
 
-/** What an addressable reference points at, by kind */
-const ADDRESSABLE_KINDS: Record<number, string> = {
-  30023: '📄 Article',
-  30311: '📺 View stream',
-  34550: '🗂 Community',
-  39000: '👥 Group'
-};
-
-/**
- * An `naddr1…` and what can be done with it. A live stream opens here; the
- * rest — articles, groups, communities — have no page in this app, but a
- * hundred and twenty characters of bech32 in the middle of a sentence is
- * unreadable either way, so they at least say what they are.
- */
-const describeAddressRef = (
-  ref: string
-): { naddr: string; label: string; openable: boolean; path: string } | null => {
-  try {
-    const naddr = bareRef(ref);
-    const decoded = nip19.decode(naddr);
-    if (decoded.type !== 'naddr') return null;
-    const { kind } = decoded.data as { kind: number };
-    // Both of these have a page of their own here now; the rest still only
-    // say what they are
-    const path = kind === 30311 ? `/live/${naddr}` : kind === 30023 ? `/a/${naddr}` : '';
-    return {
-      naddr,
-      label: ADDRESSABLE_KINDS[kind] || '🔗 nostr address',
-      openable: Boolean(path),
-      path
-    };
-  } catch {
-    return null;
-  }
-};
 
 const decodeNoteRef = (ref: string): string | null => {
   try {
@@ -280,12 +245,50 @@ const RichText: React.FC<RichTextProps> = ({
           </button>
         );
       } else {
-        pushRefs(token.value);
+        pushGroups(token.value);
       }
     }
   };
 
   // Mentions and note references in ordinary text
+  /**
+   * A group as NIP-29 names one: `relay.example'AbCd12`, the relay and the
+   * group's id joined by an apostrophe. Invitations arrive written that way
+   * in a message, and before this app had groups there was nothing to do
+   * with one, so it stayed as text.
+   *
+   * The host has to look like a host — letters, a dot, a real ending — or
+   * every "don't" in a sentence would become an invitation.
+   */
+  const GROUP_ID = /(?:^|[\s(<])((?:[a-z0-9-]+\.)+[a-z]{2,})'([A-Za-z0-9_-]{4,64})(?![A-Za-z0-9_-])/g;
+
+  function pushGroups(text: string) {
+    const regex = new RegExp(GROUP_ID);
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(text)) !== null) {
+      const start = match.index + match[0].indexOf(match[1]);
+      // Everything before it is ordinary text, and may hold mentions of its
+      // own — so it goes through the reference scanner, not straight out
+      if (start > lastIndex) pushRefs(text.slice(lastIndex, start));
+      const [, host, id] = match;
+      parts.push(
+        <a
+          key={key++}
+          href={`/s/${encodeURIComponent(host)}/${encodeURIComponent(id)}`}
+          className="mention-link"
+          onClick={(e) => e.stopPropagation()}
+        >
+          👥 {host}
+        </a>
+      );
+      lastIndex = regex.lastIndex;
+    }
+
+    if (lastIndex < text.length) pushRefs(text.slice(lastIndex));
+  }
+
   function pushRefs(text: string) {
     let lastIndex = 0;
     let match: RegExpExecArray | null;

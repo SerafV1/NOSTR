@@ -1,3 +1,4 @@
+import { EVENT_KINDS } from '../types';
 import { nip19 } from 'nostr-tools';
 
 /**
@@ -62,4 +63,62 @@ export function foldNostrWebLinks(content: string): string {
       return ref ? `nostr:${ref}${tail}` : match;
     }
   );
+}
+
+/** A reference as written, without the `nostr:` or the `@` in front of it */
+const bareRef = (ref: string): string => ref.replace(/^@/, '').replace(/^nostr:/i, '');
+
+/** What an addressable reference points at, by kind */
+export const ADDRESSABLE_KINDS: Record<number, string> = {
+  30023: '📄 Article',
+  30311: '📺 View stream',
+  34550: '🗂 Community',
+  39000: '👥 Group'
+};
+
+/**
+ * An `naddr1…` and what can be done with it.
+ *
+ * A stream, an article and a group each have a page here, so those open; a
+ * hundred and twenty characters of bech32 in the middle of a sentence is
+ * unreadable either way, so the rest at least say what they are.
+ */
+export function describeAddressRef(
+  ref: string
+): { naddr: string; label: string; openable: boolean; path: string } | null {
+  try {
+    const naddr = bareRef(ref);
+    const decoded = nip19.decode(naddr);
+    if (decoded.type !== 'naddr') return null;
+    const { kind, identifier, relays } = decoded.data as {
+      kind: number;
+      identifier: string;
+      relays?: string[];
+    };
+
+    // A group (NIP-29) lives on one relay and is named by its `d` tag, so an
+    // invitation is only openable when the address says which relay — that
+    // is half of the group's name. Invitations were arriving before this app
+    // had groups at all, and stayed as a dead "👥 Group" label ever since.
+    const groupRelay = kind === EVENT_KINDS.GROUP_METADATA
+      ? (relays || []).find(url => /^wss?:\/\//i.test(url))
+      : undefined;
+
+    const path = kind === 30311
+      ? `/live/${naddr}`
+      : kind === 30023
+        ? `/a/${naddr}`
+        : groupRelay && identifier
+          ? `/s/${encodeURIComponent(groupRelay.replace(/^wss:\/\//, '').replace(/\/$/, ''))}/${encodeURIComponent(identifier)}`
+          : '';
+
+    return {
+      naddr,
+      label: ADDRESSABLE_KINDS[kind] || '🔗 nostr address',
+      openable: Boolean(path),
+      path
+    };
+  } catch {
+    return null;
+  }
 }
