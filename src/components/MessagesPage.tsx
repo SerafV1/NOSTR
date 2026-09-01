@@ -29,6 +29,25 @@ interface OpenRoom {
   subject?: string;
 }
 
+/**
+ * A line of a message, as a list can show it.
+ *
+ * The bubble draws references as what they point at; a one-line preview has
+ * no room for that, and printing them raw filled the list with a hundred and
+ * twenty characters of bech32 where a sentence should be. So each is named
+ * by what it is and the rest of the line is left alone.
+ */
+const previewOf = (content: string): string => {
+  const named = content
+    .replace(/(?:nostr:)?naddr1[a-z0-9]{20,}/gi, '👥 group')
+    .replace(/(?:nostr:)?(?:note1|nevent1)[a-z0-9]{20,}/gi, '📝 note')
+    .replace(/(?:nostr:)?(?:npub1|nprofile1)[a-z0-9]{20,}/gi, '👤 someone')
+    .replace(/https?:\/\/\S+\.(?:png|jpe?g|gif|webp|avif)(?:\?\S*)?/gi, '🖼 picture')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return named || '🔗 a link';
+};
+
 const MessagesPage: React.FC<MessagesPageProps> = ({
   pubkey,
   relaysConnected,
@@ -312,7 +331,7 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
                   {conversation.lastMessage.isOwn
                     ? 'You: '
                     : (alone ? '' : `${nameFor(conversation.lastMessage.senderPubkey)}: `)}
-                  {conversation.lastMessage.content}
+                  {previewOf(conversation.lastMessage.content)}
                 </div>
               </div>
               <div className="notification-time">

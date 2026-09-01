@@ -280,19 +280,66 @@ export class DirectMessageCore {
   }
 
   /**
+   * A message from before NIP-17: kind 4, encrypted with NIP-04, with both
+   * ends of the conversation written in the clear for any relay to read.
+   *
+   * Nothing here sends one. They are read because a conversation that
+   * started in another client years ago is still that person's conversation,
+   * and showing an empty inbox instead is worse than showing an old message.
+   */
+  private static async readLegacy(event: NostrEventSigned, ownPubkey: string): Promise<DirectMessage | null> {
+    try {
+      const recipient = event.tags.find(tag => tag[0] === 'p')?.[1];
+      if (!recipient) return null;
+
+      const isOwn = event.pubkey === ownPubkey;
+      const other = isOwn ? recipient : event.pubkey;
+      if (!isOwn && recipient !== ownPubkey) return null;
+
+      const privkey = CredentialManager.getPrivateKey();
+      const content = privkey
+        ? await NostrCrypto.decryptMessage(event.content, other, privkey)
+        : await ExtensionManager.decryptNip04(other, event.content);
+      if (!content) return null;
+
+      return {
+        id: event.id,
+        senderPubkey: event.pubkey,
+        otherPubkey: other,
+        participants: [other],
+        key: conversationKey([other]),
+        content,
+        createdAt: event.created_at || 0,
+        replyTo: event.tags.find(tag => tag[0] === 'e')?.[1],
+        isOwn
+      };
+    } catch {
+      // A message we hold no key for, or one that will not decrypt
+      return null;
+    }
+  }
+
+  /**
    * Fetch and decrypt all private messages addressed to us, deduplicated
    * (the recipient's and our own copy of the same rumor share an id).
    */
   static async fetchMessages(ownPubkey: string, limit: number = 500): Promise<DirectMessage[]> {
     const filters: NostrFilter[] = [
-      { kinds: [EVENT_KINDS.GIFT_WRAP], '#p': [ownPubkey], limit }
+      { kinds: [EVENT_KINDS.GIFT_WRAP], '#p': [ownPubkey], limit },
+      // Both sides of an old conversation: what was sent to us, and our own
+      // copies, which are the only record of what we said
+      { kinds: [EVENT_KINDS.ENCRYPTED_DM], '#p': [ownPubkey], limit },
+      { kinds: [EVENT_KINDS.ENCRYPTED_DM], authors: [ownPubkey], limit }
     ];
 
     try {
       const relayPool = getRelayPool();
-      const wraps = await relayPool.fetchEvents(filters);
+      const events = await relayPool.fetchEvents(filters);
 
-      const results = await Promise.all(wraps.map(wrap => this.unwrap(wrap, ownPubkey)));
+      const results = await Promise.all(events.map(event =>
+        event.kind === EVENT_KINDS.ENCRYPTED_DM
+          ? this.readLegacy(event, ownPubkey)
+          : this.unwrap(event, ownPubkey)));
 
       const byId = new Map<string, DirectMessage>();
       for (const message of results) {

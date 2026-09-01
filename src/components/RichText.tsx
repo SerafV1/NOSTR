@@ -11,6 +11,7 @@ import { foldNostrWebLinks, describeAddressRef } from '../utils/nostrLinks';
 import { streamNaddrFromUrl } from '../utils/liveStream';
 import { CustomEmojiMap, customEmojiMap, splitCustomEmoji } from '../utils/customEmoji';
 import InlineQuotedNote from './InlineQuotedNote';
+import GroupRef from './GroupRef';
 
 interface RichTextProps {
   content: string;
@@ -274,14 +275,12 @@ const RichText: React.FC<RichTextProps> = ({
       if (start > lastIndex) pushRefs(text.slice(lastIndex, start));
       const [, host, id] = match;
       parts.push(
-        <a
+        <GroupRef
           key={key++}
-          href={`/s/${encodeURIComponent(host)}/${encodeURIComponent(id)}`}
-          className="mention-link"
-          onClick={(e) => e.stopPropagation()}
-        >
-          👥 {host}
-        </a>
+          relay={`wss://${host}`}
+          id={id}
+          path={`/s/${encodeURIComponent(host)}/${encodeURIComponent(id)}`}
+        />
       );
       lastIndex = regex.lastIndex;
     }
@@ -333,7 +332,15 @@ const RichText: React.FC<RichTextProps> = ({
           // Where no navigation was handed in, the address is still a real
           // page on this app — a plain link reaches it
           const openHere = onNavigateToStream && addressRef.path.startsWith('/live/');
-          parts.push(openHere ? (
+          parts.push(addressRef.group ? (
+            // A group says what it is called, once the relay holding it says
+            <GroupRef
+              key={key++}
+              relay={addressRef.group.relay}
+              id={addressRef.group.id}
+              path={addressRef.path}
+            />
+          ) : openHere ? (
             <button
               key={key++}
               type="button"

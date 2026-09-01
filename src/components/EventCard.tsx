@@ -21,6 +21,7 @@ import Nip05Handle from './Nip05Handle';
 import ProfileHoverCard from './ProfileHoverCard';
 import Markdown from './Markdown';
 import { describeAddressRef } from '../utils/nostrLinks';
+import GroupRef from './GroupRef';
 import { useNavigate } from 'react-router-dom';
 import VideoPlayer from './VideoPlayer';
 import InlineStreamPlayer from './InlineStreamPlayer';
@@ -827,15 +828,24 @@ const EventCard: React.FC<EventCardProps> = ({
         {loneAddresses.length > 0 && (
           <div className="event-addresses">
             {loneAddresses.map(address => (
-              <a
-                key={address.naddr}
-                className="event-address-chip"
-                href={address.path || `/e/${address.naddr}`}
-                title={address.naddr}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {address.label}
-              </a>
+              address.group ? (
+                <GroupRef
+                  key={address.naddr}
+                  relay={address.group.relay}
+                  id={address.group.id}
+                  path={address.path}
+                />
+              ) : (
+                <a
+                  key={address.naddr}
+                  className="event-address-chip"
+                  href={address.path || `/e/${address.naddr}`}
+                  title={address.naddr}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {address.label}
+                </a>
+              )
             ))}
           </div>
         )}

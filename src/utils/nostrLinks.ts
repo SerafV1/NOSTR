@@ -85,7 +85,14 @@ export const ADDRESSABLE_KINDS: Record<number, string> = {
  */
 export function describeAddressRef(
   ref: string
-): { naddr: string; label: string; openable: boolean; path: string } | null {
+): {
+  naddr: string;
+  label: string;
+  openable: boolean;
+  path: string;
+  /** Set for a group, so whoever draws it can ask the relay its name */
+  group?: { relay: string; id: string };
+} | null {
   try {
     const naddr = bareRef(ref);
     const decoded = nip19.decode(naddr);
@@ -116,7 +123,8 @@ export function describeAddressRef(
       naddr,
       label: ADDRESSABLE_KINDS[kind] || '🔗 nostr address',
       openable: Boolean(path),
-      path
+      path,
+      ...(groupRelay && identifier ? { group: { relay: groupRelay, id: identifier } } : {})
     };
   } catch {
     return null;

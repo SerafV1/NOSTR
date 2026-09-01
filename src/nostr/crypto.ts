@@ -388,6 +388,10 @@ export interface NostrWindow extends Window {
     signEvent(event: any): Promise<any>;
     encrypt(pubkey: string, plaintext: string): Promise<string>;
     decrypt(pubkey: string, ciphertext: string): Promise<string>;
+    nip04?: {
+      encrypt?: (pubkey: string, plaintext: string) => Promise<string>;
+      decrypt?: (pubkey: string, ciphertext: string) => Promise<string>;
+    };
     nip44?: {
       encrypt(pubkey: string, plaintext: string): Promise<string>;
       decrypt(pubkey: string, ciphertext: string): Promise<string>;
@@ -550,5 +554,18 @@ export class ExtensionManager {
       throw new Error('Your NOSTR extension does not support NIP-44 decryption, required for private messages.');
     }
     return await nostr.nip44.decrypt(pubkey, ciphertext);
+  }
+
+  /**
+   * The older scheme, for reading messages sent before NIP-17 existed.
+   * Nothing here writes one — this is only so an old conversation is not
+   * simply invisible.
+   */
+  static async decryptNip04(pubkey: string, ciphertext: string): Promise<string> {
+    const nostr = (window as NostrWindow).nostr;
+    if (!nostr?.nip04?.decrypt) {
+      throw new Error('Your NOSTR extension cannot read NIP-04 messages');
+    }
+    return await nostr.nip04.decrypt(pubkey, ciphertext);
   }
 }
