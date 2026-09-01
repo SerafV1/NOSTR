@@ -312,8 +312,13 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
           const alone = conversation.participants.length === 1;
           const profile = profiles[conversation.participants[0]];
           const displayName = roomName(conversation);
+          // The same rule the badge counts by: an old conversation nobody
+          // has opened here is not news
           const isUnread = !conversation.lastMessage.isOwn &&
-            conversation.lastMessage.createdAt > DirectMessageStore.getLastSeen(pubkey, conversation.key);
+            conversation.lastMessage.createdAt > Math.max(
+              DirectMessageStore.getLastSeen(pubkey, conversation.key),
+              DirectMessageStore.countingSince(pubkey)
+            );
 
           return (
             <div

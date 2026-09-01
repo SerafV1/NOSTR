@@ -381,6 +381,7 @@ export class DirectMessageCore {
  */
 export class DirectMessageStore {
   private static readonly PREFIX = 'nostr_dm_seen_';
+  private static readonly BASELINE = 'nostr_dm_since_';
 
   private static key(ownPubkey: string, otherPubkey: string): string {
     return `${this.PREFIX}${ownPubkey}_${otherPubkey}`;
@@ -403,9 +404,33 @@ export class DirectMessageStore {
     }
   }
 
+  /**
+   * When this browser started counting.
+   *
+   * A conversation nobody has opened here has no last-seen mark, and
+   * everything in it therefore looked newer than nothing — so old
+   * conversations, including ones read years ago in another client, lit the
+   * badge and kept it lit. Nothing before this account first opened the app
+   * here can be news; the mark is written the first time it is asked for.
+   */
+  static countingSince(ownPubkey: string): number {
+    const key = `${this.BASELINE}${ownPubkey}`;
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) return parseInt(raw, 10) || 0;
+      const now = Math.floor(Date.now() / 1000);
+      localStorage.setItem(key, String(now));
+      return now;
+    } catch {
+      return 0;
+    }
+  }
+
   static countUnread(ownPubkey: string, conversations: Conversation[]): number {
+    const since = this.countingSince(ownPubkey);
     return conversations.filter(c =>
-      !c.lastMessage.isOwn && c.lastMessage.createdAt > this.getLastSeen(ownPubkey, c.key)
+      !c.lastMessage.isOwn &&
+      c.lastMessage.createdAt > Math.max(this.getLastSeen(ownPubkey, c.key), since)
     ).length;
   }
 }
