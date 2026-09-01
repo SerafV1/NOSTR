@@ -7808,6 +7808,19 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   word-break: break-all;
 }
 
+/* A video embedded in a chat panel.
+ *
+ * The panel is narrow, and 16:9 of narrow is short: at 320px wide the player
+ * came out 180px tall, under the size YouTube will play at. Below it the
+ * iframe stops being a player at all — it shows a thumbnail and a "Watch on
+ * YouTube" button, which is why there was nothing to press. A floor of 220px
+ * keeps it a player; wider panels go back to 16:9 on their own.
+ */
+.rich-embed {
+  min-height: 220px;
+  margin-top: 4px;
+}
+
 .rich-video {
   display: block;
   max-width: 100%;
