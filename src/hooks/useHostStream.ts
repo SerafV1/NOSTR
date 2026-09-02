@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { NostrCore } from '../nostr/core';
 import { EVENT_KINDS } from '../types';
-import { decodeHostParam, decodeLiveNaddr, isEffectivelyLive } from '../utils/liveStream';
+import { decodeHostParam, decodeLiveNaddr, parseLiveEvent } from '../utils/liveStream';
 
 export interface StreamAddress {
   kind: number;
@@ -86,12 +86,17 @@ export function useHostStream(param: string | undefined, relaysConnected: boolea
     if (!host || !relaysConnected) return;
     let dropped = false;
 
-    const consider = (event: Parameters<typeof isEffectivelyLive>[0]) => {
+    const consider = (event: Parameters<typeof parseLiveEvent>[0]) => {
       if (dropped) return;
       const dTag = event.tags.find(t => t[0] === 'd')?.[1] || '';
       const address = `${event.pubkey}:${dTag}`;
       const at = event.created_at || 0;
-      const live = isEffectivelyLive(event);
+      // What the broadcaster says, not how fresh the event is. The freshness
+      // rule belongs to the Live list, where a stale "live" is a ghost; here
+      // it meant a broadcast running past three hours without republishing
+      // stopped resolving, and the window that had been showing its chat
+      // said nobody was streaming.
+      const live = parseLiveEvent(event).announcedStatus === 'live';
       const held = standing.current;
 
       // The same stream again, with a newer count or an "ended": worth

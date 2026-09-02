@@ -342,7 +342,7 @@ const LiveTogetherPage: React.FC<LiveTogetherPageProps> = ({
           key={chatAddress}
           address={chatAddress}
           relaysConnected={relaysConnected}
-          disabled={chatting.info.status !== 'live'}
+          disabled={chatting.info.announcedStatus !== 'live'}
           owners={[chatting.info.pubkey, chatting.info.hostPubkey]}
           identifier={chatting.info.dTag}
           onPeoplePresent={setPresent}

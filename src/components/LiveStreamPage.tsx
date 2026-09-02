@@ -498,7 +498,11 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
               'width=420,height=760,menubar=no,toolbar=no'
             )}
             relaysConnected={relaysConnected}
-            disabled={stream.status !== 'live'}
+            // Only a broadcast that says it is over closes its chat. The
+            // freshness rule that hides stale streams from the Live list has
+            // no business shutting the box on people mid-stream — at three
+            // hours, a long broadcast went read-only under them.
+            disabled={stream.announcedStatus !== 'live'}
             onPeoplePresent={setPresent}
             // Either account behind the stream may moderate it: on a
             // platform-published stream the presenter is not the signer

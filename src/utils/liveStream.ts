@@ -19,7 +19,19 @@ export interface LiveStreamInfo {
   summary: string;
   image: string;
   streamingUrl: string;
+  /**
+   * What this client shows it as: the broadcaster's own status, except that
+   * a "live" nobody has refreshed in hours counts as over — otherwise the
+   * Live list fills with broadcasts that ended days ago.
+   */
   status: LiveStreamStatus;
+  /**
+   * What the event itself says, freshness ignored. Whether somebody may
+   * write in the chat is this, not the above: a broadcast that runs for
+   * eight hours is still running, and its chat should not close under the
+   * people using it because the event was not republished.
+   */
+  announcedStatus: LiveStreamStatus;
   starts?: number;
   currentParticipants?: number;
   hashtags: string[];
@@ -100,6 +112,10 @@ export function parseLiveEvent(event: NostrEventSigned): LiveStreamInfo {
     ? 'planned'
     : (rawStatus === 'live' && isEffectivelyLive(event)) ? 'live' : 'ended';
 
+  const announcedStatus: LiveStreamStatus = rawStatus === 'planned'
+    ? 'planned'
+    : rawStatus === 'live' ? 'live' : 'ended';
+
   const hostTag = event.tags.find(t => t[0] === 'p' && (t[3] || '').toLowerCase() === 'host');
 
   return {
@@ -112,6 +128,7 @@ export function parseLiveEvent(event: NostrEventSigned): LiveStreamInfo {
     image: tag('image') || '',
     streamingUrl: tag('streaming') || '',
     status,
+    announcedStatus,
     starts: tag('starts') ? Number(tag('starts')) : undefined,
     currentParticipants: tag('current_participants') ? Number(tag('current_participants')) : undefined,
     hashtags: event.tags.filter(t => t[0] === 't').map(t => t[1])
