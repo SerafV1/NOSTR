@@ -13,6 +13,7 @@ import ZapButton from './ZapButton';
 import Nip05Handle from './Nip05Handle';
 import EmojiText from './EmojiText';
 import ProfileHoverCard from './ProfileHoverCard';
+import Thumbnail from './Thumbnail';
 import { ZapIcon, MessageIcon, CopyIcon, CheckIcon, BitcoinIcon, MoneroIcon } from './Icons';
 import { paymentTargets, shortAddress } from '../utils/paymentTargets';
 
@@ -1017,7 +1018,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                       {thumb.type === 'video' ? (
                         <video src={thumb.url} muted playsInline />
                       ) : (
-                        <img src={thumb.url} alt="" loading="lazy" />
+                        <Thumbnail
+                          src={thumb.url}
+                          fallback={thumb.type === 'embed' ? '🎬' : '🖼'}
+                          fallbackClassName="media-grid-fallback"
+                        />
                       )}
                       {thumb.type === 'video' && <span className="media-grid-play">▶</span>}
                     </button>

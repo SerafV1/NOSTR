@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Thumbnail from './Thumbnail';
 import { UserProfile, EVENT_KINDS, NostrEventSigned } from '../types';
 import { NostrCore, PersistentCache } from '../nostr/core';
 import { parseLiveEvent, encodeLiveNaddr, isEffectivelyLive, LiveStreamInfo } from '../utils/liveStream';
@@ -149,11 +150,14 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
                 onClick={() => navigate(`/live/${naddr}`)}
               >
                 <div className="live-stream-thumb">
-                  {stream.image ? (
-                    <img src={stream.image} alt={stream.title}  loading="lazy" decoding="async" />
-                  ) : (
-                    <div className="live-stream-thumb-placeholder" />
-                  )}
+                  {/* A stream's own picture, or a plate where the address is
+                      dead — a broken image in a grid reads as a broken page */}
+                  <Thumbnail
+                    src={stream.image}
+                    alt={stream.title}
+                    fallback="📺"
+                    fallbackClassName="live-stream-thumb-placeholder"
+                  />
                   <span className="live-stream-badge">LIVE</span>
                   {stream.currentParticipants !== undefined && (
                     <span className="live-stream-viewers">👁 {stream.currentParticipants}</span>

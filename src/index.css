@@ -547,6 +547,13 @@ textarea {
   display: flex;
   align-items: center;
   gap: var(--spacing-lg);
+  /* The row of links gives way first; these are the ones that must stay
+     reachable, so they do not shrink */
+  flex-shrink: 0;
+}
+
+.header-nav {
+  min-width: 0;
 }
 
 /* Notice for videos the browser can't decode */
@@ -4364,7 +4371,12 @@ button.poll-option-vote:disabled {
 /* Tablet: the row of nav labels plus avatar and Logout is wider than the
    viewport, which pushed the whole page sideways. Let it wrap and tighten
    the spacing rather than clipping anything. */
-@media (max-width: 1024px) {
+/* The menu becomes a button before anything in the header has to be
+   squashed. Measured: the row of labels stops shrinking at 742px, so under
+   about 1160 — a laptop with a panel open beside the page, say — the tip
+   button and Logout were pushed off the right edge and the whole page
+   scrolled sideways. */
+@media (max-width: 1160px) {
   .header-content {
     flex-wrap: nowrap;
     gap: var(--spacing-sm);
@@ -5737,6 +5749,32 @@ a.capability-indicator.paid:hover {
   align-items: center;
   justify-content: center;
   font-size: 2.5rem;
+  background: var(--dark-bg);
+  color: var(--text-secondary);
+}
+
+/* What stands in for a picture that did not arrive — the same frame, filled
+   rather than broken */
+.thumbnail-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: var(--dark-bg);
+  color: var(--text-secondary);
+  font-size: 1.6rem;
+}
+
+.media-grid-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: var(--dark-bg);
+  color: var(--text-secondary);
+  font-size: 1.8rem;
 }
 
 .live-stream-badge {
