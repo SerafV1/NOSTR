@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { NostrEventSigned, UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
@@ -214,6 +214,16 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   const [mentionQuery, setMentionQuery] = useState('');
   const [suggestions, setSuggestions] = useState<UserProfile[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
+  /**
+   * Reaching back through a long stream.
+   *
+   * The chat opens on the last two hundred lines, which after five hours is
+   * the tail of the evening. Scrolling to the top asks for what came before
+   * it, a screenful at a time, until the relays have no more to give.
+   */
+  const [olderState, setOlderState] = useState<'idle' | 'loading' | 'done'>('idle');
+  /** The height before older lines were put in, so the view can stay put */
+  const heldHeight = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const profilesRef = useRef<Map<string, UserProfile>>(new Map());
   const isLoggedIn = CredentialManager.isLoggedIn();
@@ -268,7 +278,9 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
       // first answer comes from whichever replies first and is routinely
       // missing messages the others hold, which looked like a chat that had
       // stopped updating until it was reloaded
-      NostrCore.fetchLiveChatMessages(address, 200, true).then(complete => {
+      // Deeper than the quick answer: a busy stream says more in an evening
+      // than two hundred lines
+      NostrCore.fetchLiveChatMessages(address, 500, true).then(complete => {
         if (cancelled || complete.length === 0) return;
         setMessages(prev => {
           const byId = new Map(prev.map(m => [m.id, m]));
@@ -562,12 +574,78 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     }
   };
 
-  // Stick to the bottom as new messages come in
-  useEffect(() => {
-    if (listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
+  // Stick to the bottom as new messages come in — unless the reader has
+  // scrolled up to read something, or older lines were just put in above,
+  // where snapping to the bottom would throw away what they went for
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+
+    if (heldHeight.current !== null) {
+      list.scrollTop += list.scrollHeight - heldHeight.current;
+      heldHeight.current = null;
+      return;
     }
+
+    const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 160;
+    if (nearBottom) list.scrollTop = list.scrollHeight;
   }, [messages.length, zaps.length]);
+
+  /** What was said before the oldest line on screen */
+  const loadOlder = async () => {
+    const list = listRef.current;
+    if (!list || olderState !== 'idle' || messages.length === 0) return;
+
+    const oldest = messages.reduce(
+      (found, message) => Math.min(found, message.created_at || 0),
+      messages[0].created_at || 0
+    );
+    if (!oldest) return;
+
+    setOlderState('loading');
+    try {
+      // Two questions, because relays answer differently. The first asks
+      // for what came before the oldest line here. The second asks for a
+      // deeper slice of the same stretch: each relay holds its own subset —
+      // measured on one stream, five relays held 500, 369, 287, 100 and 6
+      // messages of the same chat — so what is missing is as often a hole in
+      // the middle as it is the far end.
+      const [older, deeper] = await Promise.all([
+        NostrCore.fetchLiveChatMessages(address, 200, true, oldest - 1),
+        NostrCore.fetchLiveChatMessages(address, Math.min(messages.length * 2 + 200, 1000), true)
+      ]);
+      const fresh = [...older, ...deeper]
+        .filter(message => !messages.some(held => held.id === message.id))
+        .filter((message, at, all) => all.findIndex(other => other.id === message.id) === at);
+
+      // Nothing further to ask for only when the relays answered about the
+      // stretch before this one and had nothing in it. An answer that holds
+      // only lines already here says the relays that replied this time had
+      // no more — not that no relay has any, so the way back stays open.
+      if (older.length === 0 && deeper.length === 0) {
+        setOlderState('done');
+        return;
+      }
+      if (fresh.length === 0) {
+        setOlderState('idle');
+        return;
+      }
+
+      heldHeight.current = list.scrollHeight;
+      setMessages(prev => {
+        const byId = new Map(prev.map(m => [m.id, m]));
+        for (const message of fresh) byId.set(message.id, message);
+        return [...byId.values()].sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+      });
+      NostrCore.fetchProfiles(fresh.map(m => m.pubkey)).then(found => {
+        setProfiles(prev => new Map([...prev, ...found]));
+      });
+      setOlderState('idle');
+    } catch (error) {
+      console.error('Failed to load older chat messages:', error);
+      setOlderState('idle');
+    }
+  };
 
 
   /**
@@ -909,7 +987,20 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
         </div>
       )}
 
-      <div className="live-chat-messages" ref={listRef}>
+      <div
+        className="live-chat-messages"
+        ref={listRef}
+        onScroll={(e) => { if (e.currentTarget.scrollTop < 120) void loadOlder(); }}
+      >
+        {messages.length > 0 && olderState !== 'done' && (
+          <div className="live-chat-older">
+            {olderState === 'loading' ? 'Reading what came before…' : (
+              <button type="button" className="live-chat-older-btn" onClick={() => void loadOlder()}>
+                Earlier messages
+              </button>
+            )}
+          </div>
+        )}
         {timeline.length === 0 && (
           <div className="live-chat-empty">
             {muteListRead ? 'No messages yet — say hello!' : 'Loading the chat…'}

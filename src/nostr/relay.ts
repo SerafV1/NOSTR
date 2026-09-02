@@ -955,7 +955,17 @@ export class RelayPool {
     return [...(this.seenOn.get(eventId) || [])];
   }
 
-  async fetchEvents(filters: NostrFilter[], waitForAll: boolean = false): Promise<NostrEventSigned[]> {
+  async fetchEvents(
+    filters: NostrFilter[],
+    waitForAll: boolean = false,
+    /**
+     * How long a single relay may take. Three seconds suits the questions a
+     * page asks while it is being read; a history query — a thousand chat
+     * lines out of a busy stream — is a different sort of question, and the
+     * cap was cutting it off before the relay had finished answering.
+     */
+    perRelayTimeoutMs: number = 3000
+  ): Promise<NostrEventSigned[]> {
     const events: Map<string, NostrEventSigned> = new Map();
     const promises: Promise<void>[] = [];
 
@@ -1018,7 +1028,6 @@ export class RelayPool {
               return [];
             })();
 
-            // Add 3 second timeout for each relay query
             let timedOut = false;
             relayEvents = await Promise.race([
               queryPromise,
@@ -1027,7 +1036,7 @@ export class RelayPool {
                   console.warn(`Query timeout for relay ${url}`);
                   timedOut = true;
                   resolve([]);
-                }, 3000)
+                }, perRelayTimeoutMs)
               )
             ]);
 

@@ -5753,6 +5753,30 @@ a.capability-indicator.paid:hover {
   color: var(--text-secondary);
 }
 
+/* The way back through a long stream's chat, at the top of the list */
+.live-chat-older {
+  display: flex;
+  justify-content: center;
+  padding: var(--spacing-xs) 0 var(--spacing-sm);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.live-chat-older-btn {
+  padding: 3px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.live-chat-older-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--primary-color);
+}
+
 /* What stands in for a picture that did not arrive — the same frame, filled
    rather than broken */
 .thumbnail-fallback {

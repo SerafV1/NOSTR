@@ -1543,13 +1543,27 @@ export class NostrCore {
      * relays that were slower fill in what the first one did not have —
      * which is what made a chat look stuck until it was reloaded.
      */
-    waitForAll: boolean = false
+    waitForAll: boolean = false,
+    /**
+     * Only what was said before this moment — how the chat reaches back
+     * past the last two hundred lines, a screenful at a time.
+     */
+    until?: number
   ): Promise<NostrEventSigned[]> {
     try {
       const relayPool = getRelayPool();
+      // Reaching back through a stream's history is a heavier question than
+      // the ones a page asks while being read, so the relays are given
+      // longer to finish answering it
+      const deep = Boolean(until) || limit > 200;
       const events = await relayPool.fetchEvents([
-        { kinds: [EVENT_KINDS.LIVE_CHAT_MESSAGE], '#a': [address], limit }
-      ], waitForAll);
+        {
+          kinds: [EVENT_KINDS.LIVE_CHAT_MESSAGE],
+          '#a': [address],
+          limit,
+          ...(until ? { until } : {})
+        }
+      ], waitForAll, deep ? 10000 : 3000);
       return events.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
     } catch (error) {
       console.error('Failed to fetch live chat messages:', error);
