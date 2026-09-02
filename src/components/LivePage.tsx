@@ -88,7 +88,12 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
         takeEventsRef.current(found);
         PersistentCache.set(LIVE_CACHE_KEY, found);
 
-        const profileMap = await NostrCore.fetchProfiles(found.map(e => e.pubkey));
+        // On a platform-published stream the signer is the platform and the
+        // presenter is named in a `p` tag, so both are worth having: one
+        // names the card, the other can lend it a picture
+        const profileMap = await NostrCore.fetchProfiles(
+          found.flatMap(e => [e.pubkey, parseLiveEvent(e).hostPubkey]).filter(Boolean)
+        );
         if (!cancelled) setProfiles(profileMap);
       } catch (error) {
         console.error('Failed to load live streams:', error);
@@ -113,7 +118,9 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
       if (cancelled || found.length === 0) return;
       takeEventsRef.current(found);
       PersistentCache.set(LIVE_CACHE_KEY, found);
-      const profileMap = await NostrCore.fetchProfiles(found.map(e => e.pubkey));
+      const profileMap = await NostrCore.fetchProfiles(
+        found.flatMap(e => [e.pubkey, parseLiveEvent(e).hostPubkey]).filter(Boolean)
+      );
       if (!cancelled) setProfiles(prev => new Map([...prev, ...profileMap]));
     }, 30000);
 
@@ -140,7 +147,11 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
         <div className="live-streams-grid">
           {streams.map(stream => {
             const profile = profiles.get(stream.pubkey);
-            const hostName = profile?.display_name || profile?.name || formatAddress(stream.pubkey);
+            // Whoever is actually presenting — the same person the stream
+            // page names, which on zap.stream is not the account that signed
+            // the event
+            const host = profiles.get(stream.hostPubkey) || profile;
+            const hostName = host?.display_name || host?.name || formatAddress(stream.hostPubkey);
             const naddr = encodeLiveNaddr(EVENT_KINDS.LIVE_EVENT, stream.pubkey, stream.dTag);
 
             return (
@@ -150,10 +161,14 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
                 onClick={() => navigate(`/live/${naddr}`)}
               >
                 <div className="live-stream-thumb">
-                  {/* A stream's own picture, or a plate where the address is
-                      dead — a broken image in a grid reads as a broken page */}
+                  {/* A stream's own picture where it names one. Plenty name
+                      none at all — zap.stream publishes a great many like
+                      that — and a card of nothing but a television is a card
+                      that says nothing, so the broadcaster's own banner or
+                      face stands in. The plate is the last resort, for when
+                      there is no picture of any kind or the address is dead. */}
                   <Thumbnail
-                    src={stream.image}
+                    src={[stream.image, host?.banner, host?.picture]}
                     alt={stream.title}
                     fallback="📺"
                     fallbackClassName="live-stream-thumb-placeholder"
@@ -166,7 +181,7 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
                 <div className="live-stream-info">
                   <div className="live-stream-title">{stream.title}</div>
                   <div className="live-stream-host">
-                    {profile?.picture && <img src={profile.picture} alt="" className="live-stream-host-avatar"  loading="lazy" decoding="async" />}
+                    {host?.picture && <img src={host.picture} alt="" className="live-stream-host-avatar"  loading="lazy" decoding="async" />}
                     {hostName}
                   </div>
                 </div>

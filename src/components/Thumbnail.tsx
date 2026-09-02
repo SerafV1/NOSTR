@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
 
 interface ThumbnailProps {
-  /** Where the picture is, if there is one */
-  src?: string;
+  /**
+   * Where the picture is. Several may be given, best first — a stream's own
+   * poster, then the broadcaster's banner, then their face — and each is
+   * tried in turn when the one before it fails.
+   */
+  src?: string | (string | undefined)[];
   alt?: string;
   className?: string;
   /** What to draw instead: a word, an emoji, whatever fits the frame */
@@ -33,9 +37,11 @@ const Thumbnail: React.FC<ThumbnailProps> = ({
   fallback = '🎬',
   fallbackClassName = 'thumbnail-fallback'
 }) => {
-  const [broken, setBroken] = useState(false);
+  const sources = (Array.isArray(src) ? src : [src]).filter((one): one is string => Boolean(one));
+  const [tried, setTried] = useState(0);
+  const showing = sources[tried];
 
-  if (!src || broken) {
+  if (!showing) {
     return (
       <div className={`${fallbackClassName} ${className || ''}`.trim()} aria-label={alt || undefined}>
         <span className="thumbnail-fallback-mark" aria-hidden="true">{fallback}</span>
@@ -45,12 +51,15 @@ const Thumbnail: React.FC<ThumbnailProps> = ({
 
   return (
     <img
-      src={src}
+      // Keyed on the address, so stepping to the next one is a new image
+      // rather than a src swap the browser may not re-attempt
+      key={showing}
+      src={showing}
       alt={alt}
       className={className}
       loading="lazy"
       decoding="async"
-      onError={() => setBroken(true)}
+      onError={() => setTried(at => at + 1)}
     />
   );
 };
