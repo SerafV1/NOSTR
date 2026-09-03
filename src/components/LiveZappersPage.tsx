@@ -3,9 +3,11 @@ import LiveZappersPanel from './LiveZappersPanel';
 import {
   encodeHostParam,
   liveEventAddress,
+  parseLiveEvent,
   readdressed
 } from '../utils/liveStream';
 import { CredentialManager } from '../nostr/crypto';
+import { NostrCore } from '../nostr/core';
 
 interface LiveZappersPageProps {
   kind: number;
@@ -37,6 +39,22 @@ const LiveZappersPage: React.FC<LiveZappersPageProps> = ({
     const asked = Number(params.get('top'));
     return Number.isFinite(asked) && asked > 0 ? Math.min(asked, 100) : 10;
   });
+  /** Whoever presents, for the address this window hands out — see LiveViewersPage */
+  const [host, setHost] = useState(pubkey);
+
+  useEffect(() => {
+    if (!relaysConnected) return;
+    let dropped = false;
+    NostrCore.fetchEventByAddress(kind, pubkey, identifier)
+      .then(event => {
+        if (dropped || !event) return;
+        const presenting = parseLiveEvent(event).hostPubkey;
+        if (presenting) setHost(presenting);
+      })
+      .catch(() => { /* then the signer's npub stands in, as before */ });
+    return () => { dropped = true; };
+  }, [kind, pubkey, identifier, relaysConnected]);
+
   const readOnly = !CredentialManager.isLoggedIn();
   const isOverlaySource = readOnly && transparent;
 
@@ -51,7 +69,7 @@ const LiveZappersPage: React.FC<LiveZappersPageProps> = ({
 
   // Always the broadcaster's address, never this one broadcast's — see
   // LiveChatPage
-  const widgetPath = readdressed(window.location.pathname, encodeHostParam(pubkey));
+  const widgetPath = readdressed(window.location.pathname, encodeHostParam(host));
 
   const choose = (opts: { transparent: boolean; bold: boolean; top: number }) => {
     setTransparent(opts.transparent);

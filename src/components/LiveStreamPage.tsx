@@ -195,8 +195,13 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
    * npub, never this one broadcast's naddr. The address in the window is the
    * address that ends up in OBS, and it has to be the one that still works
    * for the next stream and the one after it.
+   *
+   * The broadcaster is whoever presents, not whoever signed. On a stream
+   * published through a platform the signer is the platform — so the link
+   * carried zap.stream's npub, and a broadcaster popping out their own chat
+   * got somebody else's name in the address.
    */
-  const widgetParam = encodeHostParam(stream.pubkey);
+  const widgetParam = encodeHostParam(stream.hostPubkey || stream.pubkey);
 
 
 

@@ -36,6 +36,12 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
   const [transparent, setTransparent] = useState(() => params.get('transparent') === '1');
   const [bold, setBold] = useState(() => params.get('bold') === '1');
   const [published, setPublished] = useState<number | null>(null);
+  /**
+   * Whoever presents. On a platform-published stream the account that signed
+   * the event is the platform, and a link built on it carries the platform's
+   * npub — which is not the address this broadcaster wants in OBS.
+   */
+  const [host, setHost] = useState(pubkey);
   /** When the copy the number came from was published, so an older one cannot replace it */
   const latestAt = useRef(0);
   // Everyone heard from in the chat lately — a number that moves on its own,
@@ -67,6 +73,7 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
       if (at < latestAt.current) return;
 
       const parsed = parseLiveEvent(event);
+      if (parsed.hostPubkey) setHost(parsed.hostPubkey);
       if (!cancelled && parsed.currentParticipants !== undefined) {
         latestAt.current = at;
         setPublished(parsed.currentParticipants);
@@ -154,7 +161,7 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
 
   // Always the broadcaster's address, never this one broadcast's — see
   // LiveChatPage
-  const widgetPath = readdressed(window.location.pathname, encodeHostParam(pubkey));
+  const widgetPath = readdressed(window.location.pathname, encodeHostParam(host));
 
   const choose = (opts: { transparent: boolean; bold: boolean }) => {
     setTransparent(opts.transparent);

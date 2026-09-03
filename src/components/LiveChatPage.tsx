@@ -67,7 +67,9 @@ const LiveChatPage: React.FC<LiveChatPageProps> = ({
    * tomorrow. There used to be a choice about it, which was a choice nobody
    * wanted to get wrong at the start of a stream.
    */
-  const widgetPath = readdressed(window.location.pathname, encodeHostParam(pubkey));
+  // Whoever presents, not whoever signed: `owners` holds both, the second
+  // being the host read off the live event
+  const widgetPath = readdressed(window.location.pathname, encodeHostParam(owners[1] || pubkey));
 
   const obsLink = readOnly
     ? undefined
