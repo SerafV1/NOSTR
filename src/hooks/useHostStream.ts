@@ -132,9 +132,12 @@ export function useHostStream(param: string | undefined, relaysConnected: boolea
         { kinds: [EVENT_KINDS.LIVE_EVENT], '#p': [host] }
       ],
       event => {
-        // A `p` tag is not proof of hosting; the fetch checks the role, and
-        // so does this
-        if (event.pubkey === host || event.tags.some(t => t[0] === 'p' && t[1] === host)) consider(event);
+        // A `p` tag is not proof of hosting — a stream names its guests and
+        // whoever it mentions the same way. Only the tag whose role is Host
+        // says whose stream this is, and without that check somebody else's
+        // broadcast could walk into a window following you: their chat, in
+        // your overlay, because they had tagged you.
+        if (event.pubkey === host || parseLiveEvent(event).hostPubkey === host) consider(event);
       }
     );
 
