@@ -224,6 +224,17 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   const [olderState, setOlderState] = useState<'idle' | 'loading' | 'done'>('idle');
   /** The height before older lines were put in, so the view can stay put */
   const heldHeight = useRef<number | null>(null);
+  /**
+   * Whether the reader was at the bottom before the last line arrived.
+   *
+   * Judged after the fact it is wrong: by then the new message is already in
+   * the list, and a tall one — a picture, an embedded video — puts the
+   * bottom further away than any threshold. The chat then stops following
+   * and sits there, which is exactly what it looked like.
+   */
+  const atBottom = useRef(true);
+  /** Something arrived while the reader was up in the history */
+  const [missed, setMissed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const profilesRef = useRef<Map<string, UserProfile>>(new Map());
   const isLoggedIn = CredentialManager.isLoggedIn();
@@ -577,6 +588,14 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   // Stick to the bottom as new messages come in — unless the reader has
   // scrolled up to read something, or older lines were just put in above,
   // where snapping to the bottom would throw away what they went for
+  const toBottom = () => {
+    const list = listRef.current;
+    if (!list) return;
+    list.scrollTop = list.scrollHeight;
+    atBottom.current = true;
+    setMissed(false);
+  };
+
   useLayoutEffect(() => {
     const list = listRef.current;
     if (!list) return;
@@ -587,8 +606,24 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
       return;
     }
 
-    const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 160;
-    if (nearBottom) list.scrollTop = list.scrollHeight;
+    if (atBottom.current) list.scrollTop = list.scrollHeight;
+    else setMissed(true);
+  }, [messages.length, zaps.length]);
+
+  /**
+   * A picture or a video in a message has no size until it loads, and the
+   * list grows again when it does — after the effect above has run. Without
+   * this the chat lands a screenful short of the newest line whenever the
+   * last message carried one.
+   */
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list || typeof ResizeObserver === 'undefined') return;
+    const watch = new ResizeObserver(() => {
+      if (atBottom.current) list.scrollTop = list.scrollHeight;
+    });
+    for (const child of Array.from(list.children)) watch.observe(child);
+    return () => watch.disconnect();
   }, [messages.length, zaps.length]);
 
   /** What was said before the oldest line on screen */
@@ -990,7 +1025,12 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
       <div
         className="live-chat-messages"
         ref={listRef}
-        onScroll={(e) => { if (e.currentTarget.scrollTop < 120) void loadOlder(); }}
+        onScroll={(e) => {
+          const list = e.currentTarget;
+          atBottom.current = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+          if (atBottom.current) setMissed(false);
+          if (list.scrollTop < 120) void loadOlder();
+        }}
       >
         {messages.length > 0 && olderState !== 'done' && (
           <div className="live-chat-older">
@@ -1199,6 +1239,13 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
             </button>
           ))}
         </div>
+      )}
+
+      {/* Somebody spoke while you were reading further up */}
+      {missed && (
+        <button type="button" className="live-chat-to-latest" onClick={toBottom}>
+          ↓ Latest
+        </button>
       )}
 
       {!hideComposer && <form className="live-chat-input-row" onSubmit={handleSend}>

@@ -5753,6 +5753,23 @@ a.capability-indicator.paid:hover {
   color: var(--text-secondary);
 }
 
+/* The way back down, when something was said while you were reading up */
+.live-chat-to-latest {
+  position: absolute;
+  left: 50%;
+  bottom: 64px;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border: 1px solid var(--primary-color);
+  border-radius: 999px;
+  background: var(--light-bg);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  z-index: 3;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+
 /* The way back through a long stream's chat, at the top of the list */
 .live-chat-older {
   display: flex;
