@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { NostrEventSigned } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import EventCard from './EventCard';
@@ -36,6 +36,78 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
   const [parentNotes, setParentNotes] = useState<NostrEventSigned[]>([]);
   const [replies, setReplies] = useState<NostrEventSigned[]>([]);
   const [loading, setLoading] = useState(true);
+
+  /**
+   * Keeping the opened note where the eye is.
+   *
+   * A reply is opened with its thread above it, and that thread arrives one
+   * post at a time, each one pushing the reply further down a page that was
+   * sitting at the top. Clicking an answer in notifications landed on
+   * whatever the conversation started with, and the answer itself — the
+   * thing that was clicked — was somewhere below the fold.
+   *
+   * So the opened note is held in the middle of the screen while its
+   * ancestors and their pictures land above it, and the moment the reader
+   * scrolls anywhere themselves, this stops and stays stopped.
+   */
+  const focusRef = useRef<HTMLDivElement>(null);
+  const parentsRef = useRef<HTMLDivElement>(null);
+  const anchoring = useRef(true);
+  const placedAt = useRef<number | null>(null);
+
+  /**
+   * Whatever actually scrolls around the note. Not the main panel, as this
+   * first assumed and measured wrong: the page inside it does its own
+   * scrolling, and which element that is has changed before now.
+   */
+  const scroller = (): HTMLElement | null => {
+    let el = focusRef.current?.parentElement || null;
+    while (el) {
+      const how = getComputedStyle(el).overflowY;
+      if ((how === 'auto' || how === 'scroll') && el.scrollHeight > el.clientHeight) return el;
+      el = el.parentElement;
+    }
+    return (document.scrollingElement as HTMLElement | null);
+  };
+
+  const centreOnFocus = () => {
+    if (!anchoring.current || !focusRef.current) return;
+    focusRef.current.scrollIntoView({ block: 'center' });
+    placedAt.current = scroller()?.scrollTop ?? null;
+  };
+
+  // A different note is a fresh start, whatever the reader did on the last one
+  useEffect(() => { anchoring.current = true; placedAt.current = null; }, [noteId]);
+
+  useLayoutEffect(() => {
+    // With nothing above it the note is already the first thing on the page
+    if (!note || parentNotes.length === 0) return;
+    centreOnFocus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note?.id, parentNotes.length]);
+
+  // Pictures in the posts above arrive after the posts do, and each one
+  // shifts everything below it
+  useEffect(() => {
+    const above = parentsRef.current;
+    if (!above || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => centreOnFocus());
+    observer.observe(above);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note?.id, parentNotes.length]);
+
+  // The reader taking over ends it — including a scroll inside the page's
+  // own scrolling panel, which is why this listens on the way down
+  useEffect(() => {
+    const onScroll = () => {
+      const at = scroller()?.scrollTop;
+      if (at === undefined || placedAt.current === null) return;
+      if (Math.abs(at - placedAt.current) > 8) anchoring.current = false;
+    };
+    window.addEventListener('scroll', onScroll, true);
+    return () => window.removeEventListener('scroll', onScroll, true);
+  }, []);
 
   useEffect(() => {
     // You almost always got here by clicking a note that is already in
@@ -220,7 +292,7 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
         {note && (
           <div className="note-thread">
             {parentNotes.length > 0 && (
-              <div className="note-parent-context">
+              <div className="note-parent-context" ref={parentsRef}>
                 {parentNotes.map((parent) => (
                   <React.Fragment key={parent.id}>
                     <EventCard
@@ -236,7 +308,7 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
             )}
             {/* The one that was opened — the rest of the thread is context
                 around it, so it is the only part shown at full size */}
-            <div className="thread-focus">
+            <div className="thread-focus" ref={focusRef}>
               <EventCard
                 event={note}
                 focused
