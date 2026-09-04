@@ -70,6 +70,15 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   // One empty answer is not the end: relays drop sockets and answer thinly.
   // Two in a row is.
   const emptyRunsRef = useRef(0);
+  /**
+   * How many posts may wait behind the button.
+   *
+   * It was fifty, which on a feed left alone for an hour is reached and then
+   * quietly overrun: the button stopped counting, and what it dropped was
+   * never shown at all.
+   */
+  const PENDING_LIMIT = 300;
+
   // New posts found by background polling, shown behind an X-style
   // "N new posts" button instead of jumping into the feed
   const [pendingEvents, setPendingEvents] = useState<NostrEventSigned[]>([]);
@@ -366,7 +375,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
         if (eventsRef.current.some(e => e.id === event.id)) return prev;
         const merged = [event, ...prev];
         merged.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-        return merged.slice(0, 50);
+        return merged.slice(0, PENDING_LIMIT);
       });
     };
 
@@ -426,7 +435,11 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     const waitingReposts = pendingReposts;
     if (pending.length === 0 && waitingReposts.length === 0) return;
 
-    noteFeedChange('button pressed', `${pending.length} posts, ${waitingReposts.length} reposts`);
+    const alreadyShown = pending.filter(e => eventsRef.current.some(shown => shown.id === e.id)).length;
+    noteFeedChange(
+      'button pressed',
+      `${pending.length} posts (${alreadyShown} already in the feed), ${waitingReposts.length} reposts`
+    );
     if (pending.length > 0) {
       setEvents(prev => {
         const ids = new Set(pending.map(e => e.id));
@@ -667,7 +680,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
             const ids = new Set(prev.map(e => e.id));
             return [...arrived.filter(e => !ids.has(e.id)), ...prev]
               .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
-              .slice(0, 50);
+              .slice(0, PENDING_LIMIT);
           });
         }
       } else {
@@ -683,13 +696,19 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
 
       // The live subscription can start streaming "new" posts while this
       // fetch is still in flight (it doesn't wait for `events` to be ready
-      // before computing its cursor) — anything it already queued up that
-      // this authoritative fetch also picked up is now visible in `merged`,
-      // so drop it from pending instead of double-counting/re-showing it
-      setPendingEvents(prev => {
-        const mergedIds = new Set(merged.map(e => e.id));
-        return prev.filter(e => !mergedIds.has(e.id));
-      });
+      // before computing its cursor) — anything it already queued up that is
+      // now *on screen* is not waiting for anything, so it leaves the queue.
+      //
+      // On screen, not merely fetched: in a background refresh `merged` is
+      // what was found, and what was found is exactly what the button is
+      // holding. Filtering against it emptied the queue the same breath it
+      // was filled, so a refresh's new posts never reached the button at all.
+      if (!background) {
+        setPendingEvents(prev => {
+          const mergedIds = new Set(merged.map(e => e.id));
+          return prev.filter(e => !mergedIds.has(e.id));
+        });
+      }
 
       // Reposts only make sense for the home feed — showing everyone's
       // reposts on Global/Topic would be unfilterable noise

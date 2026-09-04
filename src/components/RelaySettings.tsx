@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { RelayMark } from './RelayBadges';
 import { getRelayPool } from '../nostr/relay';
+import { readFeedTrail } from '../utils/feedTrail';
 import { CredentialManager } from '../nostr/crypto';
 import { RelayConfig } from '../types';
 
@@ -103,6 +104,10 @@ const RelaySettings: React.FC = () => {
     const interval = setInterval(() => loadRelays(false), 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const [showTrail, setShowTrail] = useState(false);
+  const [trailCopied, setTrailCopied] = useState(false);
+  const trail = showTrail ? readFeedTrail() : [];
 
   const handleAddRelay = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -335,6 +340,45 @@ const RelaySettings: React.FC = () => {
             </div>
             );
           })
+        )}
+      </div>
+
+      {/* What the timeline did, and why — the trail the feed writes as it
+          changes. Kept here rather than in a console because the reports that
+          need it come from phones. */}
+      <div className="feed-trail">
+        <button
+          type="button"
+          className="feed-trail-toggle"
+          onClick={() => setShowTrail(open => !open)}
+        >
+          {showTrail ? 'Hide feed activity' : 'Feed activity'}
+        </button>
+
+        {showTrail && (
+          <>
+            <p className="settings-hint">
+              The last few things the timeline did: what arrived, what waited behind the
+              "new posts" button, and what happened when it was pressed.
+            </p>
+            <pre className="feed-trail-lines">{trail.join('\n') || 'Nothing recorded yet'}</pre>
+            <button
+              type="button"
+              className="add-relay-btn"
+              onClick={async () => {
+                const text = trail.join('\n');
+                try {
+                  await navigator.clipboard.writeText(text);
+                  setTrailCopied(true);
+                  setTimeout(() => setTrailCopied(false), 2000);
+                } catch {
+                  prompt('Copy this:', text);
+                }
+              }}
+            >
+              {trailCopied ? '✓ Copied' : 'Copy'}
+            </button>
+          </>
         )}
       </div>
     </section>

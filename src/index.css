@@ -5753,6 +5753,36 @@ a.capability-indicator.paid:hover {
   color: var(--text-secondary);
 }
 
+/* The timeline's own record, in settings */
+.feed-trail {
+  margin-top: var(--spacing-xl);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border-color);
+}
+
+.feed-trail-toggle {
+  padding: 4px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: none;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.feed-trail-lines {
+  max-height: 260px;
+  overflow: auto;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--dark-bg);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
 /* The way back down, when something was said while you were reading up */
 .live-chat-to-latest {
   position: absolute;
