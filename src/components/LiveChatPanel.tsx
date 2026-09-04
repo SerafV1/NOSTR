@@ -221,7 +221,9 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
    * the tail of the evening. Scrolling to the top asks for what came before
    * it, a screenful at a time, until the relays have no more to give.
    */
-  const [olderState, setOlderState] = useState<'idle' | 'loading' | 'done'>('idle');
+  const [olderState, setOlderState] = useState<'unknown' | 'idle' | 'loading' | 'done'>('unknown');
+  /** The address the question "is there anything earlier?" was asked about */
+  const probed = useRef<string | null>(null);
   /** The height before older lines were put in, so the view can stay put */
   const heldHeight = useRef<number | null>(null);
   /**
@@ -626,10 +628,42 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     return () => watch.disconnect();
   }, [messages.length, zaps.length]);
 
+  /**
+   * Is there anything before the oldest line here?
+   *
+   * Asked once, for one message, so the way back is only offered where there
+   * is something to go back to — a chat that holds everything it has should
+   * not be showing a button that does nothing.
+   */
+  useEffect(() => {
+    if (messages.length === 0 || probed.current === address) return;
+    probed.current = address;
+    let dropped = false;
+
+    const oldest = messages.reduce(
+      (found, message) => Math.min(found, message.created_at || 0),
+      messages[0].created_at || 0
+    );
+    if (!oldest) return;
+
+    NostrCore.fetchLiveChatMessages(address, 1, true, oldest - 1)
+      .then(found => {
+        if (dropped) return;
+        setOlderState(current => (current === 'unknown' ? (found.length > 0 ? 'idle' : 'done') : current));
+      })
+      .catch(() => {
+        // Unanswered is not the same as nothing: leave the way back open
+        if (!dropped) setOlderState(current => (current === 'unknown' ? 'idle' : current));
+      });
+
+    return () => { dropped = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address, messages.length > 0]);
+
   /** What was said before the oldest line on screen */
   const loadOlder = async () => {
     const list = listRef.current;
-    if (!list || olderState !== 'idle' || messages.length === 0) return;
+    if (!list || (olderState !== 'idle' && olderState !== 'unknown') || messages.length === 0) return;
 
     const oldest = messages.reduce(
       (found, message) => Math.min(found, message.created_at || 0),
@@ -665,6 +699,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
         setOlderState('idle');
         return;
       }
+
 
       heldHeight.current = list.scrollHeight;
       setMessages(prev => {
@@ -1032,7 +1067,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
           if (list.scrollTop < 120) void loadOlder();
         }}
       >
-        {messages.length > 0 && olderState !== 'done' && (
+        {messages.length > 0 && (olderState === 'idle' || olderState === 'loading') && (
           <div className="live-chat-older">
             {olderState === 'loading' ? 'Reading what came before…' : (
               <button type="button" className="live-chat-older-btn" onClick={() => void loadOlder()}>
