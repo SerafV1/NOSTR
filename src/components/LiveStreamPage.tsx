@@ -4,6 +4,8 @@ import { UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
 import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr, encodeHostParam, streamShareText } from '../utils/liveStream';
+import { useRoomPresence } from '../hooks/useRoomPresence';
+import { announcePresence, presenceIsShared, sharePresence, REFRESH_PRESENCE_MS } from '../nostr/presence';
 import { formatAddress } from '../utils/helpers';
 import StreamSurface from './StreamSurface';
 import LiveChatPanel, { PresentPerson } from './LiveChatPanel';
@@ -48,6 +50,8 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   const [miniAt, setMiniAt] = useState<{ left: number; top: number } | null>(null);
   const dragFrom = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const [present, setPresent] = useState<PresentPerson[]>([]);
+  /** Whether this account tells the room it is here */
+  const [countMe, setCountMe] = useState(presenceIsShared);
   /** How many zappers to list beside the stream, remembered between visits */
   /**
    * Whether the zappers stand beside the chat. Hidden, the dock is only the
@@ -167,6 +171,32 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
       NostrCore.unsubscribeLive(subId);
     };
   }, [kind, pubkey, identifier, relaysConnected]);
+
+  /**
+   * Who else is watching, and telling this one it is here.
+   *
+   * The room is named from the address in the page's own URL rather than
+   * from the loaded event, so it is known before the event arrives and these
+   * hooks never sit behind a return.
+   */
+  const roomAddress = liveEventAddress(kind, pubkey, identifier);
+  const watching = useRoomPresence(roomAddress, relaysConnected);
+
+  useEffect(() => {
+    if (!relaysConnected || !countMe || !CredentialManager.canSign()) return;
+    if (stream?.status !== 'live') return;
+
+    let dropped = false;
+    const say = () => {
+      if (dropped || document.visibilityState !== 'visible') return;
+      void announcePresence(roomAddress);
+    };
+    say();
+    // A presence event stands for ten minutes; this says it again well
+    // inside that, and stops the moment the page is left
+    const again = setInterval(say, REFRESH_PRESENCE_MS);
+    return () => { dropped = true; clearInterval(again); };
+  }, [roomAddress, relaysConnected, countMe, stream?.status]);
 
   if (loading || !relaysConnected) {
     return (
@@ -419,8 +449,19 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                         : "The number the broadcaster's own software publishes — nostr has no other source for it"
                     }
                   >
-                    👁 {Math.max(stream.currentParticipants ?? 0, present.length)} viewers
+                    👁 {Math.max(stream.currentParticipants ?? 0, present.length, watching.length)} viewers
                   </span>
+                )}
+
+                {CredentialManager.isLoggedIn() && stream.status === 'live' && (
+                  <label className="live-stream-count-me" title="Publish that you are watching (NIP-53), so the count can include you">
+                    <input
+                      type="checkbox"
+                      checked={countMe}
+                      onChange={(e) => { setCountMe(e.target.checked); sharePresence(e.target.checked); }}
+                    />
+                    Count me
+                  </label>
                 )}
 
                 {/* Faces beside the count. Nobody publishes a viewer list —

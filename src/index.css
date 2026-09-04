@@ -5753,6 +5753,22 @@ a.capability-indicator.paid:hover {
   color: var(--text-secondary);
 }
 
+/* Saying you are watching, beside the count that includes you */
+.live-stream-count-me {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: var(--spacing-sm);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.live-stream-count-me input {
+  cursor: pointer;
+  margin: 0;
+}
+
 /* The timeline's own record, in settings */
 .feed-trail {
   margin-top: var(--spacing-xl);

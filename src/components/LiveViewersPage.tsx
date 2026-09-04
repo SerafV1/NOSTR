@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { NostrCore } from '../nostr/core';
+import { useRoomPresence } from '../hooks/useRoomPresence';
 import { CredentialManager } from '../nostr/crypto';
 import {
   encodeHostParam,
+  liveEventAddress,
   parseLiveEvent,
   readdressed
 } from '../utils/liveStream';
@@ -42,6 +44,8 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
    * npub — which is not the address this broadcaster wants in OBS.
    */
   const [host, setHost] = useState(pubkey);
+  /** People who have published that they are watching this (NIP-53) */
+  const watching = useRoomPresence(liveEventAddress(kind, pubkey, identifier), relaysConnected);
   /** When the copy the number came from was published, so an older one cannot replace it */
   const latestAt = useRef(0);
   // Everyone heard from in the chat lately — a number that moves on its own,
@@ -156,7 +160,8 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
    * absence of any number at all that shows as a dash, and turning a
    * published nought into one put a bare line where the count belongs.
    */
-  const viewers = published !== null ? Math.max(published, inChat) : (inChat || null);
+  const present = Math.max(inChat, watching.length);
+  const viewers = published !== null ? Math.max(published, present) : (present || null);
 
   useEffect(() => {
     if (!transparent) return;
@@ -237,7 +242,7 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
           {published !== null && published >= inChat
             ? 'The broadcaster publishes this number, and republishes it about once a minute — it follows here as soon as it changes.'
             : viewers !== null
-              ? `This is how many people have spoken in the chat in the last ten minutes${
+              ? `This is how many people are in the chat or have said they are watching${
                   published !== null ? ` — the broadcaster's own count says ${published}` : ', since this broadcaster publishes no count'
                 }.`
               : 'Waiting for a number: this broadcaster publishes no viewer count, and nobody has spoken in the chat yet.'}
