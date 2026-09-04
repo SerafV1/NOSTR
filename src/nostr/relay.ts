@@ -75,6 +75,7 @@ export class RelayPool {
       }
       this.migrateRetiredRelays();
       this.migrateBrokenZapStreamRelay();
+      this.migrateDeadDefaultRelays();
     } catch (error) {
       console.error(`[Relay] Failed to load relay configs: ${error}`);
     }
@@ -140,6 +141,27 @@ export class RelayPool {
     this.relayConfigs = this.relayConfigs.filter(c => c.url !== 'wss://relay.zap.stream');
     if (this.relayConfigs.length !== before) {
       console.log('[Relay] Migration: removed nonexistent wss://relay.zap.stream');
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.relayConfigs));
+    }
+    localStorage.setItem(MIGRATION_KEY, 'done');
+  }
+
+  /**
+   * One-time cleanup: two relays that were defaults here answer nothing at
+   * all — purplepag.es returns 502 to every connection and offchain.pub
+   * refuses them. A browser that has them saved reconnects to both forever,
+   * which costs a socket and fills the console with failures on every page.
+   * Measured over six attempts each before removing them.
+   */
+  private migrateDeadDefaultRelays(): void {
+    const MIGRATION_KEY = 'nostr_relay_migration_v4';
+    if (localStorage.getItem(MIGRATION_KEY)) return;
+
+    const dead = ['wss://purplepag.es', 'wss://offchain.pub'];
+    const before = this.relayConfigs.length;
+    this.relayConfigs = this.relayConfigs.filter(c => !dead.includes(c.url));
+    if (this.relayConfigs.length !== before) {
+      console.log(`[Relay] Migration: removed ${before - this.relayConfigs.length} unreachable relays`);
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.relayConfigs));
     }
     localStorage.setItem(MIGRATION_KEY, 'done');
@@ -1363,21 +1385,49 @@ export interface RelayCapabilities {
   description?: string;
 }
 
+/**
+ * The relays a new account starts on.
+ *
+ * Ten, chosen by measurement rather than by reputation (September 2026):
+ * every candidate was connected to, asked for the last hour of notes, the
+ * day's live streams, the week's articles and videos, and handed a small
+ * event to store. What is here answered quickly, kept a broad slice of the
+ * network, and accepted a write without payment, an account or NIP-42.
+ *
+ * What that ruled out of the old list: purplepag.es answered every
+ * connection with 502 and offchain.pub refused them outright; eden.nostr.land
+ * and nostr21.com take reads but reject writes unless you have paid;
+ * relay.fountain.fm took four seconds to finish a query it usually did not
+ * finish; relay.divine.video and nostr-pub.wellorder.net were slower than the
+ * rest while holding less; relay.mostr.pub is a bridge, and most of what it
+ * carries is mirrored fediverse posts rather than nostr.
+ *
+ * relay.damus.io is kept although it answered only two connections in six —
+ * it returns 503 under its own load rather than being gone, and it still
+ * holds more of the network's writing than anything else here.
+ *
+ * This is a starting point, not a policy: the list is editable in Settings,
+ * and somebody else's events are looked for on the relays they publish to
+ * (NIP-65) whether or not those are in here.
+ */
 export const DEFAULT_RELAYS = [
-  'wss://relay.damus.io',
+  // The workhorses: fastest to answer, and holding the most of everything
   'wss://nos.lol',
-  'wss://nostr.mom',
-  'wss://relay.nostr.net',
-  'wss://purplepag.es',
   'wss://relay.primal.net',
-  'wss://relay.fountain.fm',
-  'wss://relay.divine.video',
-  'wss://nostr-pub.wellorder.net',
-  'wss://eden.nostr.land',
-  'wss://offchain.pub',
-  'wss://nostr21.com',
-  'wss://relay.mostr.pub',
-  'wss://nostr.oxtr.dev'
+  'wss://nostr.mom',
+  'wss://nostr.oxtr.dev',
+  'wss://relay.snort.social',
+  'wss://nostr.data.haus',
+  // The best coverage of live streams and long-form of any relay measured
+  'wss://relay.satlantis.io',
+  // Slower, but the one that kept accepting writes while the others were
+  // rate-limiting them
+  'wss://relay.nostr.net',
+  // Where private messages sent from phones land: 0xchat and Amethyst use
+  // this as a NIP-17 inbox, so gift wraps arrive here or nowhere
+  'wss://relay.0xchat.com',
+  // Flaky, and still the largest relay on the network
+  'wss://relay.damus.io'
 ];
 
 // Singleton instance
