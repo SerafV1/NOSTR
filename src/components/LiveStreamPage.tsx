@@ -405,12 +405,21 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
 
             {(stream.currentParticipants !== undefined || present.length > 0) && (
               <div className="live-stream-presence">
-                {stream.currentParticipants !== undefined && (
+                {/* The broadcaster's own number, but never fewer than the
+                    people talking: a stream published `current_participants:
+                    0` while two were watching and its chat was going, and a
+                    nought under a moving chat is a number nobody has kept up
+                    rather than an empty room. */}
+                {(stream.currentParticipants !== undefined || present.length > 0) && (
                   <span
                     className="live-stream-viewers-count"
-                    title="The number the broadcaster's own software publishes — nostr has no other source for it"
+                    title={
+                      present.length > (stream.currentParticipants ?? 0)
+                        ? 'How many people have spoken in the chat lately — more than the broadcaster\'s own software is publishing'
+                        : "The number the broadcaster's own software publishes — nostr has no other source for it"
+                    }
                   >
-                    👁 {stream.currentParticipants} viewers
+                    👁 {Math.max(stream.currentParticipants ?? 0, present.length)} viewers
                   </span>
                 )}
 

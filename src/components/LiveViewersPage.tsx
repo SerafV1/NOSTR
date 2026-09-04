@@ -141,9 +141,18 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
     };
   }, [kind, pubkey, identifier, relaysConnected]);
 
-  // What to show: the broadcaster's own number when there is one, since it
-  // counts everyone watching rather than only those who say something
-  const viewers = published ?? (inChat || null);
+  /**
+   * What to show: the broadcaster's own number, since it counts everyone
+   * watching rather than only those who say something — but never less than
+   * the number of people talking in the chat.
+   *
+   * Measured on a stream with people in it: the event said
+   * `current_participants: 0` in its newest copy on every relay that had it,
+   * while the broadcaster's own page showed two. A published nought while a
+   * chat is going is not a count of the room; it is a number that has not
+   * been kept up.
+   */
+  const viewers = Math.max(published ?? 0, inChat) || null;
 
   useEffect(() => {
     if (!transparent) return;
@@ -221,10 +230,12 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
 
       {!readOnly && (
         <p className="live-viewers-note">
-          {published !== null
+          {published !== null && published >= inChat
             ? 'The broadcaster publishes this number, and republishes it about once a minute — it follows here as soon as it changes.'
             : viewers !== null
-              ? 'This broadcaster publishes no viewer count, so this is how many people have spoken in the chat in the last ten minutes.'
+              ? `This is how many people have spoken in the chat in the last ten minutes${
+                  published !== null ? ` — the broadcaster's own count says ${published}` : ', since this broadcaster publishes no count'
+                }.`
               : 'Waiting for a number: this broadcaster publishes no viewer count, and nobody has spoken in the chat yet.'}
         </p>
       )}
