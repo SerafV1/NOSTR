@@ -51,7 +51,7 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
    * scrolls anywhere themselves, this stops and stays stopped.
    */
   const focusRef = useRef<HTMLDivElement>(null);
-  const parentsRef = useRef<HTMLDivElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
   const anchoring = useRef(true);
   const placedAt = useRef<number | null>(null);
 
@@ -71,8 +71,13 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
   };
 
   const centreOnFocus = () => {
-    if (!anchoring.current || !focusRef.current) return;
-    focusRef.current.scrollIntoView({ block: 'center' });
+    const focus = focusRef.current;
+    if (!anchoring.current || !focus) return;
+    const room = scroller()?.clientHeight ?? 0;
+    // A post longer than the window cannot be centred — its middle on the
+    // screen's middle hides its beginning — so a long one is read from
+    // the top instead
+    focus.scrollIntoView({ block: focus.offsetHeight > room ? 'start' : 'center' });
     placedAt.current = scroller()?.scrollTop ?? null;
   };
 
@@ -83,19 +88,25 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
     // With nothing above it the note is already the first thing on the page
     if (!note || parentNotes.length === 0) return;
     centreOnFocus();
+    // The answers to it count as much as the posts above: while they are
+    // still on their way there is nothing under the note to scroll past, so
+    // centring puts it at the bottom of the screen — which is where it sat,
+    // with its replies below the fold, until they arrive and it is placed
+    // again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [note?.id, parentNotes.length]);
+  }, [note?.id, parentNotes.length, replies.length]);
 
-  // Pictures in the posts above arrive after the posts do, and each one
-  // shifts everything below it
+  // Pictures arrive after the posts they are in, and every one of them
+  // moves what is under it — above the note or below, both change where it
+  // has to sit
   useEffect(() => {
-    const above = parentsRef.current;
-    if (!above || typeof ResizeObserver === 'undefined') return;
+    const thread = threadRef.current;
+    if (!thread || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => centreOnFocus());
-    observer.observe(above);
+    observer.observe(thread);
     return () => observer.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [note?.id, parentNotes.length]);
+  }, [note?.id, parentNotes.length, replies.length]);
 
   // The reader taking over ends it — including a scroll inside the page's
   // own scrolling panel, which is why this listens on the way down
@@ -290,9 +301,9 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
         )}
 
         {note && (
-          <div className="note-thread">
+          <div className="note-thread" ref={threadRef}>
             {parentNotes.length > 0 && (
-              <div className="note-parent-context" ref={parentsRef}>
+              <div className="note-parent-context">
                 {parentNotes.map((parent) => (
                   <React.Fragment key={parent.id}>
                     <EventCard
