@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { NostrEventSigned, UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import {
@@ -10,7 +10,10 @@ import {
   readCachedNotifications,
   cacheTargets,
   readCachedTargets,
-  dropMuted
+  dropMuted,
+  dropStrangers,
+  notificationsFromFollowsOnly,
+  setNotificationsFromFollowsOnly
 } from '../nostr/notifications';
 import { formatDate, formatAddress } from '../utils/helpers';
 import RichText from './RichText';
@@ -128,6 +131,33 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
   // viewing even after the seen marker below advances past them
   const initialLastSeenRef = useRef(NotificationStore.getLastSeen(pubkey));
 
+  // Whether strangers are heard at all, and who counts as one. The follow
+  // list is read from storage first so ticking the box acts at once rather
+  // than after the relays answer.
+  const [followsOnly, setFollowsOnly] = useState(notificationsFromFollowsOnly);
+  const [follows, setFollows] = useState<Set<string>>(
+    () => new Set(NostrCore.getCachedFollowedAccounts())
+  );
+
+  useEffect(() => {
+    if (!relaysConnected) return;
+    let cancelled = false;
+    void NostrCore.fetchFollowedAccounts().then(list => {
+      if (!cancelled && list.length > 0) setFollows(new Set(list));
+    });
+    return () => { cancelled = true; };
+  }, [relaysConnected, pubkey]);
+
+  /**
+   * What is actually on the page. The notifications themselves are kept
+   * whole — unticking the box puts the hidden ones back without another
+   * fetch, and without having lost the ones that arrived while it was on.
+   */
+  const shown = useMemo(
+    () => (followsOnly ? dropStrangers(notifications, follows) : notifications),
+    [notifications, followsOnly, follows]
+  );
+
   /**
    * Nothing already on the page is ever taken off it. What is kept between
    * visits is capped, and a busy account fills that cap in minutes — so an
@@ -222,14 +252,16 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
 
   // Advance the "seen" marker once notifications are loaded, clearing the
   // header badge while initialLastSeenRef keeps this view's items highlighted
+  // What was read is what was shown: a notification hidden behind the box
+  // has not been seen, and should still be there if the box is unticked
   useEffect(() => {
-    if (notifications.length === 0) return;
-    const newest = Math.max(...notifications.map(n => n.event.created_at || 0));
+    if (shown.length === 0) return;
+    const newest = Math.max(...shown.map(n => n.event.created_at || 0));
     NotificationStore.setLastSeen(pubkey, newest);
-    NotificationStore.markSeen(pubkey, notifications.map(n => n.id));
+    NotificationStore.markSeen(pubkey, shown.map(n => n.id));
     onMarkRead?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notifications, pubkey]);
+  }, [shown, pubkey]);
 
   const handleClick = (notification: NostrNotification) => {
     if (notification.type === 'follow' || notification.type === 'unfollow') {
@@ -313,18 +345,36 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
     <div className="notifications-page">
       <div className="notifications-header">
         <h2>Notifications</h2>
+        <label
+          className="notifications-follows-only"
+          title="Hide replies, reactions, reposts and zaps from accounts you do not follow"
+        >
+          <input
+            type="checkbox"
+            checked={followsOnly}
+            onChange={(e) => {
+              setFollowsOnly(e.target.checked);
+              setNotificationsFromFollowsOnly(e.target.checked);
+            }}
+          />
+          Only people I follow
+        </label>
       </div>
 
       {loading && <div className="loading">Loading notifications...</div>}
 
-      {!loading && notifications.length === 0 && (
+      {!loading && shown.length === 0 && (
         <div className="empty-state">
-          <p>No notifications yet — replies, mentions, reactions, reposts and zaps will show up here</p>
+          <p>
+            {followsOnly && notifications.length > 0
+              ? 'Nothing here from the people you follow — untick the box to see the rest'
+              : 'No notifications yet — replies, mentions, reactions, reposts and zaps will show up here'}
+          </p>
         </div>
       )}
 
       <div className="notification-list">
-        {notifications.map((notification) => {
+        {shown.map((notification) => {
           // Profiles persist locally, so the name and avatar are usually
           // known before any request goes out — reading them here stops the
           // list rendering as anonymous placeholders on every visit

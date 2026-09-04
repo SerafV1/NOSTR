@@ -5242,6 +5242,22 @@ a.capability-indicator.paid:hover {
   gap: var(--spacing-md);
 }
 
+/* The one choice the page offers, beside its title */
+.notifications-follows-only {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.notifications-follows-only input {
+  cursor: pointer;
+  margin: 0;
+}
+
 .notification-list {
   display: flex;
   flex-direction: column;

@@ -11,7 +11,14 @@ import {
 } from 'react-router-dom';
 import { CredentialManager, NostrCrypto } from './nostr/crypto';
 import { getRelayPool, DEFAULT_RELAYS } from './nostr/relay';
-import { NotificationCore, NotificationStore, cacheNotifications, dropMuted } from './nostr/notifications';
+import {
+  NotificationCore,
+  NotificationStore,
+  cacheNotifications,
+  dropMuted,
+  dropStrangers,
+  notificationsFromFollowsOnly
+} from './nostr/notifications';
 import { DirectMessageCore, DirectMessageStore } from './nostr/dm';
 import { NostrCore, EventCache } from './nostr/core';
 import { clearSession as clearBunkerSession, onSigningWait } from './nostr/bunker';
@@ -536,7 +543,13 @@ function App() {
         // rather than written over: this runs every 30 seconds, and one thin
         // answer from the relays would otherwise erase the history.
         const merged = dropMuted(cacheNotifications(publicKey, fetched));
-        setUnreadNotifications(NotificationStore.countUnread(publicKey, merged));
+        // The badge counts what the page would show. Someone who has asked
+        // not to hear from strangers should not be sent to a page by a
+        // number made of them.
+        const counted = notificationsFromFollowsOnly()
+          ? dropStrangers(merged, new Set(NostrCore.getCachedFollowedAccounts()))
+          : merged;
+        setUnreadNotifications(NotificationStore.countUnread(publicKey, counted));
       } catch (error) {
         console.error('Failed to refresh notification badge:', error);
       }

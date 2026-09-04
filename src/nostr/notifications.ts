@@ -68,22 +68,65 @@ export function readCachedNotifications(pubkey: string): NostrNotification[] {
 }
 
 /**
+ * Whose notification this is.
+ *
+ * A zap receipt is signed by the wallet that paid it, not by the person who
+ * chose to pay, so the one to name is inside the zap request it carries.
+ */
+export function notificationActor(event: NostrEventSigned): string {
+  return event.kind === EVENT_KINDS.ZAP_RECEIPT
+    ? NostrCore.zapSenderPubkey(event) || event.pubkey
+    : event.pubkey;
+}
+
+/**
  * Someone muted should not be able to reach you by liking, zapping or
  * replying: the mute list applied everywhere else, and notifications were
  * the one door left open.
- *
- * A zap receipt is signed by the wallet that paid it, so the person to check
- * is the one named inside the zap request it carries.
  */
 export function dropMuted(notifications: NostrNotification[]): NostrNotification[] {
   const muted = NostrCore.getBlockedPubkeys();
   if (muted.size === 0) return notifications;
-  return notifications.filter(n => {
-    const actor = n.event.kind === EVENT_KINDS.ZAP_RECEIPT
-      ? NostrCore.zapSenderPubkey(n.event) || n.event.pubkey
-      : n.event.pubkey;
-    return !muted.has(actor);
-  });
+  return notifications.filter(n => !muted.has(notificationActor(n.event)));
+}
+
+/** Whether this account only wants to hear from the people it follows */
+const FOLLOWS_ONLY = 'razr_notifications_follows_only';
+
+export const notificationsFromFollowsOnly = (): boolean => {
+  try {
+    return localStorage.getItem(FOLLOWS_ONLY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+export const setNotificationsFromFollowsOnly = (only: boolean): void => {
+  try {
+    localStorage.setItem(FOLLOWS_ONLY, only ? '1' : '0');
+  } catch {
+    // A browser that will not store it simply asks again next time
+  }
+};
+
+/**
+ * Only the people you follow, when that is what was asked for.
+ *
+ * Nothing is thrown away — the notifications are all still cached, and
+ * unticking the box brings them straight back — this is only what reaches
+ * the screen and the badge.
+ *
+ * An empty follow list means the relays have not handed one over yet, which
+ * looks exactly like following nobody. Filtering on that would empty the page
+ * for everyone whose contact list happens to be slow, so it is left alone
+ * until there is a list to filter by.
+ */
+export function dropStrangers(
+  notifications: NostrNotification[],
+  follows: Set<string>
+): NostrNotification[] {
+  if (follows.size === 0) return notifications;
+  return notifications.filter(n => follows.has(notificationActor(n.event)));
 }
 
 /**
