@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { NostrCore } from '../nostr/core';
-import { LiveStreamInfo, decodeLiveNaddr, parseLiveEvent, unplayableReason } from '../utils/liveStream';
+import { LiveStreamInfo, decodeLiveNaddr, parseLiveEvent, freshPoster, unplayableReason } from '../utils/liveStream';
+import { usePosterTick } from '../hooks/usePosterTick';
 import { streamEmbed } from '../utils/streamEmbed';
 import { formatAddress } from '../utils/helpers';
 import StreamSurface from './StreamSurface';
@@ -49,6 +50,9 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
   // the corner instead
   const [docked, setDocked] = useState(false);
   const slotRef = useRef<HTMLDivElement>(null);
+  // A running stream's poster is rewritten at the same address as it goes
+  const posterAt = usePosterTick();
+  const poster = freshPoster(stream?.image, stream?.status === 'live', posterAt)[0];
 
   useEffect(() => {
     const address = decodeLiveNaddr(naddr);
@@ -184,7 +188,7 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
     <div className="inline-stream-card" onClick={(e) => e.stopPropagation()}>
       <div
         className="inline-stream-art"
-        style={stream.image ? { backgroundImage: `url(${stream.image})` } : undefined}
+        style={poster ? { backgroundImage: `url(${poster})` } : undefined}
       >
         {playable && (
           <button
@@ -225,7 +229,7 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
                 <StreamSurface src={stream.streamingUrl} className="inline-stream-video" />
               </div>
             ) : (
-              <img src={stream.image} alt={stream.title} className="image-modal-img"  loading="lazy" decoding="async" />
+              <img src={poster} alt={stream.title} className="image-modal-img"  loading="lazy" decoding="async" />
             )}
           </div>
         </div>

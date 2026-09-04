@@ -316,3 +316,42 @@ export function extractStreamPageLinks(content: string): { url: string; naddr: s
 export function liveEventAddress(kind: number, pubkey: string, dTag: string): string {
   return `${kind}:${pubkey}:${dTag}`;
 }
+
+/**
+ * How often a live stream's picture is worth asking for again.
+ *
+ * Broadcasting software writes its poster to one fixed address and
+ * overwrites it as the stream goes — Owncast rewrites thumbnail.jpg every
+ * twenty seconds or so, always at the same URL. A browser has no reason to
+ * suspect that, so it serves the copy it already has, and the card shows a
+ * picture from whenever the page happened to first ask: measured on a stream
+ * whose poster was hours old on screen while the address behind it was
+ * current.
+ */
+export const POSTER_REFRESH_MS = 60_000;
+
+/**
+ * Where to look for a live stream's picture, freshest first.
+ *
+ * Only while it is actually on air: an ended stream's poster is whatever was
+ * left behind, and asking for it again gets the same bytes. And only for a
+ * plain address — a link that already carries a query is usually signed, and
+ * a signature covers the parameters, so adding one to it is how a working
+ * picture turns into a 403.
+ *
+ * The untouched address follows as a second try, so a host that dislikes the
+ * extra parameter still shows its picture rather than nothing.
+ */
+export function freshPoster(image: string | undefined, live: boolean, at: number): string[] {
+  if (!image) return [];
+  if (!live || image.includes('?')) return [image];
+
+  try {
+    const url = new URL(image, typeof location === 'undefined' ? undefined : location.href);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return [image];
+    url.searchParams.set('_t', String(at));
+    return [url.toString(), image];
+  } catch {
+    return [image];
+  }
+}

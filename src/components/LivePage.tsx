@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import Thumbnail from './Thumbnail';
 import { UserProfile, EVENT_KINDS, NostrEventSigned } from '../types';
 import { NostrCore, PersistentCache } from '../nostr/core';
-import { parseLiveEvent, encodeLiveNaddr, isEffectivelyLive, LiveStreamInfo } from '../utils/liveStream';
+import { parseLiveEvent, encodeLiveNaddr, isEffectivelyLive, freshPoster, LiveStreamInfo } from '../utils/liveStream';
+import { usePosterTick } from '../hooks/usePosterTick';
 import { formatAddress } from '../utils/helpers';
 
 // Public list, identical for everyone, so it isn't keyed per account
@@ -24,6 +25,9 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
   const [profiles, setProfiles] = useState<Map<string, UserProfile>>(new Map());
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  // Every card on this page is a stream that is on air, so every poster on
+  // it is being rewritten while it is looked at
+  const posterAt = usePosterTick();
 
   // Whoever is on air now, most watched first. Not newest-announcement
   // first, which is what the order used to be: a running stream announces
@@ -168,7 +172,7 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
                       face stands in. The plate is the last resort, for when
                       there is no picture of any kind or the address is dead. */}
                   <Thumbnail
-                    src={[stream.image, host?.banner, host?.picture]}
+                    src={[...freshPoster(stream.image, true, posterAt), host?.banner, host?.picture]}
                     alt={stream.title}
                     fallback="📺"
                     fallbackClassName="live-stream-thumb-placeholder"

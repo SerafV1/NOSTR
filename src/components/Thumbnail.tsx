@@ -51,9 +51,14 @@ const Thumbnail: React.FC<ThumbnailProps> = ({
 
   return (
     <img
-      // Keyed on the address, so stepping to the next one is a new image
-      // rather than a src swap the browser may not re-attempt
-      key={showing}
+      // Keyed on the position in the chain, so stepping to the next source is
+      // a new image rather than a src swap the browser may not re-attempt —
+      // while the same source being asked for again, which is what a live
+      // stream's poster does every minute, swaps the address on the element
+      // that is already there. Remounting for that showed a hole in the card
+      // until the new picture arrived; this way the old one stays up until it
+      // is replaced.
+      key={tried}
       src={showing}
       alt={alt}
       className={className}

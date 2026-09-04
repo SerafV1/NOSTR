@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
-import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr, encodeHostParam, streamShareText } from '../utils/liveStream';
+import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr, encodeHostParam, freshPoster, streamShareText } from '../utils/liveStream';
+import { usePosterTick } from '../hooks/usePosterTick';
 import { useRoomPresence } from '../hooks/useRoomPresence';
 import { announcePresence, REFRESH_PRESENCE_MS } from '../nostr/presence';
 import { formatAddress } from '../utils/helpers';
@@ -179,6 +180,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
    * hooks never sit behind a return.
    */
   const roomAddress = liveEventAddress(kind, pubkey, identifier);
+  const posterAt = usePosterTick();
   const watching = useRoomPresence(roomAddress, relaysConnected);
 
   useEffect(() => {
@@ -406,7 +408,14 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                           `/live/${naddrParam}/with/${encodeLiveNaddr(30311, other.pubkey, other.dTag)}`
                         )}
                       >
-                        {other.image && <img src={other.image} alt="" loading="lazy" decoding="async" />}
+                        {other.image && (
+                          <img
+                            src={freshPoster(other.image, other.status === 'live', posterAt)[0]}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        )}
                         <span className="live-stream-pair-title">{other.title}</span>
                         {other.currentParticipants !== undefined && (
                           <span className="live-stream-pair-count">👁 {other.currentParticipants}</span>
