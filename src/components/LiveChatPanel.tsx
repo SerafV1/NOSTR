@@ -98,6 +98,15 @@ interface LiveChatPanelProps {
    * in the chat are the only ones a client can actually show.
    */
   onPeoplePresent?: (people: PresentPerson[]) => void;
+  /**
+   * Everyone whose messages are in the chat as it stands, newest first.
+   *
+   * Separate from the people above, and for a different job: that list is
+   * the last ten minutes, which is what a viewer count can honestly claim,
+   * and it left a row of faces almost always empty under a chat full of
+   * people. This one is who the reader can actually see talking.
+   */
+  onPeopleInChat?: (people: PresentPerson[]) => void;
   /** Overlay preview: given only where the choice is the viewer's to make */
   transparent?: boolean;
   bold?: boolean;
@@ -171,7 +180,7 @@ const rememberChat = (address: string, messages: NostrEventSigned[]): void => {
   }
 };
 
-const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, onPeoplePresent, hideComposer, obsLink, owners = [], identifier, transparent, bold, onDisplayChange }) => {
+const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disabled, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, relaysConnected = true, onPopOut, onPeoplePresent, onPeopleInChat, hideComposer, obsLink, owners = [], identifier, transparent, bold, onDisplayChange }) => {
   const [messages, setMessages] = useState<NostrEventSigned[]>(() => rememberedChat(address));
   const [zaps, setZaps] = useState<NostrEventSigned[]>([]);
   const [reactions, setReactions] = useState<NostrEventSigned[]>([]);
@@ -928,11 +937,32 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     return [...seen.values()];
   })();
 
+  /** The same people, over the whole of the chat that is loaded */
+  const inChat: PresentPerson[] = (() => {
+    const seen = new Map<string, PresentPerson>();
+    for (const message of [...messages].reverse()) {
+      if (!message.pubkey || seen.has(message.pubkey)) continue;
+      const profile = profiles.get(message.pubkey);
+      seen.set(message.pubkey, {
+        pubkey: message.pubkey,
+        name: profile?.display_name || profile?.name || formatAddress(message.pubkey),
+        picture: profile?.picture
+      });
+    }
+    return [...seen.values()];
+  })();
+
   const presenceKey = present.map(p => p.pubkey).join(',');
   useEffect(() => {
     onPeoplePresent?.(present);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presenceKey, profiles]);
+
+  const inChatKey = inChat.map(p => p.pubkey).join(',');
+  useEffect(() => {
+    onPeopleInChat?.(inChat);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inChatKey, profiles]);
 
   // Messages and zaps are two separate subscriptions but one conversation,
   // so they are interleaved by time the way the room actually experienced them

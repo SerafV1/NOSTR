@@ -51,6 +51,10 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   const [miniAt, setMiniAt] = useState<{ left: number; top: number } | null>(null);
   const dragFrom = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const [present, setPresent] = useState<PresentPerson[]>([]);
+  // Who is in the chat on screen, which is not the same question as how many
+  // people to claim are watching: the count is the last ten minutes, these
+  // are the faces of the conversation the reader is looking at
+  const [inChat, setInChat] = useState<PresentPerson[]>([]);
   /** Whether this account tells the room it is here */
   /** How many zappers to list beside the stream, remembered between visits */
   /**
@@ -461,13 +465,14 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                   </span>
                 )}
 
-                {/* Faces beside the count. Nobody publishes a viewer list —
-                    a live event names only its host — so these are whoever
-                    has spoken in the chat, which is the only presence a
-                    client can know about; the row says so on hover. */}
-                {present.length > 0 && (
-                  <div className="live-stream-faces" title="Talking in the chat">
-                    {present.slice(0, VISIBLE_FACES).map(person => (
+                {/* Faces beside the count: everyone whose messages are in
+                    the chat below, newest first. Not the same set as the
+                    count, which only claims the last ten minutes — that rule
+                    belongs to a number, and applied to these it left the row
+                    empty under a chat plainly full of people. */}
+                {inChat.length > 0 && (
+                  <div className="live-stream-faces" title="In this chat">
+                    {inChat.slice(0, VISIBLE_FACES).map(person => (
                       <button
                         key={person.pubkey}
                         type="button"
@@ -484,9 +489,9 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                         )}
                       </button>
                     ))}
-                    {present.length > VISIBLE_FACES && (
+                    {inChat.length > VISIBLE_FACES && (
                       <span className="live-stream-face-more">
-                        +{present.length - VISIBLE_FACES}
+                        +{inChat.length - VISIBLE_FACES}
                       </span>
                     )}
                   </div>
@@ -556,6 +561,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
             // hours, a long broadcast went read-only under them.
             disabled={stream.announcedStatus !== 'live'}
             onPeoplePresent={setPresent}
+            onPeopleInChat={setInChat}
             // Either account behind the stream may moderate it: on a
             // platform-published stream the presenter is not the signer
             owners={[stream.pubkey, stream.hostPubkey]}

@@ -67,11 +67,11 @@ const LiveTogetherPage: React.FC<LiveTogetherPageProps> = ({
   /** The stream being announced in a post, while that post is being written */
   const [sharing, setSharing] = useState<Watched | null>(null);
   /**
-   * Who is talking in the chat that is open. Nobody publishes a viewer list,
-   * so the faces are whoever has spoken — and only the room actually being
-   * read has anyone to show, since that is the only one subscribed to.
+   * Who is in the chat that is open. Nobody publishes a viewer list, so the
+   * faces are the people talking — and only the room actually being read has
+   * anyone to show, since that is the only one subscribed to.
    */
-  const [present, setPresent] = useState<PresentPerson[]>([]);
+  const [inChat, setInChat] = useState<PresentPerson[]>([]);
   /** When each copy on screen was published, so an older one cannot replace it */
   const latestAt = useRef<Map<string, number>>(new Map());
 
@@ -258,9 +258,9 @@ const LiveTogetherPage: React.FC<LiveTogetherPageProps> = ({
                     whoever has spoken, which is the only presence a client
                     can know. Only the room being read is subscribed to, so
                     only that tile has any to show. */}
-                {stream.naddr === chatting.naddr && present.length > 0 && (
-                  <div className="live-stream-faces" title="Talking in the chat">
-                    {present.slice(0, VISIBLE_FACES).map(person => (
+                {stream.naddr === chatting.naddr && inChat.length > 0 && (
+                  <div className="live-stream-faces" title="In this chat">
+                    {inChat.slice(0, VISIBLE_FACES).map(person => (
                       <button
                         key={person.pubkey}
                         type="button"
@@ -277,8 +277,8 @@ const LiveTogetherPage: React.FC<LiveTogetherPageProps> = ({
                         )}
                       </button>
                     ))}
-                    {present.length > VISIBLE_FACES && (
-                      <span className="live-stream-face-more">+{present.length - VISIBLE_FACES}</span>
+                    {inChat.length > VISIBLE_FACES && (
+                      <span className="live-stream-face-more">+{inChat.length - VISIBLE_FACES}</span>
                     )}
                   </div>
                 )}
@@ -345,7 +345,7 @@ const LiveTogetherPage: React.FC<LiveTogetherPageProps> = ({
           disabled={chatting.info.announcedStatus !== 'live'}
           owners={[chatting.info.pubkey, chatting.info.hostPubkey]}
           identifier={chatting.info.dTag}
-          onPeoplePresent={setPresent}
+          onPeopleInChat={setInChat}
           onNavigateToProfile={onNavigateToProfile}
           onNavigateToNote={onNavigateToNote}
           onNavigateToTopic={onNavigateToTopic}

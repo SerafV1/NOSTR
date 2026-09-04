@@ -434,12 +434,21 @@ export class NostrCore {
     if (missing.length > 0) {
       try {
         const relayPool = getRelayPool();
+        // Every relay, not whichever answers first.
+        //
+        // Profiles are spread unevenly: asked for the 214 people talking in
+        // one stream's chat, nos.lol held 201 of them and relay.snort.social
+        // held 8 — and snort answers in a quarter of a second, so the pool's
+        // usual "first answer, then a moment for the rest" was routinely
+        // returning those eight. Half the faces in a busy chat had no name
+        // and no picture, showing the first character of a hex key instead,
+        // while their profiles sat on a relay this browser was connected to.
         const events = await relayPool.fetchEvents([
           {
             kinds: [EVENT_KINDS.SET_METADATA],
             authors: missing
           }
-        ]);
+        ], true);
 
         const byAuthor = new Map<string, NostrEventSigned[]>();
         for (const event of events) {
