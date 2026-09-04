@@ -1154,6 +1154,14 @@ textarea {
 .event-card:has(.compose-modal-overlay),
 .event-card:has(.image-modal),
 .event-card:has(.zap-menu),
+/* A stream playing on from the corner is the same problem seen from the
+   other end: the player is fixed to the page, but a contained card becomes
+   the page as far as it is concerned, so scrolling past carried the "corner"
+   away with the post — it was pinned to the bottom right of a card that was
+   no longer on screen, and once far enough out the card stopped being drawn
+   at all and took the player with it. */
+.event-card:has(.inline-stream-playing.docked),
+.groups-message:has(.inline-stream-playing.docked),
 .groups-message:has(.reactions-menu),
 .groups-message:has(.zap-menu),
 .groups-message:has(.emoji-picker) {
