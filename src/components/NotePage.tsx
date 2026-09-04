@@ -73,6 +73,18 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
           return eTags.find((t) => t[3] === 'reply') || eTags[eTags.length - 1];
         };
 
+        /**
+         * What a comment is a comment on, where that is an addressable event.
+         *
+         * NIP-22 answers an article, a stream or a wiki page by its address
+         * rather than by an id: `a` for the thing itself, `A` for the root of
+         * the conversation. Walking `e` tags alone, a comment on an article
+         * opened with nothing above it — the article never appeared, which is
+         * exactly what somebody clicking through from notifications came for.
+         */
+        const findAddressTag = (ev: NostrEventSigned): string[] | undefined =>
+          ev.tags.find(t => t[0] === 'a' && t[1]) || ev.tags.find(t => t[0] === 'A' && t[1]);
+
         // Replies don't depend on the ancestor walk below, so they're
         // started here and land whenever they land — chaining them after it
         // meant waiting out up to twenty sequential parent lookups first
@@ -116,7 +128,24 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
           let current = fetchedNote;
           for (let i = 0; i < 20; i++) {
             const replyTag = findReplyTag(current);
-            if (!replyTag) break;
+            if (!replyTag) {
+              // No id to follow, but perhaps an address: an article, a
+              // stream, anything addressable that was commented on
+              const addressTag = findAddressTag(current);
+              if (!addressTag) break;
+              const [addressKind, addressAuthor, addressD = ''] = addressTag[1].split(':');
+              if (!addressKind || !addressAuthor) break;
+              if (seenIds.has(addressTag[1])) break;
+              seenIds.add(addressTag[1]);
+              const addressed = await NostrCore.fetchEventByAddress(
+                Number(addressKind), addressAuthor, addressD
+              );
+              if (!addressed) break;
+              ancestors.unshift(addressed);
+              setParentNotes([...ancestors]);
+              current = addressed;
+              continue;
+            }
             const parentId = replyTag[1];
             if (seenIds.has(parentId)) break; // malformed/cyclic tags
             seenIds.add(parentId);
