@@ -151,8 +151,12 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
    * while the broadcaster's own page showed two. A published nought while a
    * chat is going is not a count of the room; it is a number that has not
    * been kept up.
+   *
+   * A nought with nobody talking is still a nought, though — it is only the
+   * absence of any number at all that shows as a dash, and turning a
+   * published nought into one put a bare line where the count belongs.
    */
-  const viewers = Math.max(published ?? 0, inChat) || null;
+  const viewers = published !== null ? Math.max(published, inChat) : (inChat || null);
 
   useEffect(() => {
     if (!transparent) return;
