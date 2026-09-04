@@ -27,21 +27,16 @@ export const PRESENT_FOR_MS = 10 * 60 * 1000;
 /** Say it again before it goes stale, with room to spare */
 export const REFRESH_PRESENCE_MS = 4 * 60 * 1000;
 
-const HIDDEN = 'razr_hide_presence';
-
-/** Whether this account tells rooms it is in them */
-export const presenceIsShared = (): boolean => localStorage.getItem(HIDDEN) !== '1';
-
-export const sharePresence = (share: boolean): void => {
-  localStorage.setItem(HIDDEN, share ? '0' : '1');
-};
-
 /**
  * One presence event for one room. Replaceable, so this is the whole of it:
  * publishing it again in another room is what leaving looks like.
+ *
+ * Anyone signed in and watching is counted. This was behind a "Count me"
+ * tickbox for a while, which was a question with one sensible answer: you
+ * are in the room, so the room's number should say so.
  */
 export async function announcePresence(address: string, relayHint = ''): Promise<NostrEventSigned | null> {
-  if (!CredentialManager.canSign() || !presenceIsShared()) return null;
+  if (!CredentialManager.canSign()) return null;
 
   try {
     const signed = await NostrCore.signAnyMode({
