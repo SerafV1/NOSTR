@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
-import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr, encodeHostParam, freshPoster, streamShareText } from '../utils/liveStream';
+import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr, encodeHostParam, posterSources, streamShareText } from '../utils/liveStream';
 import { usePosterTick } from '../hooks/usePosterTick';
 import { useRoomPresence } from '../hooks/useRoomPresence';
 import { announcePresence, REFRESH_PRESENCE_MS } from '../nostr/presence';
@@ -408,9 +408,9 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                           `/live/${naddrParam}/with/${encodeLiveNaddr(30311, other.pubkey, other.dTag)}`
                         )}
                       >
-                        {other.image && (
+                        {posterSources(other, posterAt)[0] && (
                           <img
-                            src={freshPoster(other.image, other.status === 'live', posterAt)[0]}
+                            src={posterSources(other, posterAt)[0]}
                             alt=""
                             loading="lazy"
                             decoding="async"

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Thumbnail from './Thumbnail';
 import { UserProfile, EVENT_KINDS, NostrEventSigned } from '../types';
 import { NostrCore, PersistentCache } from '../nostr/core';
-import { parseLiveEvent, encodeLiveNaddr, isEffectivelyLive, freshPoster, LiveStreamInfo } from '../utils/liveStream';
+import { parseLiveEvent, encodeLiveNaddr, isEffectivelyLive, posterSources, LiveStreamInfo } from '../utils/liveStream';
 import { usePosterTick } from '../hooks/usePosterTick';
 import { formatAddress } from '../utils/helpers';
 
@@ -172,7 +172,7 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
                       face stands in. The plate is the last resort, for when
                       there is no picture of any kind or the address is dead. */}
                   <Thumbnail
-                    src={[...freshPoster(stream.image, true, posterAt), host?.banner, host?.picture]}
+                    src={[...posterSources(stream, posterAt), host?.banner, host?.picture]}
                     alt={stream.title}
                     fallback="📺"
                     fallbackClassName="live-stream-thumb-placeholder"

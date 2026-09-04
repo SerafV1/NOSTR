@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { NostrCore } from '../nostr/core';
-import { LiveStreamInfo, decodeLiveNaddr, parseLiveEvent, freshPoster, unplayableReason } from '../utils/liveStream';
+import { LiveStreamInfo, decodeLiveNaddr, parseLiveEvent, posterSources, unplayableReason } from '../utils/liveStream';
 import { usePosterTick } from '../hooks/usePosterTick';
 import { streamEmbed } from '../utils/streamEmbed';
 import { formatAddress } from '../utils/helpers';
@@ -52,7 +52,7 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
   const slotRef = useRef<HTMLDivElement>(null);
   // A running stream's poster is rewritten at the same address as it goes
   const posterAt = usePosterTick();
-  const poster = freshPoster(stream?.image, stream?.status === 'live', posterAt)[0];
+  const poster = stream ? posterSources(stream, posterAt)[0] : undefined;
 
   useEffect(() => {
     const address = decodeLiveNaddr(naddr);
@@ -206,7 +206,7 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
         {stream.status === 'live' && stream.currentParticipants !== undefined && (
           <span className="inline-stream-viewers">👁 {stream.currentParticipants.toLocaleString()}</span>
         )}
-        {(playable || stream.image) && (
+        {(playable || poster) && (
           <button
             type="button"
             className="inline-stream-zoom"

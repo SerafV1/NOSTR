@@ -18,6 +18,14 @@ export interface LiveStreamInfo {
   title: string;
   summary: string;
   image: string;
+  /**
+   * The frame from the broadcast as it is now, where the service publishes
+   * one. Separate from `image`, which is the cover picture and does not
+   * move: measured across every live stream carrying both, the two never
+   * agreed, and `image` pointed at a blossom upload or at an older
+   * broadcast's snapshot while `thumb` was the current frame.
+   */
+  thumb: string;
   streamingUrl: string;
   /**
    * What this client shows it as: the broadcaster's own status, except that
@@ -126,6 +134,7 @@ export function parseLiveEvent(event: NostrEventSigned): LiveStreamInfo {
     title: tag('title') || 'Untitled stream',
     summary: tag('summary') || '',
     image: tag('image') || '',
+    thumb: tag('thumb') || '',
     streamingUrl: tag('streaming') || '',
     status,
     announcedStatus,
@@ -342,6 +351,27 @@ export const POSTER_REFRESH_MS = 60_000;
  * The untouched address follows as a second try, so a host that dislikes the
  * extra parameter still shows its picture rather than nothing.
  */
+/**
+ * Where to find a picture of a stream, best first.
+ *
+ * `thumb` before `image`, because the services that publish both mean
+ * different things by them: `thumb` is a frame from the broadcast, rewritten
+ * as it goes, and `image` is the cover — a picture uploaded once, or the
+ * poster of a broadcast that finished days ago. Reading `image` alone showed
+ * an old picture under a running stream, and it was doing that on every
+ * stream from zap.stream, streamroad and streamstr, not one.
+ */
+export function posterSources(
+  stream: { image?: string; thumb?: string; status?: LiveStreamStatus },
+  at: number
+): string[] {
+  const live = stream.status === 'live';
+  return [
+    ...freshPoster(stream.thumb, live, at),
+    ...freshPoster(stream.image, live, at)
+  ];
+}
+
 export function freshPoster(image: string | undefined, live: boolean, at: number): string[] {
   if (!image) return [];
   if (!live || image.includes('?')) return [image];
