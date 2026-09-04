@@ -114,6 +114,9 @@ interface LiveChatPanelProps {
  * messages under that stream's own address, so what comes back is the same
  * chat, filled in and replaced the moment the relays answer.
  */
+/** How long after speaking somebody still counts as being here */
+const PRESENT_FOR_MS = 10 * 60 * 1000;
+
 const CHAT_MEMORY = 'razr_livechat';
 /**
  * The stream's own mute list, kept for the same reason.
@@ -237,6 +240,13 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   const atBottom = useRef(true);
   /** Something arrived while the reader was up in the history */
   const [missed, setMissed] = useState(false);
+  /** Ticks so presence ages out while the page sits open */
+  const [presenceTick, setPresenceTick] = useState(0);
+
+  useEffect(() => {
+    const tick = setInterval(() => setPresenceTick(n => n + 1), 30000);
+    return () => clearInterval(tick);
+  }, []);
   const inputRef = useRef<HTMLInputElement>(null);
   const profilesRef = useRef<Map<string, UserProfile>>(new Map());
   const isLoggedIn = CredentialManager.isLoggedIn();
@@ -883,15 +893,28 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   };
 
 
-  // Anyone who has spoken or zapped, newest first — the panel already holds
-  // both, so presence costs nothing extra to work out
+  /**
+   * Who is here: anyone who has spoken or zapped **lately**, newest first.
+   *
+   * Without the window this counted everyone in the loaded history, so a
+   * stream whose chat had one message this morning claimed a viewer all day
+   * — and the number differed from the one in the viewers window, which has
+   * always counted the last ten minutes. Two places, two answers, for the
+   * same question.
+   */
   const present: PresentPerson[] = (() => {
+    const since = Math.floor((Date.now() - PRESENT_FOR_MS) / 1000);
+    void presenceTick; // recomputed on the tick, so people age out
+    const lately = <T extends { created_at?: number }>(events: T[]) =>
+      events.filter(event => (event.created_at || 0) >= since);
+
     const seen = new Map<string, PresentPerson>();
+    const recentMessages = lately(messages);
     const speakers = [
-      ...messages.map(m => m.pubkey),
-      ...zaps.map(z => NostrCore.zapSenderPubkey(z))
+      ...recentMessages.map(m => m.pubkey),
+      ...lately(zaps).map(z => NostrCore.zapSenderPubkey(z))
     ];
-    for (const pubkey of [...messages].reverse().map(m => m.pubkey).concat(
+    for (const pubkey of [...recentMessages].reverse().map(m => m.pubkey).concat(
       speakers.filter((p): p is string => !!p)
     )) {
       if (!pubkey || seen.has(pubkey)) continue;
