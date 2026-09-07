@@ -104,6 +104,11 @@ export const EVENT_KINDS = {
    * that vanishes the moment its owner opens another.
    */
   BOOKMARKS: 10003,
+  /**
+   * NIP-65 relay list (kind 10002) — where this account reads and writes.
+   * How anyone else's client knows where to look for its posts.
+   */
+  RELAY_LIST: 10002,
   LONG_FORM: 30023,
   APP_SPECIFIC_DATA: 30078,
   POLL: 1068,

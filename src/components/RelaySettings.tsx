@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { RelayMark } from './RelayBadges';
 import { getRelayPool } from '../nostr/relay';
+import { NostrCore } from '../nostr/core';
 import { readFeedTrail } from '../utils/feedTrail';
 import { CredentialManager } from '../nostr/crypto';
 import { RelayConfig } from '../types';
@@ -126,6 +127,7 @@ const RelaySettings: React.FC = () => {
       if (success) {
         setNewRelayUrl('');
         loadRelays(true); // Now capabilities are guaranteed to be populated
+        void announceRelays();
       } else {
         setError('Failed to add relay');
       }
@@ -137,12 +139,29 @@ const RelaySettings: React.FC = () => {
     }
   };
 
+  /**
+   * Tell the network where this account reads and writes (NIP-65).
+   *
+   * Somebody else's client finds your posts by asking for this list, so a
+   * change to the relays here is only half done until it is published.
+   * Quiet if it fails: the relays are already changed, and a refused
+   * signature should not read as the change not having happened.
+   */
+  const announceRelays = async () => {
+    try {
+      await NostrCore.publishRelayList();
+    } catch (err) {
+      console.error('Failed to publish the relay list:', err);
+    }
+  };
+
   const handleRemoveRelay = async (url: string) => {
     setLoading(true);
     try {
       const relayPool = getRelayPool();
       await relayPool.removeRelay(url);
       loadRelays();
+      void announceRelays();
     } catch (err) {
       console.error('Error removing relay:', err);
       setError('Error removing relay');
@@ -183,19 +202,31 @@ const RelaySettings: React.FC = () => {
     }
   };
 
+  // Deduplicated by address: the pool can hold the same relay twice after a
+  // reconnect, and a list that shows it twice invites removing it twice
+  const shown = [...new Map(relays.map(r => [r.url, r])).values()];
+  const ownRelays = shown.filter(r => !r.outbox);
+  const fromFollows = shown.filter(r => r.outbox);
+
   return (
     <section className="settings-section">
       <h2>Relay Management</h2>
 
       <div className="relay-stats">
         <div className="relay-stat">
-          <span className="relay-stat-label">Total Relays</span>
-          <span className="relay-stat-value">{relays.length}</span>
+          <span className="relay-stat-label">Your Relays</span>
+          <span className="relay-stat-value">{ownRelays.length}</span>
         </div>
         <div className="relay-stat">
           <span className="relay-stat-label">Connected</span>
           <span className="relay-stat-value">{relays.filter(r => r.connected).length}</span>
         </div>
+        {fromFollows.length > 0 && (
+          <div className="relay-stat">
+            <span className="relay-stat-label">From your follows</span>
+            <span className="relay-stat-value">{fromFollows.length}</span>
+          </div>
+        )}
       </div>
 
       <div className="relay-actions">
@@ -232,15 +263,27 @@ const RelaySettings: React.FC = () => {
 
       <div className="relays-list">
         <h3 style={{ marginTop: 0 }}>Configured Relays</h3>
-        {relays.length === 0 ? (
+        {ownRelays.length === 0 ? (
           <div className="no-relays">
             <p>No relays configured. Add one above to get started.</p>
           </div>
         ) : (
-          [...new Set(relays.map(r => r.url))].map(url => {
-            const relay = relays.find(r => r.url === url)!;
+          [...ownRelays, ...fromFollows].map((relay, index) => {
+            // The relays of your own end here; what follows was opened for
+            // the people you follow, and is not part of your list
+            const opensTheirs = fromFollows.length > 0 && index === ownRelays.length;
             return (
-            <div key={relay.url} className="relay-card">
+            <React.Fragment key={relay.url}>
+            {opensTheirs && (
+              <div className="relay-group-heading">
+                <h3>Read because you follow people there</h3>
+                <p>
+                  Opened from the relay lists those accounts publish (NIP-65), so their posts
+                  arrive here. Read only, never published to, and not part of the relays above.
+                </p>
+              </div>
+            )}
+            <div className="relay-card">
               <div className="relay-header">
                 <div className="relay-url">
                   {/* The same mark the notes carry, so a relay is recognised
@@ -346,6 +389,7 @@ const RelaySettings: React.FC = () => {
                 Remove Relay
               </button>
             </div>
+            </React.Fragment>
             );
           })
         )}

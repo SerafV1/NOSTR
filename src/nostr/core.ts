@@ -8,7 +8,7 @@ import {
 } from '../types';
 import { nip19 } from 'nostr-tools';
 import { NostrCrypto, CredentialManager, ExtensionManager } from './crypto';
-import { getRelayPool, RelayPool, DEFAULT_RELAYS } from './relay';
+import { getRelayPool, RelayPool, DEFAULT_RELAYS, UNREACHABLE_RELAYS } from './relay';
 import { replyTags } from './replyTags';
 import { bunkerSignEvent } from './bunker';
 import { isEffectivelyLive, parseLiveEvent } from '../utils/liveStream';
@@ -2531,6 +2531,72 @@ export class NostrCore {
   }
 
   /**
+   * Saying where to find you (NIP-65, kind 10002).
+   *
+   * The other half of the outbox model: reading somebody's relays only works
+   * because they published them. Without one of these, this client's users
+   * are the people nobody else can find — an Amethyst reader following you
+   * asks where you write, gets no answer, and falls back to whatever relays
+   * it happens to hold.
+   *
+   * Only your own relays go in it. The ones opened because somebody you
+   * follow publishes there are not yours to announce, and would tell the
+   * network to look for your posts where they are not.
+   */
+  static async publishRelayList(): Promise<boolean> {
+    if (!CredentialManager.canSign()) return false;
+
+    const configs = getRelayPool().getAllSavedRelayConfigs()
+      .filter(config => !config.outbox && /^wss:\/\//i.test(config.url))
+      .filter(config => config.read || config.write);
+    if (configs.length === 0) return false;
+
+    const tags = configs.map(config => {
+      // A relay used for both is named without a marker, which is what NIP-65
+      // says and what other clients read fastest
+      if (config.read && config.write) return ['r', config.url];
+      return ['r', config.url, config.read ? 'read' : 'write'];
+    });
+
+    return this.publishReplaceableList(EVENT_KINDS.RELAY_LIST, tags, '');
+  }
+
+  /**
+   * Publish it if this account has never said anything, or if what it said
+   * no longer matches the relays in front of the reader.
+   *
+   * Quiet by design: an account with a list that still holds is left alone,
+   * because every publish here is a signature, and on a remote signer that
+   * is a prompt.
+   */
+  static async announceRelayListIfChanged(): Promise<boolean> {
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey || !CredentialManager.canSign()) return false;
+
+    try {
+      const mine = getRelayPool().getAllSavedRelayConfigs()
+        .filter(config => !config.outbox && /^wss:\/\//i.test(config.url))
+        .map(config => config.url);
+      if (mine.length === 0) return false;
+
+      const published = await this.fetchRelayLists([ownPubkey]);
+      const announced = published.get(ownPubkey);
+      if (announced) {
+        const said = new Set(announced.map(url => url.trim().replace(/\/+$/, '')));
+        // Every relay written to is named: a list that already says so is
+        // left as it is, whatever else it also says
+        const missing = mine.filter(url => !said.has(url));
+        if (missing.length === 0) return false;
+      }
+
+      return await this.publishRelayList();
+    } catch (error) {
+      console.error('Failed to announce the relay list:', error);
+      return false;
+    }
+  }
+
+  /**
    * Reading from where the people you follow actually publish.
    *
    * Nostr has no central copy: a post exists on the relays its author chose,
@@ -2578,7 +2644,9 @@ export class NostrCore {
       ...DEFAULT_RELAYS
     ]);
     const excluded = pool.getExcludedRelays();
-    const opening = urls.filter(url => !already.has(url) && !excluded.has(url));
+    const opening = urls.filter(
+      url => !already.has(url) && !excluded.has(url) && !UNREACHABLE_RELAYS.includes(url)
+    );
     if (opening.length === 0) return [];
 
     await Promise.all(
@@ -2587,7 +2655,23 @@ export class NostrCore {
           .catch(() => false)
       )
     );
-    return opening;
+
+    // One that would not open is taken out of the remembered choice — it
+    // stays a candidate for the next time the lists are read, but the next
+    // start does not spend a socket waiting on it
+    const live = pool.getStatus();
+    const refused = opening.filter(url => !live.get(url));
+    if (refused.length > 0) {
+      const held = PersistentCache.get<{ at: number; relays: string[] }>(this.outboxChoiceKey());
+      if (held?.relays?.length) {
+        PersistentCache.set(this.outboxChoiceKey(), {
+          at: held.at,
+          relays: held.relays.filter(url => !refused.includes(url))
+        });
+      }
+      for (const url of refused) pool.forgetRelay(url);
+    }
+    return opening.filter(url => !refused.includes(url));
   }
 
   /**
@@ -2634,7 +2718,7 @@ export class NostrCore {
       }
 
       const candidates = [...reach.entries()]
-        .filter(([url]) => !ours.has(url) && !excluded.has(url));
+        .filter(([url]) => !ours.has(url) && !excluded.has(url) && !UNREACHABLE_RELAYS.includes(url));
 
       const chosen: string[] = [];
       // First: cover the people nothing else reaches, fewest relays first

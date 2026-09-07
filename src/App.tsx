@@ -458,6 +458,11 @@ function App() {
       // the choice itself once it knows who is followed.
       void NostrCore.connectRememberedOutboxRelays();
 
+      // And the other direction: where to find this account, so the people
+      // reading it can do the same. Only when what is published does not
+      // already name these relays — every publish is a signature.
+      void NostrCore.announceRelayListIfChanged();
+
       // Clean up any stale relay configs that don't have active relays
       relayPool.cleanupStaleConfigs();
 

@@ -162,9 +162,8 @@ export class RelayPool {
     const MIGRATION_KEY = 'nostr_relay_migration_v4';
     if (localStorage.getItem(MIGRATION_KEY)) return;
 
-    const dead = ['wss://purplepag.es', 'wss://offchain.pub'];
     const before = this.relayConfigs.length;
-    this.relayConfigs = this.relayConfigs.filter(c => !dead.includes(c.url));
+    this.relayConfigs = this.relayConfigs.filter(c => !UNREACHABLE_RELAYS.includes(c.url));
     if (this.relayConfigs.length !== before) {
       console.log(`[Relay] Migration: removed ${before - this.relayConfigs.length} unreachable relays`);
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.relayConfigs));
@@ -526,6 +525,26 @@ export class RelayPool {
   getAllSavedRelayConfigs(): RelayConfig[] {
     // Return all saved configs without filtering
     return [...this.relayConfigs];
+  }
+
+  /**
+   * Take a relay out of the pool without holding it against it.
+   *
+   * Different from removing one: that is a decision — the relay is
+   * remembered as unwanted and never comes back on its own. This is for a
+   * relay that was opened on the app's own initiative and did not answer, so
+   * nothing is spent on it now and it can be tried again later.
+   */
+  forgetRelay(url: string): void {
+    const relay = this.relays.get(url);
+    try {
+      relay?.close?.();
+    } catch {
+      // Already gone is the outcome wanted anyway
+    }
+    this.relays.delete(url);
+    this.relayConnectionState.delete(url);
+    this.relayConfigs = this.relayConfigs.filter(c => c.url !== url);
   }
 
   /**
@@ -1418,6 +1437,23 @@ export interface RelayCapabilities {
  * and somebody else's events are looked for on the relays they publish to
  * (NIP-65) whether or not those are in here.
  */
+/**
+ * Relays that answer nothing at all, measured rather than assumed.
+ *
+ * purplepag.es returns 502 to every connection, offchain.pub refuses them,
+ * and relay.nostr.band — which many people still name in their relay lists —
+ * times out on both the socket and its own information document. They are
+ * kept out of anywhere a relay can arrive from on its own: the defaults, the
+ * cleanup of what a browser has saved, and the relays opened because
+ * somebody you follow says they publish there.
+ */
+export const UNREACHABLE_RELAYS = [
+  'wss://purplepag.es',
+  'wss://offchain.pub',
+  'wss://relay.nostr.band',
+  'wss://nostr.band'
+];
+
 export const DEFAULT_RELAYS = [
   // The workhorses: fastest to answer, and holding the most of everything
   'wss://nos.lol',
