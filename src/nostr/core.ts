@@ -676,7 +676,37 @@ export class NostrCore {
     // What we just published is now the authoritative list — remember it, so
     // the next edit builds on it even if no relay answers at that moment
     PersistentCache.set(this.listCacheKey(signed.kind, signed.pubkey), signed);
+
+    // A follow list is not only a list: it is who the home feed is made of.
+    // Kept only as the signed event, the separate list of names every feed
+    // reads was left saying what it said before — so somebody unfollowed
+    // stayed in the feed, and in the next fetch, until a contact list
+    // happened to be fetched again.
+    if (signed.kind === EVENT_KINDS.CONTACTS) {
+      const follows = signed.tags
+        .filter(t => t[0] === 'p' && t[1])
+        .map(t => t[1]);
+      PersistentCache.set(this.followsCacheKey(signed.pubkey), follows);
+      for (const listener of this.followsListeners) {
+        try {
+          listener(follows);
+        } catch (error) {
+          console.error('Follow list listener failed:', error);
+        }
+      }
+    }
     return true;
+  }
+
+  /**
+   * Told when this account's follow list changes, so what is already on
+   * screen can change with it rather than waiting for the next fetch.
+   */
+  private static followsListeners = new Set<(follows: string[]) => void>();
+
+  static onFollowsChanged(listener: (follows: string[]) => void): () => void {
+    this.followsListeners.add(listener);
+    return () => { this.followsListeners.delete(listener); };
   }
 
   /**

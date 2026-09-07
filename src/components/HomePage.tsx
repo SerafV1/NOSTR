@@ -256,6 +256,47 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     }
   }, [feedType, activeTopic, relaysConnected]);
 
+  /**
+   * Unfollowing somebody empties the feed of them at once.
+   *
+   * The home feed is the people you follow, and it was only ever filtered
+   * where it is fetched or read from storage — so somebody unfollowed went
+   * on sitting in the feed on screen, and behind the button, until something
+   * else caused a reload. Their posts leave the moment the list is
+   * published, which is the moment the reader asked for.
+   */
+  useEffect(() => NostrCore.onFollowsChanged(follows => {
+    followedRef.current = follows;
+    // Global and topic feeds are not made of who you follow, so nothing to do
+    if (feedType !== 'home') return;
+
+    const allowed = new Set(follows);
+    const own = CredentialManager.getPublicKey();
+    if (own) allowed.add(own);
+
+    setEvents(prev => {
+      const kept = prev.filter(e => allowed.has(e.pubkey));
+      if (kept.length !== prev.length) PersistentCache.set(feedCacheKey(), kept);
+      eventsRef.current = kept;
+      return kept;
+    });
+    setPendingEvents(prev => {
+      const kept = prev.filter(e => allowed.has(e.pubkey));
+      pendingRef.current = kept;
+      return kept;
+    });
+    // A repost belongs to whoever reposted it: unfollowing the person whose
+    // note it was does not take it out of the feed, unfollowing the one who
+    // passed it on does
+    setReposts(prev => {
+      const kept = prev.filter(r => allowed.has(r.repost.pubkey));
+      if (kept.length !== prev.length) rememberReposts(kept);
+      repostsRef.current = kept;
+      return kept;
+    });
+    setPendingReposts(prev => prev.filter(r => allowed.has(r.repost.pubkey)));
+  }), [feedType, activeTopic]);
+
   // Discard pending new posts when switching feeds, and put back the reposts
   // the feed being shown was last showing — they are cached with it, so a
   // repost already read is not offered again as new
