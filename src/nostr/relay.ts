@@ -1335,11 +1335,14 @@ export class RelayPool {
   async refreshConnectionStatus(): Promise<void> {
     console.log(`[Status] Refreshing connection status for ${this.relays.size} relays`);
 
-    for (const [url, relay] of this.relays) {
+    // All of them at once. One at a time, each reconnect could take its full
+    // ten seconds before the next was even tried, so with a couple of relays
+    // down this took longer than a minute — and the Relays page, which asks
+    // for this before it draws anything, sat empty for all of it.
+    await Promise.all([...this.relays].map(async ([url, relay]) => {
       try {
         const currentStatus = this.isActuallyConnected(relay);
         this.relayConnectionState.set(url, currentStatus);
-        console.log(`[Status] Checking ${url}: currently ${currentStatus ? 'connected' : 'disconnected'}`);
 
         // If relay is not connected, try to reconnect
         if (!currentStatus && relay.connect && typeof relay.connect === 'function') {
@@ -1364,7 +1367,7 @@ export class RelayPool {
       } catch (error) {
         console.error(`[Status] Error refreshing status for ${url}:`, error);
       }
-    }
+    }));
   }
 
   /**

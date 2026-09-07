@@ -124,9 +124,11 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
   const [loading, setLoading] = useState(true);
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
   // Seeded so previews are on screen with the list, not a beat later
-  const [targetNotes, setTargetNotes] = useState<Record<string, NostrEventSigned>>(
-    () => readCachedTargets(pubkey)
-  );
+  const [targetNotes, setTargetNotes] = useState<Record<string, NostrEventSigned>>(() => {
+    const kept = readCachedTargets(pubkey);
+    for (const event of Object.values(kept)) EventCache.addEvent(event);
+    return kept;
+  });
   // Captured once on mount so items stay highlighted as "new" for this
   // viewing even after the seen marker below advances past them
   const initialLastSeenRef = useRef(NotificationStore.getLastSeen(pubkey));
@@ -166,6 +168,16 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
    * The page holds the union of everything this visit has seen.
    */
   const mergeIntoView = (incoming: NostrNotification[]) => {
+    // The note somebody replied with is the notification. Held here and
+    // nowhere else, clicking one sent the note page back to the relays for
+    // an event this browser already had — a second or three of "Loading
+    // note..." for something in memory. Kept where every page looks first.
+    for (const notification of incoming) {
+      if (notification.event.kind === EVENT_KINDS.TEXT_NOTE
+        || notification.event.kind === EVENT_KINDS.COMMENT) {
+        EventCache.addEvent(notification.event);
+      }
+    }
     setNotifications(prev => {
       const byId = new Map(prev.map(n => [n.id, n]));
       for (const notification of incoming) byId.set(notification.id, notification);
@@ -218,6 +230,9 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
         .filter((id): id is string => !!id);
       if (targetIds.length > 0) {
         const targets = await NostrCore.fetchEventsByIds(targetIds);
+        // The same for what a like or a zap was about: it is what opens
+        // when the row is clicked
+        for (const target of targets.values()) EventCache.addEvent(target);
         setTargetNotes(cacheTargets(pubkey, Object.fromEntries(targets)));
       }
 

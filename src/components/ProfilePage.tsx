@@ -90,7 +90,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   // Seeded from the follow list kept locally, so the button reads right at
   // once instead of after a relay answers — the relays are still asked below
   const [isFollowing, setIsFollowing] = useState<boolean | null>(
-    () => (NostrCore.getCachedFollowedAccounts().includes(pubkey) ? true : null)
+    () => NostrCore.followsFromCache(pubkey)
   );
   const [followLoading, setFollowLoading] = useState(false);
   const [isBlocked, setIsBlocked] = useState(() => NostrCore.isBlocked(pubkey));
@@ -540,24 +540,27 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const handleFollowToggle = async () => {
     if (followLoading || isFollowing === null) return;
     setFollowLoading(true);
+    // The button reads the new way at once; the contact list is fetched and
+    // rewritten underneath, and the button goes back if that fails
+    const was = isFollowing;
+    setIsFollowing(!isFollowing);
     try {
-      if (isFollowing) {
+      if (was) {
         await NostrCore.unfollowUser(pubkey);
-        setIsFollowing(false);
       } else {
         try {
           await NostrCore.followUser(pubkey);
         } catch (error) {
           if (error instanceof Error && error.message === NostrCore.NO_EXISTING_CONTACT_LIST) {
-            if (!window.confirm(NO_CONTACT_LIST_PROMPT)) return;
+            if (!window.confirm(NO_CONTACT_LIST_PROMPT)) { setIsFollowing(was); return; }
             await NostrCore.followUser(pubkey, { createIfMissing: true });
           } else {
             throw error;
           }
         }
-        setIsFollowing(true);
       }
     } catch (error) {
+      setIsFollowing(was);
       console.error('Failed to update follow list:', error);
       alert(error instanceof Error ? error.message : 'Failed to update follow list');
     } finally {
@@ -674,7 +677,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                       onClick={handleFollowToggle}
                       disabled={followLoading}
                     >
-                      {followLoading ? '...' : isFollowing ? 'Unfollow' : 'Follow'}
+                      {/* What it will be, not a row of dots: the answer is
+                          already known, the publishing behind it is not
+                          something the reader has to watch */}
+                      {isFollowing ? 'Unfollow' : 'Follow'}
                     </button>
                   )}
                   <button

@@ -54,10 +54,22 @@ const RelaySettings: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
 
+  /** What the pool holds right now, without asking any relay anything */
+  const showWhatIsKnown = () => {
+    const relayPool = getRelayPool();
+    const status = relayPool.getStatus();
+    setRelays(relayPool.getRelayConfigs().map(config => ({
+      ...config,
+      connected: status.get(config.url) || false
+    })));
+  };
+
   const loadRelays = async (fetchCapabilities: boolean = false) => {
     const relayPool = getRelayPool();
 
-    // Refresh connection status (attempts to reconnect disconnected relays)
+    // Refresh connection status (attempts to reconnect disconnected relays).
+    // Slow by nature — a relay that is down is given ten seconds to prove
+    // otherwise — so the page is not left blank while it happens
     await relayPool.refreshConnectionStatus();
 
     const configs = relayPool.getRelayConfigs();
@@ -100,6 +112,9 @@ const RelaySettings: React.FC = () => {
   };
 
   useEffect(() => {
+    // The list is on screen from the first frame; reconnecting and reading
+    // each relay's document happens behind it
+    showWhatIsKnown();
     loadRelays(true); // Fetch capabilities on initial load
     // Refresh relay status every 5 seconds (without re-fetching capabilities)
     const interval = setInterval(() => loadRelays(false), 5000);

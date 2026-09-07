@@ -21,7 +21,7 @@ interface FollowButtonProps {
 const FollowButton: React.FC<FollowButtonProps> = ({ pubkey, className }) => {
   const isOwnAccount = pubkey === CredentialManager.getPublicKey();
   const [following, setFollowing] = useState<boolean | null>(
-    () => (NostrCore.getCachedFollowedAccounts().includes(pubkey) ? true : null)
+    () => NostrCore.followsFromCache(pubkey)
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,10 +43,16 @@ const FollowButton: React.FC<FollowButtonProps> = ({ pubkey, className }) => {
     if (busy || following === null) return;
     setBusy(true);
     setError(null);
+    // The button says what was asked of it straight away. Publishing a
+    // contact list means fetching the one the relays hold first — it is
+    // rewritten whole, so it cannot be built from a guess — and that took
+    // long enough that the button looked stuck. It goes back if the publish
+    // does not happen.
+    const was = following;
+    setFollowing(!following);
     try {
-      if (following) {
+      if (was) {
         await NostrCore.unfollowUser(pubkey);
-        setFollowing(false);
         return;
       }
 
@@ -56,14 +62,14 @@ const FollowButton: React.FC<FollowButtonProps> = ({ pubkey, className }) => {
         // Publishing a first contact list would replace whatever the relays
         // failed to hand over, so it is asked for rather than assumed
         if (err instanceof Error && err.message === NostrCore.NO_EXISTING_CONTACT_LIST) {
-          if (!window.confirm(NO_CONTACT_LIST_PROMPT)) return;
+          if (!window.confirm(NO_CONTACT_LIST_PROMPT)) { setFollowing(was); return; }
           await NostrCore.followUser(pubkey, { createIfMissing: true });
         } else {
           throw err;
         }
       }
-      setFollowing(true);
     } catch (err) {
+      setFollowing(was);
       setError(err instanceof Error ? err.message : 'Failed to update follow list');
     } finally {
       setBusy(false);
@@ -80,7 +86,7 @@ const FollowButton: React.FC<FollowButtonProps> = ({ pubkey, className }) => {
     >
       {/* "Unfollow", as the hover card and the profile page both say — the
           button names what pressing it does, not the state it reports */}
-      {following === null ? '…' : busy ? '…' : following ? 'Unfollow' : 'Follow'}
+      {following === null ? '…' : following ? 'Unfollow' : 'Follow'}
     </button>
   );
 };

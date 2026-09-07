@@ -56,7 +56,7 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
   // asking the relays took long enough that the card sat there offering to
   // follow someone already followed
   const [isFollowing, setIsFollowing] = useState<boolean | null>(
-    () => (NostrCore.getCachedFollowedAccounts().includes(pubkey) ? true : null)
+    () => NostrCore.followsFromCache(pubkey)
   );
   const [blocked, setBlocked] = useState(() => NostrCore.isBlocked(pubkey));
   const [busy, setBusy] = useState<'follow' | 'block' | null>(null);
@@ -143,24 +143,27 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
     if (busy || isFollowing === null) return;
     setBusy('follow');
     setError(null);
+    // Answered on the card at once; the list is rewritten underneath, and
+    // the card goes back to what it said if that does not happen
+    const was = isFollowing;
+    setIsFollowing(!isFollowing);
     try {
-      if (isFollowing) {
+      if (was) {
         await NostrCore.unfollowUser(pubkey);
-        setIsFollowing(false);
       } else {
         try {
           await NostrCore.followUser(pubkey);
         } catch (err) {
           if (err instanceof Error && err.message === NostrCore.NO_EXISTING_CONTACT_LIST) {
-            if (!window.confirm(NO_CONTACT_LIST_PROMPT)) return;
+            if (!window.confirm(NO_CONTACT_LIST_PROMPT)) { setIsFollowing(was); return; }
             await NostrCore.followUser(pubkey, { createIfMissing: true });
           } else {
             throw err;
           }
         }
-        setIsFollowing(true);
       }
     } catch (err) {
+      setIsFollowing(was);
       setError(err instanceof Error ? err.message : 'Failed to update follow list');
     } finally {
       setBusy(null);
@@ -239,7 +242,7 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
               >
                 {/* Not yet known is its own state: offering "Follow" while
                     the answer is still coming was wrong half the time */}
-                {busy === 'follow' ? '…' : isFollowing === null ? '…' : isFollowing ? 'Unfollow' : 'Follow'}
+                {isFollowing === null ? '…' : isFollowing ? 'Unfollow' : 'Follow'}
               </button>
               <button
                 type="button"

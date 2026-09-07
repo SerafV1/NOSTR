@@ -516,6 +516,21 @@ export class NostrCore {
   }
 
   /**
+   * Whether this account follows someone, from what is already in hand.
+   *
+   * `false` counts as an answer, which it did not before: only a name found
+   * in the stored list was believed, and everyone else — which is nearly
+   * everyone — sent the button to the relays for a contact list it already
+   * had. That round trip is what a hover card spent its first second or two
+   * on. null now means genuinely unknown: no list stored at all.
+   */
+  static followsFromCache(targetPubkey: string): boolean | null {
+    const follows = this.getCachedFollowedAccounts();
+    if (follows.length === 0) return null;
+    return follows.includes(targetPubkey);
+  }
+
+  /**
    * Fetch the pubkeys any given account follows (kind 3) — same as
    * fetchFollowedAccounts but for an arbitrary profile, not just yourself
    */
@@ -2240,19 +2255,41 @@ export class NostrCore {
     };
 
     try {
-      const results = await Promise.allSettled([poolAttempt(), hintAttempt(), authorOutboxAttempt()]);
-      for (const result of results) {
-        if (result.status === 'fulfilled' && result.value) {
-          // Remember it: walking a thread asks for the same notes again
-          EventCache.addEvent(result.value);
-          return result.value;
-        }
+      // Whichever of the three finds it first, rather than all three
+      // finishing. They were being waited on together, so a note the pool
+      // handed over in half a second still sat behind the author's relay
+      // list being fetched and a connection opened to relays that were
+      // never going to be needed — seconds of it, every time a notification
+      // was opened.
+      const found = await this.firstFound([poolAttempt(), hintAttempt(), authorOutboxAttempt()]);
+      if (found) {
+        // Remember it: walking a thread asks for the same notes again
+        EventCache.addEvent(found);
       }
-      return null;
+      return found;
     } catch (error) {
       console.error('Failed to fetch event:', error);
       return null;
     }
+  }
+
+  /**
+   * The first of these to come back with something, or null when none of
+   * them does. A rejection counts as nothing found rather than as a failure:
+   * one way of looking for a note giving up says nothing about the others.
+   */
+  private static firstFound<T>(attempts: Promise<T | null>[]): Promise<T | null> {
+    return new Promise<T | null>(resolve => {
+      let outstanding = attempts.length;
+      if (outstanding === 0) resolve(null);
+      const settled = (value: T | null) => {
+        if (value) resolve(value);
+        else if (--outstanding === 0) resolve(null);
+      };
+      for (const attempt of attempts) {
+        attempt.then(settled, () => settled(null));
+      }
+    });
   }
 
   /**
