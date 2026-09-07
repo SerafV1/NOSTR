@@ -452,6 +452,12 @@ function App() {
 
       clearTimeout(timeout);
 
+      // The relays the people you follow publish to, as they were last
+      // worked out. Opened here rather than waiting for the feed to ask,
+      // so the first thing read already reaches them; the feed refreshes
+      // the choice itself once it knows who is followed.
+      void NostrCore.connectRememberedOutboxRelays();
+
       // Clean up any stale relay configs that don't have active relays
       relayPool.cleanupStaleConfigs();
 

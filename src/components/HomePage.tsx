@@ -687,6 +687,12 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
         console.log('Followed accounts:', followedAccounts);
         followedRef.current = followedAccounts;
 
+        // Where they publish, which need not be anywhere this browser reads.
+        // Not waited for: this fetch asks the relays that are open now, and
+        // the ones this opens are there for the next one and for the live
+        // subscription, which picks up a relay the moment it connects.
+        void NostrCore.connectOutboxRelays(followedAccounts);
+
         if (followedAccounts.length === 0) {
           // No followed accounts, use global feed instead
           setHasFollows(false);

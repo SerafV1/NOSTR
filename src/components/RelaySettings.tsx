@@ -247,6 +247,14 @@ const RelaySettings: React.FC = () => {
                       in both places by the same picture */}
                   <RelayMark url={relay.url} />
                   {relay.url}
+                  {relay.outbox && (
+                    <span
+                      className="relay-outbox-mark"
+                      title="Opened because somebody you follow publishes here (NIP-65). Read only, and not saved with your own relays."
+                    >
+                      from your follows
+                    </span>
+                  )}
                 </div>
                 <div className={`relay-status ${relay.connected ? 'connected' : 'disconnected'}`}>
                   <span className="relay-status-indicator"></span>

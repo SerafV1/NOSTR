@@ -33,6 +33,12 @@ export interface RelayConfig {
   url: string;
   read: boolean;
   write: boolean;
+  /**
+   * Connected because somebody you follow says they publish there (NIP-65),
+   * rather than because it was chosen here. Read-only, and not saved with
+   * the relays of your own — the follow list decides these, and it changes.
+   */
+  outbox?: boolean;
 }
 
 export interface UserProfile {

@@ -5250,6 +5250,18 @@ a.capability-indicator.paid:hover {
   gap: var(--spacing-md);
 }
 
+/* A relay that is here because of who you follow, not because you chose it */
+.relay-outbox-mark {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 /* The one choice the page offers, beside its title */
 .notifications-follows-only {
   display: inline-flex;

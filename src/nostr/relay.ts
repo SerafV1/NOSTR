@@ -53,8 +53,13 @@ export class RelayPool {
    */
   private saveRelayConfigs(): void {
     try {
-      // Only save configs for relays that are actually connected
-      const activeConfigs = this.relayConfigs.filter(config => this.relays.has(config.url));
+      // Only save configs for relays that are actually connected — and not
+      // the ones opened because a followed account publishes there: those
+      // follow the follow list, and saving them would leave a browser
+      // connecting to the relays of people it no longer follows
+      const activeConfigs = this.relayConfigs.filter(
+        config => this.relays.has(config.url) && !config.outbox
+      );
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(activeConfigs));
       console.log(`[Relay] Saved ${activeConfigs.length} active relays to storage`);
     } catch (error) {
@@ -289,7 +294,8 @@ export class RelayPool {
         this.relayConfigs.push({
           url,
           read: config?.read !== false,
-          write: config?.write !== false
+          write: config?.write !== false,
+          ...(config?.outbox ? { outbox: true } : {})
         });
       }
       
@@ -445,10 +451,12 @@ export class RelayPool {
         relay.close();
       }
       this.relays.delete(url);
+      const wasOutbox = this.relayConfigs.find(r => r.url === url)?.outbox;
       this.relayConfigs = this.relayConfigs.filter(r => r.url !== url);
-      
-      // If this is a default relay being removed, track it as excluded
-      if (DEFAULT_RELAYS.includes(url)) {
+
+      // A default relay, or one opened for somebody you follow: both come
+      // back on their own unless taking them away is remembered
+      if (DEFAULT_RELAYS.includes(url) || wasOutbox) {
         this.excludedRelayUrls.add(url);
         this.saveExcludedRelays();
         console.log(`[Relay] Added ${url} to excluded list`);
