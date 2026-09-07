@@ -225,9 +225,23 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
       // Kept behind the button in two cases: refreshing the feed already on
       // screen, and the first load of a feed this browser has kept — which
       // is what a reload is. A switch to another feed replaces.
+      const cachedFeed = readCachedFeed();
       const keepWhatIsThere = sameFeed
         ? eventsRef.current.length > 0
-        : firstLoad && readCachedFeed().length > 0;
+        : firstLoad && cachedFeed.length > 0;
+      // What is kept has to actually be on screen before the fetch decides
+      // what is new, because that decision is "newer than the newest post
+      // shown". Coming back to Home from another page, nothing was shown
+      // yet — the feed was still being read out of storage — so there was
+      // no newest post to be newer than, and the refresh went straight into
+      // the feed: the posts that had been waiting behind the button
+      // appeared as if they had been read, and the button was gone.
+      if (keepWhatIsThere && eventsRef.current.length === 0) {
+        noteFeedChange('cache shown', `${cachedFeed.length} posts, before refreshing`);
+        eventsRef.current = cachedFeed;
+        setEvents(cachedFeed);
+        setLoading(false);
+      }
       fetchFeed({ background: keepWhatIsThere });
     } else {
       // Relays not ready yet — show the cached feed instantly if we have one
@@ -666,6 +680,11 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
       await NostrCore.fetchProfiles(merged.map(e => e.pubkey));
 
       const shownNow = eventsRef.current;
+      // What is waiting behind the button is not part of the feed, and must
+      // not be written into it — the cache is what the next visit shows, and
+      // a post kept in both places is one the button offers and the feed has
+      // already got
+      const held = new Set(pendingRef.current.map(e => e.id));
       if (background && shownNow.length > 0) {
         const known = new Set(shownNow.map(e => e.id));
         const newestShown = Math.max(...shownNow.map(e => e.created_at || 0));
@@ -676,6 +695,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
         );
         if (arrived.length > 0) {
           noteFeedChange('held back', `${arrived.length} posts waiting for the button`);
+          for (const event of arrived) held.add(event.id);
           setPendingEvents(prev => {
             const ids = new Set(prev.map(e => e.id));
             return [...arrived.filter(e => !ids.has(e.id)), ...prev]
@@ -686,12 +706,13 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
       } else {
         noteFeedChange('feed replaced', `${merged.length} posts, was ${eventsRef.current.length}`);
         setEvents(merged);
+        held.clear();
       }
       // The global fallback shown to an account with no follows is not a
       // home feed — persisting it under the home key would replay those
       // strangers as "your" feed on every later load
       if (!(feedType === 'home' && followedRef.current.length === 0)) {
-        PersistentCache.set(feedCacheKey(), merged);
+        PersistentCache.set(feedCacheKey(), merged.filter(e => !held.has(e.id)));
       }
 
       // The live subscription can start streaming "new" posts while this
