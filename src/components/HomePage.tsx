@@ -7,7 +7,7 @@ import EmojiText from './EmojiText';
 import ProfileHoverCard from './ProfileHoverCard';
 import { formatAddress } from '../utils/helpers';
 import { loadCustomFeeds, saveCustomFeeds } from '../utils/customFeeds';
-import { parseLiveEvent, encodeLiveNaddr, LiveStreamInfo } from '../utils/liveStream';
+import { parseLiveEvent, encodeLiveNaddr, streamRoom, LiveStreamInfo } from '../utils/liveStream';
 import { noteFeedChange } from '../utils/feedTrail';
 import EventCard from './EventCard';
 
@@ -1122,16 +1122,24 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
                   const name = profile?.display_name || profile?.name || formatAddress(followedPubkey);
                   const isGuest = followedPubkey !== info.pubkey;
                   const naddr = encodeLiveNaddr(EVENT_KINDS.LIVE_EVENT, info.pubkey, info.dTag);
+                  // An audio space is a live event too, and says so rather
+                  // than looking like something to watch
+                  const room = streamRoom(info);
                   return (
                     <button
                       key={`${info.pubkey}:${info.dTag}`}
                       className="live-banner-item"
                       onClick={() => navigate(`/live/${naddr}`)}
                     >
-                      <span className="live-banner-badge">LIVE</span>
+                      <span className={`live-banner-badge${room ? ' live-banner-badge-room' : ''}`}>
+                        {room ? '🎙 AUDIO' : 'LIVE'}
+                      </span>
                       {profile?.picture && <img src={profile.picture} alt="" className="live-banner-avatar"  loading="lazy" decoding="async" />}
                       <span className="live-banner-text">
-                        <strong><EmojiText text={name} emojis={profile?.emojis} /></strong> {isGuest ? 'is a guest on' : 'is live now —'} {info.title}
+                        <strong><EmojiText text={name} emojis={profile?.emojis} /></strong>{' '}
+                        {isGuest
+                          ? 'is a guest on'
+                          : room ? 'is in an audio space —' : 'is live now —'} {info.title}
                       </span>
                     </button>
                   );

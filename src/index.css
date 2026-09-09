@@ -5250,6 +5250,13 @@ a.capability-indicator.paid:hover {
   gap: var(--spacing-md);
 }
 
+/* And in the Live Now panel beside the feed */
+.live-banner-badge-room {
+  background: var(--light-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
 /* The same badge, for a room rather than a broadcast */
 .live-stream-badge-room {
   background: var(--light-bg);
