@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Thumbnail from './Thumbnail';
 import { UserProfile, EVENT_KINDS, NostrEventSigned } from '../types';
 import { NostrCore, PersistentCache } from '../nostr/core';
-import { parseLiveEvent, encodeLiveNaddr, isEffectivelyLive, posterSources, LiveStreamInfo } from '../utils/liveStream';
+import { parseLiveEvent, encodeLiveNaddr, isEffectivelyLive, posterSources, streamRoom, LiveStreamInfo } from '../utils/liveStream';
 import { usePosterTick } from '../hooks/usePosterTick';
 import { formatAddress } from '../utils/helpers';
 
@@ -177,7 +177,13 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
                     fallback="📺"
                     fallbackClassName="live-stream-thumb-placeholder"
                   />
-                  <span className="live-stream-badge">LIVE</span>
+                  {/* Not every live event is a broadcast: NIP-53's kind is
+                      "live event", and the audio-space services publish
+                      theirs the same way. Said on the card, so nobody opens
+                      one expecting to watch something. */}
+                  {streamRoom(stream)
+                    ? <span className="live-stream-badge live-stream-badge-room">🎙 AUDIO</span>
+                    : <span className="live-stream-badge">LIVE</span>}
                   {stream.currentParticipants !== undefined && (
                     <span className="live-stream-viewers">👁 {stream.currentParticipants}</span>
                   )}
