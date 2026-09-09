@@ -784,6 +784,14 @@ textarea {
   border-radius: var(--border-radius);
 }
 
+/* Instagram's card is a picture with a header, a caption and a row of
+   counts under it, and it grows with the width it is given — a full-width
+   one in a wide column is a very tall column of chrome. Held to the width
+   the card is designed around. */
+.media-embed-instagram {
+  max-width: 420px;
+}
+
 /* X-style "new posts" pill shown at the top of the feed */
 .new-posts-btn {
   position: sticky;

@@ -13,7 +13,13 @@ interface MediaEmbedProps {
  */
 const MediaEmbed: React.FC<MediaEmbedProps> = ({ embed, className = '' }) => {
   const isVideo = embed.height === null;
-  const classes = [isVideo ? 'event-video-embed' : 'event-audio-embed', className]
+  // Named by service as well as by shape: a card that is neither video nor
+  // an audio widget — an Instagram post, say — needs a width of its own
+  const classes = [
+    isVideo ? 'event-video-embed' : 'event-audio-embed',
+    `media-embed-${embed.kind}`,
+    className
+  ]
     .filter(Boolean)
     .join(' ');
 

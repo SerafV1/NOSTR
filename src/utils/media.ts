@@ -81,7 +81,8 @@ export type EmbedKind =
   | 'soundcloud'
   | 'applemusic'
   | 'deezer'
-  | 'tidal';
+  | 'tidal'
+  | 'instagram';
 
 export interface Embed {
   /** Dedupe key — the same track linked twice renders one player */
@@ -255,6 +256,33 @@ const EMBED_PROVIDERS: EmbedProvider[] = [
       src: `https://embed.tidal.com/${type}s/${id}`,
       title: `Tidal ${type}`,
       height: type === 'video' ? null : type === 'track' ? 96 : 400,
+    }),
+  },
+  {
+    kind: 'instagram',
+    /**
+     * A reel is the shape of Instagram people actually link to. Posts and
+     * IGTV take the same embed, and the address only differs in that one
+     * word, so all three are read here.
+     *
+     * `/share/` links are deliberately left out: those are redirects, and
+     * the code in them is not the one the embed wants.
+     */
+    source: 'https?:\\/\\/(?:www\\.)?instagram\\.com\\/(reels?|p|tv)\\/([A-Za-z0-9_-]{5,})[^\\s]*',
+    build: ([, type, code]) => ({
+      id: `${code}`,
+      // Instagram's own embed. The captioned form adds the caption and the
+      // comment count under the picture, which is most of what makes a reel
+      // worth looking at.
+      src: `https://www.instagram.com/${type === 'p' ? 'p' : type === 'tv' ? 'tv' : 'reel'}/${code}/embed/captioned`,
+      title: 'Instagram',
+      /**
+       * Not a ratio: the card is the picture plus a header, a caption and a
+       * row of counts, and it grows with the width it is given — 689px tall
+       * at 400 wide, 939px at 600, measured. So it is given a width it
+       * suits (the CSS caps it) and the height that width needs.
+       */
+      height: 700,
     }),
   },
 ];
