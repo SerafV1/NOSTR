@@ -5250,6 +5250,46 @@ a.capability-indicator.paid:hover {
   gap: var(--spacing-md);
 }
 
+/* A live event that is a room to join rather than a picture to watch */
+.stream-room {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-xl);
+  min-height: 220px;
+  height: 100%;
+  text-align: center;
+  background: var(--light-bg);
+  border-radius: var(--border-radius);
+}
+
+.stream-room-mark {
+  font-size: 2.2rem;
+  line-height: 1;
+}
+
+.stream-room-say {
+  margin: 0;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.stream-room-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* The address behind a stream that would not play */
+.video-unsupported-open {
+  display: inline-block;
+  margin-left: 8px;
+  color: var(--primary-color);
+  text-decoration: underline;
+}
+
 /* Where the relays of your own end and the ones from your follows begin */
 .relay-group-heading {
   margin: var(--spacing-xl) 0 var(--spacing-md);

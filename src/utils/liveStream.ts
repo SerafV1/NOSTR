@@ -18,6 +18,10 @@ export interface LiveStreamInfo {
   title: string;
   summary: string;
   image: string;
+  /** The room's own page, where one exists — NIP-53 calls it the service */
+  service: string;
+  /** NIP-32 labels the event carries, e.g. "audiospace" from Corny Chat */
+  labels: string[];
   /**
    * The frame from the broadcast as it is now, where the service publishes
    * one. Separate from `image`, which is the cover picture and does not
@@ -134,6 +138,8 @@ export function parseLiveEvent(event: NostrEventSigned): LiveStreamInfo {
     title: tag('title') || 'Untitled stream',
     summary: tag('summary') || '',
     image: tag('image') || '',
+    service: tag('service') || '',
+    labels: event.tags.filter(t => t[0] === 'l' && t[1]).map(t => t[1]),
     thumb: tag('thumb') || '',
     streamingUrl: tag('streaming') || '',
     status,
@@ -384,4 +390,47 @@ export function freshPoster(image: string | undefined, live: boolean, at: number
   } catch {
     return [image];
   }
+}
+
+/**
+ * Live events that are a room, not a broadcast.
+ *
+ * Corny Chat, Nostr Nests and Hive Talk publish a kind 30311 the same way a
+ * video stream does, and put the address of their own page in the streaming
+ * tag. There is nothing there for a video player to open: it fetched an HTML
+ * page, could make nothing of it, and said the stream could not be played —
+ * while the chat beside it filled with people talking in the room.
+ *
+ * They say what they are in two ways, and either is enough: a NIP-32 label
+ * ("audiospace"), or being one of the services known to work like this.
+ */
+const ROOM_SERVICES = /(^|\.)(cornychat\.com|nostrnests\.com|hivetalk\.org)$/i;
+
+export interface StreamRoom {
+  /** Where to join it */
+  url: string;
+  /** The service's own name for itself, for the button */
+  host: string;
+}
+
+export function streamRoom(info: {
+  streamingUrl?: string;
+  service?: string;
+  labels?: string[];
+}): StreamRoom | null {
+  const address = info.service || info.streamingUrl || '';
+  if (!address) return null;
+
+  let url: URL;
+  try {
+    url = new URL(address);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+
+  const labelled = (info.labels || []).some(label => /audio\s*space|audiospace/i.test(label));
+  if (!labelled && !ROOM_SERVICES.test(url.hostname)) return null;
+
+  return { url: url.toString(), host: url.hostname.replace(/^www\./, '') };
 }

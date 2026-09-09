@@ -421,7 +421,33 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className, onMin
   }
 
   if (error) {
-    return <div className="video-unsupported-note">⚠️ {error}</div>;
+    // Whatever this address turns out to be, it is still an address: a page
+    // the broadcast lives on, a file that moved, a service with its own
+    // player. Offering it is more use than a sentence saying no.
+    const openable = /^https?:\/\//i.test(src);
+    let host = '';
+    if (openable) {
+      try {
+        host = new URL(src).hostname.replace(/^www\./, '');
+      } catch {
+        host = '';
+      }
+    }
+    return (
+      <div className="video-unsupported-note">
+        ⚠️ {error}
+        {openable && (
+          <a
+            className="video-unsupported-open"
+            href={src}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open {host || 'the stream'} ↗
+          </a>
+        )}
+      </div>
+    );
   }
 
   return (

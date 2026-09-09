@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import LiveVideoPlayer from './LiveVideoPlayer';
 import MediaEmbed from './MediaEmbed';
 import { streamEmbed } from '../utils/streamEmbed';
+import { streamRoom } from '../utils/liveStream';
 
 interface StreamSurfaceProps {
   src: string;
@@ -19,6 +20,10 @@ interface StreamSurfaceProps {
   sound?: boolean;
   /** Someone pressed unmute here — the page decides what to do about it */
   onWantSound?: () => void;
+  /** The room's own page, where the event names one (NIP-53 `service`) */
+  service?: string;
+  /** NIP-32 labels from the event, which is how an audio space says so */
+  labels?: string[];
 }
 
 /**
@@ -35,8 +40,38 @@ const StreamSurface: React.FC<StreamSurfaceProps> = ({
   autoplay = true,
   sound,
   onWantSound,
+  service,
+  labels,
 }) => {
   const embed = useMemo(() => streamEmbed(src, autoplay, sound === true), [src, autoplay, sound]);
+  const room = useMemo(
+    () => streamRoom({ streamingUrl: src, service, labels }),
+    [src, service, labels]
+  );
+
+  // A room is not a broadcast: there is no video at that address, only the
+  // page the talking happens on. Handing it to a video player fetched an
+  // HTML document and reported that the stream could not be played, while
+  // the chat beside it filled with people in the room.
+  if (room) {
+    return (
+      <div className={`stream-room ${className}`}>
+        <span className="stream-room-mark" aria-hidden="true">🎙</span>
+        <p className="stream-room-say">This is an audio space, not a video stream.</p>
+        <a
+          className="btn btn-primary btn-with-icon"
+          href={room.url}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Join at {room.host} ↗
+        </a>
+        <p className="stream-room-note">
+          The chat below is this room's, and works here.
+        </p>
+      </div>
+    );
+  }
 
   if (!embed) {
     return (

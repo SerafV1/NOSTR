@@ -178,7 +178,12 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
               </button>
             </div>
           )}
-          <StreamSurface src={stream.streamingUrl} className="inline-stream-video" />
+          <StreamSurface
+            src={stream.streamingUrl}
+            service={stream.service}
+            labels={stream.labels}
+            className="inline-stream-video"
+          />
         </div>
       </div>
     );
@@ -226,7 +231,12 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
             <button className="image-modal-close" onClick={() => setZoomed(false)}>✕</button>
             {playable ? (
               <div className="inline-stream-large">
-                <StreamSurface src={stream.streamingUrl} className="inline-stream-video" />
+                <StreamSurface
+            src={stream.streamingUrl}
+            service={stream.service}
+            labels={stream.labels}
+            className="inline-stream-video"
+          />
               </div>
             ) : (
               <img src={poster} alt={stream.title} className="image-modal-img"  loading="lazy" decoding="async" />

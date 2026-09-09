@@ -163,6 +163,8 @@ const LiveTogetherPage: React.FC<LiveTogetherPageProps> = ({
             >
               <StreamSurface
                 src={stream.info.streamingUrl}
+                service={stream.info.service}
+                labels={stream.info.labels}
                 // The player wraps itself in a 16:9 box; this only sizes the picture inside it
                 className="live-stream-video"
                 sound={heard}
