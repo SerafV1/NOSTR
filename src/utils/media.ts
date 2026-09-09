@@ -98,6 +98,16 @@ export interface Embed {
   height: number | null;
   /** Poster image, only where the URL alone is enough to derive one */
   thumbnail?: string;
+  /**
+   * Take the frame out of the page while it is not being looked at.
+   *
+   * For players that can be spoken to — YouTube, Vimeo — a client can ask
+   * for a pause. Instagram's embed answers nothing from outside itself, so
+   * the only way to stop a reel playing on under a feed somebody has
+   * scrolled past is to stop the frame existing, and put it back with the
+   * poster in its place.
+   */
+  unloadOffscreen?: boolean;
 }
 
 interface EmbedProvider {
@@ -276,6 +286,11 @@ const EMBED_PROVIDERS: EmbedProvider[] = [
       // worth looking at.
       src: `https://www.instagram.com/${type === 'p' ? 'p' : type === 'tv' ? 'tv' : 'reel'}/${code}/embed/captioned`,
       title: 'Instagram',
+      // No poster: Instagram's /media/ address redirects to the picture for
+      // a plain request and refuses one made from a page — measured, every
+      // size, loaded from this app in a browser. So what holds the space
+      // while the frame is away says what it is instead of showing it.
+      unloadOffscreen: true,
       /**
        * Not a ratio: the card is the picture plus a header, a caption and a
        * row of counts, and it grows with the width it is given — 689px tall

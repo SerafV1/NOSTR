@@ -790,6 +790,37 @@ textarea {
    the card is designed around. */
 .media-embed-instagram {
   max-width: 420px;
+  /* Centred in the column it sits in, rather than pinned to its left edge */
+  margin-inline: auto;
+}
+
+/* What holds the space while a player is out of sight and out of the page */
+.media-embed-resting {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: var(--border-radius);
+  background: var(--light-bg);
+}
+
+.media-embed-resting-picture {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.media-embed-resting-plate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
 }
 
 /* X-style "new posts" pill shown at the top of the feed */
