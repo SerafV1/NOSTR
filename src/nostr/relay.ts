@@ -1013,7 +1013,18 @@ export class RelayPool {
      * lines out of a busy stream — is a different sort of question, and the
      * cap was cutting it off before the relay had finished answering.
      */
-    perRelayTimeoutMs: number = 3000
+    perRelayTimeoutMs: number = 3000,
+    /**
+     * How long to keep listening after the first relay has answered.
+     *
+     * Worth it for a question several relays answer differently — a feed, a
+     * chat — where the extra moment gathers what the first one did not hold.
+     * Worthless for a question with one right answer: asking for a note by
+     * its id, the first copy to arrive is the note, and this is pure delay.
+     * Measured on a note opened from a notification: 900ms to show it, of
+     * which 800 was this.
+     */
+    settleAfterFirstMs: number = 800
   ): Promise<NostrEventSigned[]> {
     const events: Map<string, NostrEventSigned> = new Map();
     const promises: Promise<void>[] = [];
@@ -1134,10 +1145,12 @@ export class RelayPool {
     if (waitForAll) {
       await Promise.all(promises);
     } else {
-      // Don't wait for the slowest relay: return 800ms after the first relay
-      // delivers data — enough for the fast majority to contribute
+      // Don't wait for the slowest relay: return shortly after the first
+      // relay delivers data — enough for the fast majority to contribute
       const earlyExit = firstData.then(
-        () => new Promise<void>(resolve => setTimeout(resolve, 800))
+        () => (settleAfterFirstMs > 0
+          ? new Promise<void>(resolve => setTimeout(resolve, settleAfterFirstMs))
+          : undefined)
       );
       await Promise.race([Promise.all(promises).then(() => undefined), earlyExit]);
     }

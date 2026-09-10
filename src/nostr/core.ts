@@ -2216,7 +2216,10 @@ export class NostrCore {
       // when nobody does is it worth the slow, wait-for-everyone rounds
       // below, which cost the best part of ten seconds on a note that was
       // never going to be found any faster.
-      const quick = await relayPool.fetchEvents(filters);
+      // The first copy to arrive is the note: an id is what the note hashes
+      // to, so there is nothing a second relay could add. Waiting the usual
+      // moment for the others was most of the time this took.
+      const quick = await relayPool.fetchEvents(filters, false, 3000, 0);
       if (quick[0]) return quick[0];
 
       for (let i = 0; i < 2; i++) {
