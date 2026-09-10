@@ -1,8 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import LiveVideoPlayer from './LiveVideoPlayer';
 import MediaEmbed from './MediaEmbed';
 import { streamEmbed } from '../utils/streamEmbed';
-import { streamRoom } from '../utils/liveStream';
 
 interface StreamSurfaceProps {
   src: string;
@@ -20,10 +19,6 @@ interface StreamSurfaceProps {
   sound?: boolean;
   /** Someone pressed unmute here — the page decides what to do about it */
   onWantSound?: () => void;
-  /** The room's own page, where the event names one (NIP-53 `service`) */
-  service?: string;
-  /** NIP-32 labels from the event, which is how an audio space says so */
-  labels?: string[];
 }
 
 /**
@@ -40,69 +35,8 @@ const StreamSurface: React.FC<StreamSurfaceProps> = ({
   autoplay = true,
   sound,
   onWantSound,
-  service,
-  labels,
 }) => {
   const embed = useMemo(() => streamEmbed(src, autoplay, sound === true), [src, autoplay, sound]);
-  const room = useMemo(
-    () => streamRoom({ streamingUrl: src, service, labels }),
-    [src, service, labels]
-  );
-  const [joined, setJoined] = useState(false);
-
-  // A room is not a broadcast: there is no video at that address, only the
-  // page the talking happens on. Handing it to a video player fetched an
-  // HTML document and reported that the stream could not be played, while
-  // the chat beside it filled with people in the room.
-  if (room) {
-    // Only when asked. The room's own page wants a microphone, and a page
-    // that opens on its own and asks for one is a page nobody trusts —
-    // pressing Join is the moment that becomes reasonable.
-    if (joined && room.embeddable) {
-      return (
-        <div className={`stream-room-frame ${className}`}>
-          <iframe
-            src={room.url}
-            title={`Audio space at ${room.host}`}
-            allow="microphone; autoplay; clipboard-write"
-            referrerPolicy="no-referrer"
-          />
-        </div>
-      );
-    }
-
-    return (
-      <div className={`stream-room ${className}`}>
-        <span className="stream-room-mark" aria-hidden="true">🎙</span>
-        <p className="stream-room-say">This is an audio space, not a video stream.</p>
-        <div className="stream-room-ways">
-          {room.embeddable && (
-            <button
-              type="button"
-              className="btn btn-primary btn-with-icon"
-              onClick={() => setJoined(true)}
-            >
-              🎙 Join here
-            </button>
-          )}
-          <a
-            className={`btn ${room.embeddable ? 'btn-secondary' : 'btn-primary'} btn-with-icon`}
-            href={room.url}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Open at {room.host} ↗
-          </a>
-        </div>
-        <p className="stream-room-note">
-          {room.embeddable
-            ? 'Joining here opens the room in this page, and it will ask for your microphone. The chat below is this room\'s either way.'
-            : `${room.host} does not allow itself to be opened inside another page, so joining happens there. The chat below is this room's.`}
-        </p>
-      </div>
-    );
-  }
-
   if (!embed) {
     return (
       <LiveVideoPlayer

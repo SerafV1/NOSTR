@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { NostrCore } from '../nostr/core';
-import { LiveStreamInfo, decodeLiveNaddr, parseLiveEvent, posterSources, streamRoom, unplayableReason } from '../utils/liveStream';
+import { LiveStreamInfo, decodeLiveNaddr, parseLiveEvent, posterSources, unplayableReason } from '../utils/liveStream';
 import { usePosterTick } from '../hooks/usePosterTick';
 import { streamEmbed } from '../utils/streamEmbed';
 import { formatAddress } from '../utils/helpers';
@@ -53,7 +53,6 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
   // A running stream's poster is rewritten at the same address as it goes
   const posterAt = usePosterTick();
   const poster = stream ? posterSources(stream, posterAt)[0] : undefined;
-  const room = stream ? streamRoom(stream) : null;
 
   useEffect(() => {
     const address = decodeLiveNaddr(naddr);
@@ -181,8 +180,6 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
           )}
           <StreamSurface
             src={stream.streamingUrl}
-            service={stream.service}
-            labels={stream.labels}
             className="inline-stream-video"
           />
         </div>
@@ -196,19 +193,7 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
         className="inline-stream-art"
         style={poster ? { backgroundImage: `url(${poster})` } : undefined}
       >
-        {/* A room is joined on its own page; there is nothing here to play */}
-        {room ? (
-          <a
-            className="inline-stream-art-join"
-            href={room.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            title={`Join this audio space at ${room.host}`}
-          >
-            🎙 Join
-          </a>
-        ) : playable && (
+        {playable && (
           <button
             type="button"
             className="inline-stream-art-play"
@@ -219,9 +204,7 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
           </button>
         )}
         <span className={`inline-stream-status inline-stream-status-${stream.status}`}>
-          {stream.status !== 'live'
-            ? (stream.status === 'planned' ? 'PLANNED' : 'ENDED')
-            : room ? '🎙 AUDIO' : 'LIVE'}
+          {stream.status === 'live' ? 'LIVE' : stream.status === 'planned' ? 'PLANNED' : 'ENDED'}
         </span>
         {stream.status === 'live' && stream.currentParticipants !== undefined && (
           <span className="inline-stream-viewers">👁 {stream.currentParticipants.toLocaleString()}</span>
@@ -248,8 +231,6 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
               <div className="inline-stream-large">
                 <StreamSurface
             src={stream.streamingUrl}
-            service={stream.service}
-            labels={stream.labels}
             className="inline-stream-video"
           />
               </div>
