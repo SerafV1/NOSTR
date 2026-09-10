@@ -406,11 +406,26 @@ export function freshPoster(image: string | undefined, live: boolean, at: number
  */
 const ROOM_SERVICES = /(^|\.)(cornychat\.com|nostrnests\.com|hivetalk\.org)$/i;
 
+/**
+ * Rooms that can be opened inside a page rather than only linked to.
+ *
+ * Measured, because it is not a matter of opinion: cornychat.com sends no
+ * X-Frame-Options and no frame-ancestors, and its room loads in a frame with
+ * its own Join and Login buttons. nostrnests.com sends
+ * `X-Frame-Options: SAMEORIGIN` and `Permissions-Policy: microphone=(self)`,
+ * so a frame of it would be refused, and refused a microphone even if it
+ * were not. Anything not on this list is linked to, since being wrong about
+ * this shows the reader an empty box.
+ */
+const EMBEDDABLE_ROOMS = /(^|\.)cornychat\.com$/i;
+
 export interface StreamRoom {
   /** Where to join it */
   url: string;
   /** The service's own name for itself, for the button */
   host: string;
+  /** Whether the room itself can be opened inside this page */
+  embeddable: boolean;
 }
 
 export function streamRoom(info: {
@@ -432,5 +447,9 @@ export function streamRoom(info: {
   const labelled = (info.labels || []).some(label => /audio\s*space|audiospace/i.test(label));
   if (!labelled && !ROOM_SERVICES.test(url.hostname)) return null;
 
-  return { url: url.toString(), host: url.hostname.replace(/^www\./, '') };
+  return {
+    url: url.toString(),
+    host: url.hostname.replace(/^www\./, ''),
+    embeddable: EMBEDDABLE_ROOMS.test(url.hostname)
+  };
 }
