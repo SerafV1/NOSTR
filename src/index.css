@@ -5289,14 +5289,6 @@ a.capability-indicator.paid:hover {
   gap: var(--spacing-md);
 }
 
-/* The address behind a stream that would not play */
-.video-unsupported-open {
-  display: inline-block;
-  margin-left: 8px;
-  color: var(--primary-color);
-  text-decoration: underline;
-}
-
 /* Where the relays of your own end and the ones from your follows begin */
 .relay-group-heading {
   margin: var(--spacing-xl) 0 var(--spacing-md);

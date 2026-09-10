@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Thumbnail from './Thumbnail';
 import { UserProfile, EVENT_KINDS, NostrEventSigned } from '../types';
 import { NostrCore, PersistentCache } from '../nostr/core';
-import { parseLiveEvent, encodeLiveNaddr, isEffectivelyLive, posterSources, LiveStreamInfo } from '../utils/liveStream';
+import { parseLiveEvent, encodeLiveNaddr, isEffectivelyLive, isAudioRoom, posterSources, LiveStreamInfo } from '../utils/liveStream';
 import { usePosterTick } from '../hooks/usePosterTick';
 import { formatAddress } from '../utils/helpers';
 
@@ -39,7 +39,9 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
     () => Array.from(events.values())
       .filter(isEffectivelyLive)
       .map(event => ({ info: parseLiveEvent(event), at: event.created_at || 0 }))
-      .filter(({ info }) => info.streamingUrl)
+      // Something to watch. A room to talk in is a live event too, and has
+      // no picture behind its address at all
+      .filter(({ info }) => info.streamingUrl && !isAudioRoom(info))
       .sort((a, b) =>
         (b.info.currentParticipants ?? 0) - (a.info.currentParticipants ?? 0) ||
         (b.info.starts ?? 0) - (a.info.starts ?? 0) ||

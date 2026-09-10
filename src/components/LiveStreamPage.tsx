@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
-import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr, encodeHostParam, posterSources, streamShareText } from '../utils/liveStream';
+import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr, encodeHostParam, isAudioRoom, posterSources, streamShareText } from '../utils/liveStream';
 import { usePosterTick } from '../hooks/usePosterTick';
 import { useRoomPresence } from '../hooks/useRoomPresence';
 import { announcePresence, REFRESH_PRESENCE_MS } from '../nostr/presence';
@@ -387,6 +387,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                       .map(parseLiveEvent)
                       .filter(other => other.status === 'live'
                         && other.streamingUrl
+                        && !isAudioRoom(other)
                         && !(other.pubkey === stream.pubkey && other.dTag === stream.dTag))
                       // The busiest first: with a hundred of them on the
                       // relays, the ones anybody is watching are the ones

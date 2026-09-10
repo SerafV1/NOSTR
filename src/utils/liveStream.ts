@@ -18,6 +18,10 @@ export interface LiveStreamInfo {
   title: string;
   summary: string;
   image: string;
+  /** The page a room lives on, where the event names one (NIP-53 service) */
+  service: string;
+  /** NIP-32 labels, which is how an audio space says that is what it is */
+  labels: string[];
   /**
    * The frame from the broadcast as it is now, where the service publishes
    * one. Separate from `image`, which is the cover picture and does not
@@ -134,6 +138,8 @@ export function parseLiveEvent(event: NostrEventSigned): LiveStreamInfo {
     title: tag('title') || 'Untitled stream',
     summary: tag('summary') || '',
     image: tag('image') || '',
+    service: tag('service') || '',
+    labels: event.tags.filter(t => t[0] === 'l' && t[1]).map(t => t[1]),
     thumb: tag('thumb') || '',
     streamingUrl: tag('streaming') || '',
     status,
@@ -386,3 +392,33 @@ export function freshPoster(image: string | undefined, live: boolean, at: number
   }
 }
 
+/**
+ * A live event that is a room to talk in rather than a broadcast to watch.
+ *
+ * NIP-53's kind is "live event", not "live video", and the audio-space
+ * services publish theirs with it: Corny Chat and the like put the address
+ * of their own page in the streaming tag and label it "audiospace". There is
+ * nothing at that address for a player to open, so these are left out of the
+ * lists of what is on — the Live page and the panel beside the feed — rather
+ * than offered as something to watch.
+ *
+ * Either sign is enough: the label, or one of the services known to work
+ * this way.
+ */
+const ROOM_SERVICES = /(^|\.)(cornychat\.com|nostrnests\.com|hivetalk\.org)$/i;
+
+export function isAudioRoom(info: {
+  streamingUrl?: string;
+  service?: string;
+  labels?: string[];
+}): boolean {
+  if ((info.labels || []).some(label => /audio\s*space|audiospace/i.test(label))) return true;
+
+  const address = info.service || info.streamingUrl || '';
+  if (!address) return false;
+  try {
+    return ROOM_SERVICES.test(new URL(address).hostname);
+  } catch {
+    return false;
+  }
+}

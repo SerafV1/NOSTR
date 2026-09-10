@@ -7,7 +7,7 @@ import EmojiText from './EmojiText';
 import ProfileHoverCard from './ProfileHoverCard';
 import { formatAddress } from '../utils/helpers';
 import { loadCustomFeeds, saveCustomFeeds } from '../utils/customFeeds';
-import { parseLiveEvent, encodeLiveNaddr, LiveStreamInfo } from '../utils/liveStream';
+import { parseLiveEvent, encodeLiveNaddr, isAudioRoom, LiveStreamInfo } from '../utils/liveStream';
 import { noteFeedChange } from '../utils/feedTrail';
 import EventCard from './EventCard';
 
@@ -44,7 +44,7 @@ const readCachedLiveStreams = (): { info: LiveStreamInfo; followedPubkey: string
   if (!cached) return [];
   return cached
     .map(({ event, matchedPubkey }) => ({ info: parseLiveEvent(event), followedPubkey: matchedPubkey }))
-    .filter(x => x.info.streamingUrl && x.info.status === 'live');
+    .filter(x => x.info.streamingUrl && x.info.status === 'live' && !isAudioRoom(x.info));
 };
 
 const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
@@ -354,7 +354,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
         PersistentCache.set(liveStreamsCacheKey(), results);
         const infos = results
           .map(({ event, matchedPubkey }) => ({ info: parseLiveEvent(event), followedPubkey: matchedPubkey }))
-          .filter(x => x.info.streamingUrl);
+          .filter(x => x.info.streamingUrl && !isAudioRoom(x.info));
         setLiveStreams(infos);
         if (infos.length > 0) {
           const profiles = await NostrCore.fetchProfiles(infos.map(x => x.followedPubkey));
