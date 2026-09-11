@@ -450,16 +450,16 @@ export class RelayPool {
         relay.close();
       }
       this.relays.delete(url);
-      const wasOutbox = this.relayConfigs.find(r => r.url === url)?.outbox;
       this.relayConfigs = this.relayConfigs.filter(r => r.url !== url);
 
-      // A default relay, or one opened for somebody you follow: both come
-      // back on their own unless taking them away is remembered
-      if (DEFAULT_RELAYS.includes(url) || wasOutbox) {
-        this.excludedRelayUrls.add(url);
-        this.saveExcludedRelays();
-        console.log(`[Relay] Added ${url} to excluded list`);
-      }
+      // Every removal is remembered, not only of the ones that come back on
+      // their own. A default relay and one opened for somebody you follow
+      // both return unless taking them away is recorded — and the record is
+      // also what keeps a relay somebody has taken out of being put back
+      // into the list published for them.
+      this.excludedRelayUrls.add(url);
+      this.saveExcludedRelays();
+      console.log(`[Relay] Added ${url} to excluded list`);
       
       // Save to localStorage
       this.saveRelayConfigs();

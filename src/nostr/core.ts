@@ -2584,9 +2584,11 @@ export class NostrCore {
    * network to look for your posts where they are not.
    */
   static async publishRelayList(): Promise<boolean> {
-    if (!CredentialManager.canSign()) return false;
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey || !CredentialManager.canSign()) return false;
 
-    const configs = getRelayPool().getAllSavedRelayConfigs()
+    const pool = getRelayPool();
+    const configs = pool.getAllSavedRelayConfigs()
       .filter(config => !config.outbox && /^wss:\/\//i.test(config.url))
       .filter(config => config.read || config.write);
     if (configs.length === 0) return false;
@@ -2597,6 +2599,29 @@ export class NostrCore {
       if (config.read && config.write) return ['r', config.url];
       return ['r', config.url, config.read ? 'read' : 'write'];
     });
+
+    /**
+     * Whatever this account already told the network stays in it.
+     *
+     * Kind 10002 is replaceable: publishing one does not add to the list, it
+     * *is* the list from that moment on. Built from this browser alone, it
+     * quietly deleted every relay the account had named from anywhere else —
+     * another client, another device — and the owner found out by opening
+     * that other client and seeing their relays gone.
+     *
+     * So the relays already published are carried over as they were written,
+     * markers and all. The exception is a relay taken out here on purpose:
+     * removing one is an instruction, and the pool remembers it.
+     */
+    const excluded = pool.getExcludedRelays();
+    const ours = new Set(configs.map(c => c.url));
+    const alreadyPublished = await this.fetchReplaceableListEvent(EVENT_KINDS.RELAY_LIST, ownPubkey);
+    for (const tag of alreadyPublished?.tags || []) {
+      if (tag[0] !== 'r' || !tag[1]) continue;
+      const url = tag[1].trim();
+      if (ours.has(url) || excluded.has(url)) continue;
+      tags.push(tag);
+    }
 
     return this.publishReplaceableList(EVENT_KINDS.RELAY_LIST, tags, '');
   }
@@ -2615,19 +2640,15 @@ export class NostrCore {
 
     try {
       const mine = getRelayPool().getAllSavedRelayConfigs()
-        .filter(config => !config.outbox && /^wss:\/\//i.test(config.url))
-        .map(config => config.url);
+        .filter(config => !config.outbox && /^wss:\/\//i.test(config.url));
       if (mine.length === 0) return false;
 
-      const published = await this.fetchRelayLists([ownPubkey]);
-      const announced = published.get(ownPubkey);
-      if (announced) {
-        const said = new Set(announced.map(url => url.trim().replace(/\/+$/, '')));
-        // Every relay written to is named: a list that already says so is
-        // left as it is, whatever else it also says
-        const missing = mine.filter(url => !said.has(url));
-        if (missing.length === 0) return false;
-      }
+      // Only where the account has never said anything. An account that has
+      // a list has one for a reason — it was written somewhere, by somebody,
+      // and starting this client is not a request to change it. Editing the
+      // relays here is, and that path publishes.
+      const announced = await this.fetchReplaceableListEvent(EVENT_KINDS.RELAY_LIST, ownPubkey);
+      if (announced) return false;
 
       return await this.publishRelayList();
     } catch (error) {
