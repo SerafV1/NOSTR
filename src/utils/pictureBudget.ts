@@ -36,6 +36,21 @@ const NOTHING = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAA
 /** Below this there is nothing worth saving, and flicker to pay for it */
 const WORTH_RELEASING_PX = 120;
 
+/**
+ * A video that has been played keeps what it has buffered for as long as the
+ * element is in the page, and a feed is full of them: scroll past ten videos
+ * you pressed play on and the memory is theirs, not the page's. So one that is
+ * far away is paused and asked to let go, and takes its address back on
+ * approach.
+ *
+ * Not the live player: its picture comes from a MediaSource that hls.js is
+ * feeding, and taking that away does not pause a stream, it breaks it.
+ */
+const videoToRelease = (video: HTMLVideoElement): boolean => {
+  const src = video.getAttribute('src') || '';
+  return /^https?:\/\//i.test(src) && video.dataset.keepFull === undefined;
+};
+
 const touched = new WeakSet<HTMLImageElement>();
 
 const skip = (img: HTMLImageElement): boolean => {
@@ -104,6 +119,27 @@ export function watchPictures(): void {
 
   const away = new IntersectionObserver(entries => {
     for (const entry of entries) {
+      if (entry.target instanceof HTMLVideoElement) {
+        const video = entry.target;
+        if (entry.isIntersecting) {
+          const held = video.dataset.held;
+          if (held) {
+            delete video.dataset.held;
+            video.src = held;
+          }
+          continue;
+        }
+        if (video.dataset.held || !videoToRelease(video)) continue;
+        // Paused first: a video asked to drop its source mid-play reports an
+        // error, and the card would show the failure of something nobody was
+        // watching
+        video.pause();
+        video.dataset.held = video.src;
+        video.removeAttribute('src');
+        video.load();
+        continue;
+      }
+
       const img = entry.target as HTMLImageElement;
       if (entry.isIntersecting) {
         const held = img.dataset.held;
@@ -133,6 +169,13 @@ export function watchPictures(): void {
     for (const img of images) {
       size(img);
       release(away, img);
+    }
+
+    const videos = root instanceof HTMLVideoElement
+      ? [root]
+      : Array.from(root.querySelectorAll?.('video') || []);
+    for (const video of videos) {
+      if (videoToRelease(video)) away.observe(video);
     }
   };
 

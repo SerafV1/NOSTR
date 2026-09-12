@@ -1,12 +1,6 @@
 import * as nostrTools from 'nostr-tools';
 import { NostrEventSigned, NostrFilter, RelayConfig, NostrSubscription } from '../types';
 
-declare global {
-  interface Window {
-    nostrSubscriptions?: Record<string, any[]>;
-  }
-}
-
 // Log available methods in nostr-tools for debugging
 console.log('[RelayPool] nostr-tools keys:', Object.keys(nostrTools));
 console.log('[RelayPool] typeof nostrTools:', typeof nostrTools);
@@ -17,6 +11,22 @@ if ((nostrTools as any).RelayPool) console.log('[RelayPool] ✓ RelayPool found'
 export class RelayPool {
   private relays: Map<string, any> = new Map();
   private subscriptions: Map<string, NostrSubscription> = new Map();
+  /**
+   * The live subscription object each relay currently holds, per
+   * subscription.
+   *
+   * There used to be a list per subscription, on `window`, that was only
+   * ever appended to — and every reconnect re-applies every active
+   * subscription, so a relay that drops its socket a few times an hour left
+   * a relay holding dozens of REQs for the same filters. Every new post then
+   * arrived once per stale subscription, each one was handled, and the
+   * account's history was replayed again on each. A session left open grew
+   * without limit; one was reported at 11GB.
+   *
+   * One entry per relay per subscription, and the old one is closed before
+   * the new one is made.
+   */
+  private liveSubs: Map<string, Map<string, any>> = new Map();
   private relayConfigs: RelayConfig[] = [];
   private relayConnectionState: Map<string, boolean> = new Map();
 
@@ -446,6 +456,8 @@ export class RelayPool {
   async removeRelay(url: string): Promise<void> {
     const relay = this.relays.get(url);
     if (relay) {
+      // Its live subscriptions go with it, rather than being left held
+      this.dropRelaySubs(url);
       if (relay.close) {
         relay.close();
       }
@@ -536,6 +548,7 @@ export class RelayPool {
    * nothing is spent on it now and it can be tried again later.
    */
   forgetRelay(url: string): void {
+    this.dropRelaySubs(url);
     const relay = this.relays.get(url);
     try {
       relay?.close?.();
@@ -927,18 +940,41 @@ export class RelayPool {
         });
       }
 
-      // Store the subscription reference for later cleanup
-      if (!window.nostrSubscriptions) {
-        window.nostrSubscriptions = {};
-      }
-      if (!window.nostrSubscriptions[subscriptionId]) {
-        window.nostrSubscriptions[subscriptionId] = [];
-      }
+      // Whatever this relay held for this subscription before is finished
+      // with: a reconnect re-applies every subscription, and without this the
+      // relay ends up answering the same filters many times over
+      const perRelay = this.liveSubs.get(subscriptionId) || new Map<string, any>();
+      const previous = perRelay.get(url);
+      if (previous && previous !== sub) this.closeSub(previous);
       if (sub) {
-        window.nostrSubscriptions[subscriptionId].push(sub);
+        perRelay.set(url, sub);
+      } else {
+        perRelay.delete(url);
       }
+      this.liveSubs.set(subscriptionId, perRelay);
     } catch (error) {
       console.error(`Failed to subscribe on ${url}:`, error);
+    }
+  }
+
+  /** Close whatever one relay holds, across every live subscription */
+  private dropRelaySubs(url: string): void {
+    for (const perRelay of this.liveSubs.values()) {
+      const sub = perRelay.get(url);
+      if (!sub) continue;
+      this.closeSub(sub);
+      perRelay.delete(url);
+    }
+  }
+
+  /** nostr-tools has called this `unsub` and `close` in different versions */
+  private closeSub(sub: any): void {
+    try {
+      if (typeof sub?.unsub === 'function') sub.unsub();
+      else if (typeof sub?.close === 'function') sub.close();
+      else if (typeof sub?.unsubscribe === 'function') sub.unsubscribe();
+    } catch {
+      // A socket that has already gone takes its subscriptions with it
     }
   }
 
@@ -963,13 +999,10 @@ export class RelayPool {
    * Unsubscribe from events
    */
   unsubscribe(subscriptionId: string): void {
-    if (window.nostrSubscriptions && window.nostrSubscriptions[subscriptionId]) {
-      window.nostrSubscriptions[subscriptionId].forEach((sub: any) => {
-        if (sub.unsub && typeof sub.unsub === 'function') {
-          sub.unsub();
-        }
-      });
-      delete window.nostrSubscriptions[subscriptionId];
+    const perRelay = this.liveSubs.get(subscriptionId);
+    if (perRelay) {
+      for (const sub of perRelay.values()) this.closeSub(sub);
+      this.liveSubs.delete(subscriptionId);
     }
 
     this.subscriptions.delete(subscriptionId);

@@ -152,6 +152,19 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className, onMin
       // live window — skip the HTTP cache entirely so reloads always see
       // what's actually current.
       hls = new Hls({
+        /**
+         * How much of what has already been watched to keep.
+         *
+         * hls.js keeps all of it by default — `backBufferLength: Infinity` —
+         * and a media buffer is the decoded stream, not the playlist: an hour
+         * of a 1080p broadcast is gigabytes of memory, held for a part of the
+         * stream nobody is going to watch again. A user reported the app at
+         * 2.4GB; this was it.
+         *
+         * Half a minute is enough to step back over a stutter, and it is what
+         * the player needs in hand anyway.
+         */
+        backBufferLength: 30,
         fetchSetup: (context, initParams) =>
           new Request(context.url, { ...initParams, cache: 'no-store' }),
         xhrSetup: (xhr) => {
@@ -434,6 +447,11 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className, onMin
         </div>
       )}
       <video
+        // Never let go of by the page's media budget: where hls.js is running
+        // this picture comes from a MediaSource it is feeding, and in Safari
+        // it is a live playlist — neither is something to drop and refetch
+        // because the card scrolled by. See utils/pictureBudget.
+        data-keep-full
         key={reinitKey}
         ref={videoRef}
         className={className}
