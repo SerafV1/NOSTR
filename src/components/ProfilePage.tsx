@@ -227,19 +227,25 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   }, [loading, reachedEnd, loadingOlder, contentTab, pubkey]);
 
   /**
-   * Everything this person wrote that the relays will admit to.
+   * What this person wrote, as much of it as the relays will admit to.
    *
    * Asked for once, the answer is whatever arrived in the first second, and
    * the relays hold wildly different parts of one person. Measured on a
-   * profile with a thousand notes, one page of fifty: the first relay to
-   * answer held none of them at all, three others held none either, six held
-   * fifty each, and the union of all ten was 109. So a reader saw a handful
-   * of posts from somebody with thousands, and a reload — with different
-   * relays answering first — showed the rest.
+   * profile with over a thousand notes, asking each of ten relays for one
+   * page of fifty: the first to answer, at 171ms, held none of them at all,
+   * and three others held none either; six held fifty each, the slowest
+   * arriving at 1.5s. So a reader saw a handful of posts from somebody with
+   * thousands, and a reload — with different relays answering first — showed
+   * the rest.
    *
-   * Two passes: what comes back quickly, then every relay heard out, merged
-   * into it. Nothing waits for the second one; it fills in behind the first.
+   * A full page means the relays that answered had plenty, and the rest is
+   * read on scrolling like any other page. Only a thin page is asked again,
+   * with every relay heard out this time.
    */
+  const PAGE = 50;
+  /** Below this, the answer is a relay's shrug rather than a person's history */
+  const LOOKS_THIN = 20;
+
   const mergeNotes = (found: NostrEventSigned[]) => {
     if (found.length === 0) return;
     setNotes(prev => {
@@ -252,20 +258,23 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const loadProfileData = async (background: boolean = false) => {
     if (!background) setLoading(true);
     try {
-      const thorough = NostrCore.fetchUserNotes(pubkey, 50, undefined, true)
-        .then(found => { mergeNotes(found); return found; })
-        .catch(() => [] as NostrEventSigned[]);
-
       const [userProfile, userNotes, userReposts] = await Promise.all([
         NostrCore.fetchUserProfile(pubkey),
-        NostrCore.fetchUserNotes(pubkey, 50),
+        NostrCore.fetchUserNotes(pubkey, PAGE),
         NostrCore.fetchReposts([pubkey], 50)
       ]);
-      // And the page's own cache keeps the fuller answer, so the next visit
-      // starts from it rather than from the thin one
-      void thorough.then(found => {
-        if (found.length > 0) PersistentCache.set(`notes_${pubkey}`, found.slice(0, 30));
-      });
+
+      // Thin, so ask again properly — behind what is already on screen, and
+      // only this once. The cache keeps whichever answer turned out fuller.
+      if (userNotes.length < LOOKS_THIN) {
+        void NostrCore.fetchUserNotes(pubkey, PAGE, undefined, true)
+          .then(found => {
+            if (found.length <= userNotes.length) return;
+            mergeNotes(found);
+            PersistentCache.set(`notes_${pubkey}`, found.slice(0, 30));
+          })
+          .catch(() => { /* the quick answer stands */ });
+      }
 
       // On background refresh keep showing cached data if relays return nothing
       if (userProfile) {
