@@ -1,6 +1,7 @@
 import React from 'react';
 import { NostrEventSigned } from '../types';
 import ComposeNote from './ComposeNote';
+import Pic from './Pic';
 
 interface ComposeContext {
   authorName: string;
@@ -42,7 +43,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
         {context && (
           <div className="compose-modal-context">
             {context.authorPicture ? (
-              <img src={context.authorPicture} alt="" className="compose-modal-context-avatar"  loading="lazy" decoding="async" />
+              <Pic src={context.authorPicture} className="compose-modal-context-avatar" width={40} height={40} />
             ) : (
               <div className="compose-modal-context-avatar-placeholder">
                 {(context.authorName || '?').charAt(0).toUpperCase()}

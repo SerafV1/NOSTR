@@ -11,6 +11,7 @@ import {
 } from '../nostr/dm';
 import RichText from './RichText';
 import EmojiText from './EmojiText';
+import Pic from './Pic';
 
 interface MessagesPageProps {
   pubkey: string;
@@ -211,7 +212,7 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
           {alone ? (
             <button className="thread-contact" onClick={() => onNavigateToProfile(open.participants[0])}>
               {profile?.picture ? (
-                <img src={profile.picture} alt="" className="thread-contact-avatar" loading="lazy" decoding="async" />
+                <Pic src={profile.picture} className="thread-contact-avatar" width={48} height={48} />
               ) : (
                 <div className="thread-contact-avatar-placeholder">
                   {nameFor(open.participants[0]).charAt(0).toUpperCase()}
@@ -331,7 +332,7 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
               })}
             >
               {alone && profile?.picture ? (
-                <img src={profile.picture} alt="" className="notification-avatar" loading="lazy" decoding="async" />
+                <Pic src={profile.picture} className="notification-avatar" width={48} height={48} />
               ) : (
                 <div className="notification-avatar-placeholder">
                   {alone ? displayName.charAt(0).toUpperCase() : conversation.participants.length + 1}

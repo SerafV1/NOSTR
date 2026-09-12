@@ -17,6 +17,7 @@ import RichText from './RichText';
 import EmojiText from './EmojiText';
 import { ZapIcon, PopOutIcon, ShareIcon } from './Icons';
 import ComposeModal from './ComposeModal';
+import Pic from './Pic';
 
 interface LiveStreamPageProps {
   kind: number;
@@ -342,7 +343,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
               <div className="live-stream-who">
               <button className="live-stream-host-link" onClick={() => onNavigateToProfile(stream.hostPubkey)}>
                 {profile?.picture ? (
-                  <img src={profile.picture} alt="" className="live-stream-host-avatar"  loading="lazy" decoding="async" />
+                  <Pic src={profile.picture} className="live-stream-host-avatar" width={40} height={40} />
                 ) : (
                   <div className="live-stream-host-avatar-placeholder">{hostName.charAt(0).toUpperCase()}</div>
                 )}

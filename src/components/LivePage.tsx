@@ -6,6 +6,7 @@ import { NostrCore, PersistentCache } from '../nostr/core';
 import { parseLiveEvent, encodeLiveNaddr, isEffectivelyLive, isAudioRoom, posterSources, LiveStreamInfo } from '../utils/liveStream';
 import { usePosterTick } from '../hooks/usePosterTick';
 import { formatAddress } from '../utils/helpers';
+import Pic from './Pic';
 
 // Public list, identical for everyone, so it isn't keyed per account
 const LIVE_CACHE_KEY = 'live_now';
@@ -178,6 +179,7 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
                     alt={stream.title}
                     fallback="📺"
                     fallbackClassName="live-stream-thumb-placeholder"
+                    width={420}
                   />
                   <span className="live-stream-badge">LIVE</span>
                   {stream.currentParticipants !== undefined && (
@@ -187,7 +189,7 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
                 <div className="live-stream-info">
                   <div className="live-stream-title">{stream.title}</div>
                   <div className="live-stream-host">
-                    {host?.picture && <img src={host.picture} alt="" className="live-stream-host-avatar"  loading="lazy" decoding="async" />}
+                    {host?.picture && <Pic src={host.picture} className="live-stream-host-avatar" width={32} height={32} />}
                     {hostName}
                   </div>
                 </div>

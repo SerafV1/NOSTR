@@ -3,6 +3,7 @@ import { NostrCore } from '../nostr/core';
 import { UserProfile } from '../types';
 import { formatAddress } from '../utils/helpers';
 import EmojiText from './EmojiText';
+import Pic from './Pic';
 
 interface MutedSettingsProps {
   /** Names cannot be looked up before the pool is up — see the effect below */
@@ -86,7 +87,7 @@ const MutedSettings: React.FC<MutedSettingsProps> = ({ relaysConnected }) => {
           <div key={pubkey} className="muted-row">
             <span className="muted-person">
               {profile?.picture ? (
-                <img src={profile.picture} alt="" className="muted-avatar"  loading="lazy" decoding="async" />
+                <Pic src={profile.picture} className="muted-avatar" width={40} height={40} />
               ) : (
                 <span className="muted-avatar-placeholder">{name.charAt(0).toUpperCase()}</span>
               )}

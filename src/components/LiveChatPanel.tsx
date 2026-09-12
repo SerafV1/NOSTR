@@ -15,6 +15,7 @@ import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 import LiveChatReactions, { ReactionTally } from './LiveChatReactions';
 import EmojiText from './EmojiText';
 import ProfileHoverCard from './ProfileHoverCard';
+import Pic from './Pic';
 
 /**
  * NIP-25 reactions carry '+' for a like and '-' for a dislike rather than an
@@ -1073,7 +1074,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                     what can be done about them, without leaving the stream */}
                 <span className="live-chat-muted-person">
                   {profile?.picture ? (
-                    <img src={profile.picture} alt="" className="live-chat-muted-avatar"  loading="lazy" decoding="async" />
+                    <Pic src={profile.picture} className="live-chat-muted-avatar" width={28} height={28} />
                   ) : (
                     <span className="live-chat-muted-avatar-placeholder">
                       {label.charAt(0).toUpperCase()}
@@ -1142,7 +1143,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
             || (author ? formatAddress(author) : 'Someone');
 
           const avatar = profile?.picture ? (
-            <img src={profile.picture} alt="" className="live-chat-avatar"  loading="lazy" decoding="async" />
+            <Pic src={profile.picture} className="live-chat-avatar" width={32} height={32} />
           ) : (
             <div className="live-chat-avatar-placeholder">{name.charAt(0).toUpperCase()}</div>
           );
@@ -1312,7 +1313,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
               onClick={() => chooseSuggestion(profile)}
             >
               {profile.picture ? (
-                <img src={profile.picture} alt="" className="suggestion-avatar"  loading="lazy" decoding="async" />
+                <Pic src={profile.picture} className="suggestion-avatar" width={32} height={32} />
               ) : (
                 <span className="suggestion-avatar-placeholder">
                   {(profile.display_name || profile.name || '?').charAt(0).toUpperCase()}

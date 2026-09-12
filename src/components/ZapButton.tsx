@@ -4,6 +4,7 @@ import { payInvoice as payFromWallet, walletCanPay } from '../nostr/nwc';
 import { NostrCore } from '../nostr/core';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 import EmojiText from './EmojiText';
+import Pic from './Pic';
 
 interface ZapButtonProps {
   lud16?: string;
@@ -207,7 +208,7 @@ const ZapButton: React.FC<ZapButtonProps> = ({
               {(recipientName || recipientPicture) && (
                 <div className="zap-menu-recipient">
                   {recipientPicture ? (
-                    <img src={recipientPicture} alt="" className="zap-menu-avatar"  loading="lazy" decoding="async" />
+                    <Pic src={recipientPicture} className="zap-menu-avatar" width={48} height={48} />
                   ) : (
                     <div className="zap-menu-avatar-placeholder">
                       {(recipientName || '?').charAt(0).toUpperCase()}

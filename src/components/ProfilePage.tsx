@@ -16,6 +16,7 @@ import ProfileHoverCard from './ProfileHoverCard';
 import Thumbnail from './Thumbnail';
 import { ZapIcon, MessageIcon, CopyIcon, CheckIcon, BitcoinIcon, MoneroIcon } from './Icons';
 import { paymentTargets, shortAddress } from '../utils/paymentTargets';
+import Pic from './Pic';
 
 interface MediaThumbnail {
   noteId: string;
@@ -947,7 +948,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                             className="reposted-by"
                             onClick={() => onNavigateToProfile(pubkey)}
                           >
-                            {profile.picture && <img src={profile.picture} alt="" className="reposted-avatar"  loading="lazy" decoding="async" />}
+                            {profile.picture && <Pic src={profile.picture} className="reposted-avatar" width={24} height={24} />}
                             <EmojiText text={displayName} emojis={profile.emojis} />
                           </button>
                         </ProfileHoverCard>
@@ -1083,7 +1084,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                             onClick={() => onNavigateToProfile(zap.counterpartyPubkey)}
                           >
                             {counterpartyProfile?.picture ? (
-                              <img src={counterpartyProfile.picture} alt="" className="sent-zap-recipient-avatar"  loading="lazy" decoding="async" />
+                              <Pic src={counterpartyProfile.picture} className="sent-zap-recipient-avatar" width={24} height={24} />
                             ) : (
                               <span className="sent-zap-recipient-avatar-placeholder">
                                 {counterpartyName.charAt(0).toUpperCase()}
@@ -1151,7 +1152,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                           onClick={() => onNavigateToProfile(personPubkey)}
                         >
                           {person?.picture ? (
-                            <img src={person.picture} alt="" className="person-avatar"  loading="lazy" decoding="async" />
+                            <Pic src={person.picture} className="person-avatar" width={48} height={48} />
                           ) : (
                             <div className="person-avatar-placeholder">{name.charAt(0).toUpperCase()}</div>
                           )}

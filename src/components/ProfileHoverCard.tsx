@@ -6,6 +6,7 @@ import { NostrCore, EventCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
 import { formatAddress } from '../utils/helpers';
 import { NO_CONTACT_LIST_PROMPT } from '../utils/followPrompt';
+import Pic from './Pic';
 
 interface ProfileHoverCardProps {
   pubkey: string;
@@ -216,7 +217,7 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
             onClick={() => onNavigateToProfile(pubkey)}
           >
             {profile?.picture ? (
-              <img src={profile.picture} alt="" className="hover-card-avatar"  loading="lazy" decoding="async" />
+              <Pic src={profile.picture} className="hover-card-avatar" width={56} height={56} />
             ) : (
               <span className="hover-card-avatar-placeholder">{displayName.charAt(0).toUpperCase()}</span>
             )}

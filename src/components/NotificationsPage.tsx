@@ -18,6 +18,7 @@ import {
 import { formatDate, formatAddress } from '../utils/helpers';
 import RichText from './RichText';
 import EmojiText from './EmojiText';
+import Pic from './Pic';
 import { customEmojiMap } from '../utils/customEmoji';
 import { stripMediaUrls } from '../utils/media';
 
@@ -442,13 +443,12 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
                   : icon}
               </span>
               {profile?.picture ? (
-                <img
+                <Pic
                   src={profile.picture}
                   alt={displayName}
                   className="notification-avatar"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                  loading="lazy"
-                  decoding="async"
+                  width={48}
+                  height={48}
                 />
               ) : (
                 <div className="notification-avatar-placeholder">

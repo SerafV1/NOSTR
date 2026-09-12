@@ -10,6 +10,7 @@ import { loadCustomFeeds, saveCustomFeeds } from '../utils/customFeeds';
 import { parseLiveEvent, encodeLiveNaddr, isAudioRoom, LiveStreamInfo } from '../utils/liveStream';
 import { noteFeedChange } from '../utils/feedTrail';
 import EventCard from './EventCard';
+import Pic from './Pic';
 
 interface HomePageProps {
   relaysConnected: boolean;
@@ -1065,7 +1066,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
                           onClick={() => onNavigateToProfile(item.repost.pubkey)}
                         >
                           {reposterProfile?.picture && (
-                            <img src={reposterProfile.picture} alt="" className="reposted-avatar"  loading="lazy" decoding="async" />
+                            <Pic src={reposterProfile.picture} className="reposted-avatar" width={24} height={24} />
                           )}
                           <EmojiText text={reposterName} emojis={reposterProfile?.emojis} />
                         </button>
@@ -1129,7 +1130,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
                       onClick={() => navigate(`/live/${naddr}`)}
                     >
                       <span className="live-banner-badge">LIVE</span>
-                      {profile?.picture && <img src={profile.picture} alt="" className="live-banner-avatar"  loading="lazy" decoding="async" />}
+                      {profile?.picture && <Pic src={profile.picture} className="live-banner-avatar" width={28} height={28} />}
                       <span className="live-banner-text">
                         <strong><EmojiText text={name} emojis={profile?.emojis} /></strong> {isGuest ? 'is a guest on' : 'is live now —'} {info.title}
                       </span>

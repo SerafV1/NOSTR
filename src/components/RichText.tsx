@@ -6,6 +6,7 @@ import { formatAddress } from '../utils/helpers';
 import { splitContentTokens, extractImageUrls, extractVideoUrls, extractStreamUrls, extractEmbeds } from '../utils/media';
 import InlineStreamPlayer from './InlineStreamPlayer';
 import MediaEmbed from './MediaEmbed';
+import Pic from './Pic';
 import InlineLiveStream from './InlineLiveStream';
 import { foldNostrWebLinks, describeAddressRef } from '../utils/nostrLinks';
 import { streamNaddrFromUrl } from '../utils/liveStream';
@@ -159,12 +160,15 @@ const RichText: React.FC<RichTextProps> = ({
               className="rich-image-link"
               onClick={(e) => e.stopPropagation()}
             >
-              <img
+              <Pic
                 src={token.value}
                 alt=""
                 className="rich-image"
-                loading="lazy"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                // A picture in a line of text is drawn 180px tall at most
+                width={700}
+                height={180}
+                crop={false}
+                release
               />
             </a>
           );

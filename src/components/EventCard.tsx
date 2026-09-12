@@ -33,6 +33,7 @@ import LinkPreviewCard from './LinkPreviewCard';
 import EmojiPicker from './EmojiPicker';
 import ZapButton from './ZapButton';
 import EmojiText from './EmojiText';
+import Pic from './Pic';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 import { customEmojiMap, splitCustomEmoji } from '../utils/customEmoji';
 import { ReplyIcon, RepostIcon, HeartIcon, ZapIcon, PersonIcon, BookmarkIcon } from './Icons';
@@ -747,15 +748,12 @@ const EventCard: React.FC<EventCardProps> = ({
             onBlocked={() => onRefresh?.()}
           >
             {displayPicture ? (
-              <img
+              <Pic
                 src={displayPicture}
                 alt={displayName}
                 className="author-avatar"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-                              loading="lazy"
-                decoding="async"
+                width={48}
+                height={48}
               />
             ) : (
               <div className="author-avatar-placeholder">
@@ -804,7 +802,7 @@ const EventCard: React.FC<EventCardProps> = ({
         {isArticle && (
           <div className="event-article">
             {article.image && (
-              <img className="event-article-image" src={article.image} alt="" loading="lazy" decoding="async" />
+              <Pic className="event-article-image" src={article.image} alt="" width={700} height={400} crop={false} release />
             )}
             {article.title && <h2 className="event-article-title">{article.title}</h2>}
             {focused ? (
@@ -1017,14 +1015,17 @@ const EventCard: React.FC<EventCardProps> = ({
                           }}
                           style={{ border: 'none', padding: 0, background: 'none', cursor: 'pointer' }}
                         >
-                          <img
+                          <Pic
                             src={imageUrl}
                             alt={`Note image ${index + 1}`}
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = 'none';
-                            }}
-                                                      loading="lazy"
-                            decoding="async"
+                            // The box a card gives a picture: the width of the
+                            // note, 620px tall at the most. Asked for at twice
+                            // that, for dense screens, and fitted rather than
+                            // cropped so none of it is lost.
+                            width={700}
+                            height={620}
+                            crop={false}
+                            release
                           />
                           {single && (!isSensitive || mediaRevealed) && (
                             <span
@@ -1259,7 +1260,9 @@ const EventCard: React.FC<EventCardProps> = ({
               <button className="image-modal-close" onClick={() => setEnlargedIndex(null)}>
                 ✕
               </button>
-              <img src={currentUrl} alt="Enlarged" className="image-modal-img"  loading="lazy" decoding="async" />
+              {/* Enlarged is the one place the whole picture is the point,
+                  so this one is not asked for at a smaller size */}
+              <img src={currentUrl} alt="Enlarged" className="image-modal-img" data-keep-full loading="lazy" decoding="async" />
               {images.length > 1 && (
                 <div className="image-modal-counter">{enlargedIndex + 1} / {images.length}</div>
               )}

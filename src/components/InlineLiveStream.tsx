@@ -235,7 +235,7 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
           />
               </div>
             ) : (
-              <img src={poster} alt={stream.title} className="image-modal-img"  loading="lazy" decoding="async" />
+              <img src={poster} alt={stream.title} className="image-modal-img" data-keep-full loading="lazy" decoding="async" />
             )}
           </div>
         </div>

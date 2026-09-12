@@ -3,6 +3,7 @@ import { NostrEventSigned, UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore } from '../nostr/core';
 import { formatAddress } from '../utils/helpers';
 import EmojiText from './EmojiText';
+import Pic from './Pic';
 
 interface LiveZappersPanelProps {
   address: string;
@@ -123,7 +124,7 @@ const LiveZappersPanel: React.FC<LiveZappersPanelProps> = ({
             <div key={zapper.pubkey} className="live-zapper">
               <span className="live-zapper-rank">{index + 1}</span>
               {profile?.picture ? (
-                <img src={profile.picture} alt="" className="live-chat-avatar"  loading="lazy" decoding="async" />
+                <Pic src={profile.picture} className="live-chat-avatar" width={40} height={40} />
               ) : (
                 <div className="live-chat-avatar-placeholder">{name.charAt(0).toUpperCase()}</div>
               )}

@@ -6,6 +6,7 @@ import { formatAddress } from '../utils/helpers';
 import { extractImageUrls, extractVideoUrls, extractEmbeds } from '../utils/media';
 import { loadCustomFeeds, addCustomFeed } from '../utils/customFeeds';
 import EventCard from './EventCard';
+import Pic from './Pic';
 
 const MAX_RECENT_SEARCHES = 8;
 
@@ -302,7 +303,7 @@ const SearchPage: React.FC<SearchPageProps> = ({ relaysConnected, onNavigateToPr
                         onClick={() => selectPersonSuggestion(profile)}
                       >
                         {profile.picture ? (
-                          <img src={profile.picture} alt="" className="suggestion-avatar"  loading="lazy" decoding="async" />
+                          <Pic src={profile.picture} className="suggestion-avatar" width={32} height={32} />
                         ) : (
                           <span className="suggestion-avatar-placeholder">
                             {(profile.display_name || profile.name || '?').charAt(0).toUpperCase()}
@@ -416,7 +417,7 @@ const SearchPage: React.FC<SearchPageProps> = ({ relaysConnected, onNavigateToPr
                     onClick={() => onNavigateToProfile(profile.pubkey)}
                   >
                     {profile.picture ? (
-                      <img src={profile.picture} alt="" className="person-avatar"  loading="lazy" decoding="async" />
+                      <Pic src={profile.picture} className="person-avatar" width={48} height={48} />
                     ) : (
                       <div className="person-avatar-placeholder">
                         {(profile.display_name || profile.name || '?').charAt(0).toUpperCase()}

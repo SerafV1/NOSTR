@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { sizedImage } from '../utils/images';
 
 interface ThumbnailProps {
   /**
@@ -13,6 +14,13 @@ interface ThumbnailProps {
   fallback?: React.ReactNode;
   /** The class the stand-in gets, so each place can size its own */
   fallbackClassName?: string;
+  /**
+   * The widest this is ever drawn. Given, the picture is asked for at that
+   * size rather than at whatever it was uploaded at — a stream poster is
+   * often a photograph, and a card three hundred pixels wide has no use for
+   * twelve megapixels of it.
+   */
+  width?: number;
 }
 
 /**
@@ -35,9 +43,18 @@ const Thumbnail: React.FC<ThumbnailProps> = ({
   alt = '',
   className,
   fallback = '🎬',
-  fallbackClassName = 'thumbnail-fallback'
+  fallbackClassName = 'thumbnail-fallback',
+  width
 }) => {
-  const sources = (Array.isArray(src) ? src : [src]).filter((one): one is string => Boolean(one));
+  const given = (Array.isArray(src) ? src : [src]).filter((one): one is string => Boolean(one));
+  // Each address twice: at the size wanted, then as it was given, so a
+  // resizer that refuses or is unreachable costs the picture nothing
+  const sources = width
+    ? given.flatMap(one => {
+      const smaller = sizedImage(one, { width });
+      return smaller && smaller !== one ? [smaller, one] : [one];
+    })
+    : given;
   const [tried, setTried] = useState(0);
   const showing = sources[tried];
 

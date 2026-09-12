@@ -26,6 +26,7 @@ import GifPicker from './GifPicker';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 import { detectMentionTrigger } from '../utils/mentions';
 import { PollIcon, PersonIcon, ZapIcon, ImageIcon } from './Icons';
+import Pic from './Pic';
 
 const MAX_POLL_OPTIONS = 4;
 
@@ -583,7 +584,7 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
                 onClick={() => selectMention(profile)}
               >
                 {profile.picture ? (
-                  <img src={profile.picture} alt="" className="suggestion-avatar"  loading="lazy" decoding="async" />
+                  <Pic src={profile.picture} className="suggestion-avatar" width={32} height={32} />
                 ) : (
                   <span className="suggestion-avatar-placeholder">
                     {(profile.display_name || profile.name || '?').charAt(0).toUpperCase()}
