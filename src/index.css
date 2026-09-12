@@ -7276,6 +7276,14 @@ a.capability-indicator.paid:hover {
 
 /* Overlapping like a hand of cards, newest speaker on top of the pile, and
    the one under the cursor lifted out of it */
+/* What a stream reached, beside what it has now */
+.live-stream-viewers-peak {
+  margin-left: var(--spacing-sm);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 .live-stream-faces {
   display: flex;
   align-items: center;

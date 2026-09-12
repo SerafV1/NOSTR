@@ -186,7 +186,46 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
    */
   const roomAddress = liveEventAddress(kind, pubkey, identifier);
   const posterAt = usePosterTick();
+
+
   const watching = useRoomPresence(roomAddress, relaysConnected);
+
+  /**
+   * The most this stream has been seen to have, and the last number its own
+   * software published.
+   *
+   * A live event is republished every minute or so, and the count in it goes
+   * up and down with whoever the broadcasting service happens to be counting
+   * — its own web player's viewers, usually, and not the people watching in
+   * another client. Some editions name no number at all, and the ended one
+   * never does. Read edition by edition, the figure collapses: a broadcaster
+   * reported a stream that reached eleven sitting at one.
+   *
+   * So the last number published is kept when a later edition is silent, and
+   * the highest seen is kept beside it. Both are reset when the page moves to
+   * another stream.
+   */
+  const [published, setPublished] = useState<number | undefined>(undefined);
+  const [peak, setPeak] = useState(0);
+
+  useEffect(() => {
+    setPublished(undefined);
+    setPeak(0);
+  }, [roomAddress]);
+
+  const counted = Math.max(
+    stream?.currentParticipants ?? published ?? 0,
+    present.length,
+    watching.length
+  );
+
+  useEffect(() => {
+    if (stream?.currentParticipants !== undefined) setPublished(stream.currentParticipants);
+  }, [stream?.currentParticipants]);
+
+  useEffect(() => {
+    if (counted > peak) setPeak(counted);
+  }, [counted, peak]);
 
   useEffect(() => {
     if (!relaysConnected || !CredentialManager.canSign()) return;
@@ -447,23 +486,33 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
 
             </div>
 
-            {(stream.currentParticipants !== undefined || present.length > 0) && (
+            {(counted > 0 || peak > 0) && (
               <div className="live-stream-presence">
                 {/* The broadcaster's own number, but never fewer than the
                     people talking: a stream published `current_participants:
                     0` while two were watching and its chat was going, and a
                     nought under a moving chat is a number nobody has kept up
                     rather than an empty room. */}
-                {(stream.currentParticipants !== undefined || present.length > 0) && (
+                <span
+                  className="live-stream-viewers-count"
+                  title={
+                    present.length > (published ?? 0)
+                      ? 'How many people have spoken in the chat lately — more than the broadcaster\'s own software is publishing'
+                      : "The number the broadcaster's own software publishes — nostr has no other source for it"
+                  }
+                >
+                  👁 {counted} viewers
+                </span>
+
+                {/* What it reached, which the count itself does not keep: the
+                    number in the event follows whoever its service is
+                    counting, and drops when they stop counting. */}
+                {peak > counted && (
                   <span
-                    className="live-stream-viewers-count"
-                    title={
-                      present.length > (stream.currentParticipants ?? 0)
-                        ? 'How many people have spoken in the chat lately — more than the broadcaster\'s own software is publishing'
-                        : "The number the broadcaster's own software publishes — nostr has no other source for it"
-                    }
+                    className="live-stream-viewers-peak"
+                    title="The most this stream has been seen to have while this page was open"
                   >
-                    👁 {Math.max(stream.currentParticipants ?? 0, present.length, watching.length)} viewers
+                    {peak} at its busiest
                   </span>
                 )}
 
