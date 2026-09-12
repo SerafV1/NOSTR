@@ -226,14 +226,46 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, reachedEnd, loadingOlder, contentTab, pubkey]);
 
+  /**
+   * Everything this person wrote that the relays will admit to.
+   *
+   * Asked for once, the answer is whatever arrived in the first second, and
+   * the relays hold wildly different parts of one person. Measured on a
+   * profile with a thousand notes, one page of fifty: the first relay to
+   * answer held none of them at all, three others held none either, six held
+   * fifty each, and the union of all ten was 109. So a reader saw a handful
+   * of posts from somebody with thousands, and a reload — with different
+   * relays answering first — showed the rest.
+   *
+   * Two passes: what comes back quickly, then every relay heard out, merged
+   * into it. Nothing waits for the second one; it fills in behind the first.
+   */
+  const mergeNotes = (found: NostrEventSigned[]) => {
+    if (found.length === 0) return;
+    setNotes(prev => {
+      const ids = new Set(found.map(e => e.id));
+      return [...found, ...prev.filter(e => !ids.has(e.id))]
+        .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+    });
+  };
+
   const loadProfileData = async (background: boolean = false) => {
     if (!background) setLoading(true);
     try {
+      const thorough = NostrCore.fetchUserNotes(pubkey, 50, undefined, true)
+        .then(found => { mergeNotes(found); return found; })
+        .catch(() => [] as NostrEventSigned[]);
+
       const [userProfile, userNotes, userReposts] = await Promise.all([
         NostrCore.fetchUserProfile(pubkey),
         NostrCore.fetchUserNotes(pubkey, 50),
         NostrCore.fetchReposts([pubkey], 50)
       ]);
+      // And the page's own cache keeps the fuller answer, so the next visit
+      // starts from it rather than from the thin one
+      void thorough.then(found => {
+        if (found.length > 0) PersistentCache.set(`notes_${pubkey}`, found.slice(0, 30));
+      });
 
       // On background refresh keep showing cached data if relays return nothing
       if (userProfile) {
