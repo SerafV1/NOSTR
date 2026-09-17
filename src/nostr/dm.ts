@@ -320,6 +320,50 @@ export class DirectMessageCore {
   }
 
   /**
+   * What each message turned out to hold, so none is opened twice.
+   *
+   * The unread badge asks for the inbox every thirty seconds, and every time
+   * it opened all of it again: up to five hundred gift wraps, each decrypted
+   * twice (the wrap, then the seal inside it), and a thousand older messages
+   * besides. With a browser extension holding the key, every one of those is
+   * a request to the extension — a thousand of them every half minute, for
+   * as long as the tab stays open, for messages whose contents had not
+   * changed and never will: an event is fixed by its id.
+   *
+   * Kept in memory only, never written down — these are private messages.
+   * Bounded, and a message that would not open is tried again after a while
+   * rather than never, since an extension that was locked a minute ago may
+   * not be now.
+   */
+  private static opened = new Map<string, { message: DirectMessage | null; at: number }>();
+  private static readonly OPENED_LIMIT = 3000;
+  private static readonly RETRY_FAILED_MS = 10 * 60 * 1000;
+
+  private static async open(event: NostrEventSigned, ownPubkey: string): Promise<DirectMessage | null> {
+    // Per account as well as per message: who is on the other side of a
+    // conversation depends on whose inbox it is being read into
+    const key = `${ownPubkey}:${event.id}`;
+    const held = this.opened.get(key);
+    if (held && (held.message || Date.now() - held.at < this.RETRY_FAILED_MS)) {
+      return held.message;
+    }
+
+    const message = event.kind === EVENT_KINDS.ENCRYPTED_DM
+      ? await this.readLegacy(event, ownPubkey)
+      : await this.unwrap(event, ownPubkey);
+
+    this.opened.delete(key);
+    this.opened.set(key, { message, at: Date.now() });
+    if (this.opened.size > this.OPENED_LIMIT) {
+      for (const id of this.opened.keys()) {
+        this.opened.delete(id);
+        if (this.opened.size <= this.OPENED_LIMIT) break;
+      }
+    }
+    return message;
+  }
+
+  /**
    * Fetch and decrypt all private messages addressed to us, deduplicated
    * (the recipient's and our own copy of the same rumor share an id).
    */
@@ -336,10 +380,7 @@ export class DirectMessageCore {
       const relayPool = getRelayPool();
       const events = await relayPool.fetchEvents(filters);
 
-      const results = await Promise.all(events.map(event =>
-        event.kind === EVENT_KINDS.ENCRYPTED_DM
-          ? this.readLegacy(event, ownPubkey)
-          : this.unwrap(event, ownPubkey)));
+      const results = await Promise.all(events.map(event => this.open(event, ownPubkey)));
 
       const byId = new Map<string, DirectMessage>();
       for (const message of results) {
