@@ -997,6 +997,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                       </div>
                       <EventCard
                         event={item.original}
+                        showMuted={item.original.pubkey === pubkey}
                         onNavigateToProfile={onNavigateToProfile}
                         onNavigateToNote={onNavigateToNote}
                         onNavigateToTopic={onNavigateToTopic}
@@ -1007,6 +1008,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                     <EventCard
                       key={item.key}
                       event={item.event}
+                      showMuted={item.event.pubkey === pubkey}
                       onNavigateToProfile={onNavigateToProfile}
                       onNavigateToNote={onNavigateToNote}
                       onNavigateToTopic={onNavigateToTopic}
@@ -1040,6 +1042,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                     <EventCard
                       key={article.id}
                       event={article}
+                      showMuted={article.pubkey === pubkey}
                       onNavigateToProfile={onNavigateToProfile}
                       onNavigateToNote={onNavigateToNote}
                       onNavigateToTopic={onNavigateToTopic}
@@ -1090,6 +1093,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                     <EventCard
                       key={note.id}
                       event={note}
+                      showMuted={note.pubkey === pubkey}
                       onNavigateToProfile={onNavigateToProfile}
                       onNavigateToNote={onNavigateToNote}
                       onNavigateToTopic={onNavigateToTopic}

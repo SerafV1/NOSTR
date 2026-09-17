@@ -164,7 +164,7 @@ export class NostrCore {
 
     if (added > 0) {
       await this.publishReplaceableList(EVENT_KINDS.MUTE_LIST, tags, existing?.content || '');
-      this.mutedCache = null;
+      this.announceMutes();
     }
     return added;
   }
@@ -865,8 +865,37 @@ export class NostrCore {
     const ownPubkey = CredentialManager.getPublicKey();
     if (!ownPubkey) return new Set();
     await this.fetchReplaceableListEvent(EVENT_KINDS.MUTE_LIST, ownPubkey);
-    this.mutedCache = null; // re-read from what the fetch just persisted
+    // Re-read from what the fetch just persisted, and tell whatever is on
+    // screen: an edit made in another client lands here
+    this.announceMutes();
     return this.getBlockedPubkeys();
+  }
+
+  /**
+   * Told when the mute list changes, however it changed — muted here,
+   * unmuted here, or read back from the relays after an edit made elsewhere.
+   *
+   * Muting only reached the places that read the list the next time they
+   * fetched something: the feed dropped someone on its next refresh, and a
+   * thread went on showing their replies until it was opened again. What is
+   * already on screen listens for this and changes with it.
+   */
+  private static muteListeners = new Set<() => void>();
+
+  static onMutesChanged(listener: () => void): () => void {
+    this.muteListeners.add(listener);
+    return () => { this.muteListeners.delete(listener); };
+  }
+
+  private static announceMutes(): void {
+    this.mutedCache = null;
+    for (const listener of this.muteListeners) {
+      try {
+        listener();
+      } catch (error) {
+        console.error('Mute list listener failed:', error);
+      }
+    }
   }
 
   static async blockUser(targetPubkey: string): Promise<boolean> {
@@ -882,7 +911,7 @@ export class NostrCore {
     tags.push(['p', targetPubkey]);
 
     const published = await this.publishReplaceableList(EVENT_KINDS.MUTE_LIST, tags, existing?.content || '');
-    this.mutedCache = null;
+    this.announceMutes();
     return published;
   }
 
@@ -898,7 +927,7 @@ export class NostrCore {
 
     const tags = existing.tags.filter(t => !(t[0] === 'p' && t[1] === targetPubkey));
     const published = await this.publishReplaceableList(EVENT_KINDS.MUTE_LIST, tags, existing.content || '');
-    this.mutedCache = null;
+    this.announceMutes();
     return published;
   }
 

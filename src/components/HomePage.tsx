@@ -298,6 +298,39 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
     setPendingReposts(prev => prev.filter(r => allowed.has(r.repost.pubkey)));
   }), [feedType, activeTopic]);
 
+  /**
+   * Muting somebody takes them out of everything this page holds, at once:
+   * what is shown, what is waiting behind the button, the reposts either of
+   * them made, and the feed kept for the next visit.
+   *
+   * The cards hide themselves as soon as the list changes; this is the rest
+   * of it — the count on the button, and the stored feed, which would
+   * otherwise bring them back on the next visit.
+   */
+  useEffect(() => NostrCore.onMutesChanged(() => {
+    const kept = (e: NostrEventSigned) => !NostrCore.isBlocked(e.pubkey);
+    setEvents(prev => {
+      const next = prev.filter(kept);
+      if (next.length !== prev.length) PersistentCache.set(feedCacheKey(), next);
+      eventsRef.current = next;
+      return next;
+    });
+    setPendingEvents(prev => {
+      const next = prev.filter(kept);
+      pendingRef.current = next;
+      return next;
+    });
+    const repostKept = (r: ShownRepost) => kept(r.repost) && kept(r.original);
+    setReposts(prev => {
+      const next = prev.filter(repostKept);
+      if (next.length !== prev.length) rememberReposts(next);
+      repostsRef.current = next;
+      return next;
+    });
+    setPendingReposts(prev => prev.filter(repostKept));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [feedType, activeTopic]);
+
   // Discard pending new posts when switching feeds, and put back the reposts
   // the feed being shown was last showing — they are cached with it, so a
   // repost already read is not offered again as new
@@ -1058,7 +1091,6 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
                         pubkey={item.repost.pubkey}
                         profile={reposterProfile}
                         onNavigateToProfile={onNavigateToProfile}
-                        onBlocked={() => fetchFeed()}
                       >
                         <button
                           type="button"
@@ -1078,7 +1110,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
                       onNavigateToProfile={onNavigateToProfile}
                       onNavigateToNote={onNavigateToNote}
                       onNavigateToTopic={onNavigateToTopic}
-                      onRefresh={() => fetchFeed()}
+                      onRefresh={() => fetchFeed({ background: true })}
                     />
                   </div>
                 );
@@ -1090,7 +1122,7 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
                   onNavigateToProfile={onNavigateToProfile}
                   onNavigateToNote={onNavigateToNote}
                   onNavigateToTopic={onNavigateToTopic}
-                  onRefresh={() => fetchFeed()}
+                  onRefresh={() => fetchFeed({ background: true })}
                 />
               );
             })}

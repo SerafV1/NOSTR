@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useSyncExternalStore } from 'react';
 import { nip19 } from 'nostr-tools';
 import { NostrEventSigned, UserProfile, EVENT_KINDS } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
@@ -45,6 +45,12 @@ interface EventCardProps {
   onNavigateToTopic?: (topic: string) => void;
   onRefresh?: () => void;
   /**
+   * Draw it even if its author is muted. Only where the reader has gone to
+   * that person on purpose — their own profile — and a card that vanished
+   * would leave a page of nothing with no reason given.
+   */
+  showMuted?: boolean;
+  /**
    * The post being read, rather than one card among many. Its counts are
    * gathered from every relay instead of from whichever answers first —
    * slower, but a post opened to read its replies must not say there are
@@ -53,7 +59,7 @@ interface EventCardProps {
   focused?: boolean;
 }
 
-const EventCard: React.FC<EventCardProps> = ({
+const EventCardBody: React.FC<EventCardProps> = ({
   event,
   onNavigateToProfile,
   onNavigateToNote,
@@ -1281,6 +1287,27 @@ const EventCard: React.FC<EventCardProps> = ({
       })()}
     </div>
   );
+};
+
+const subscribeToMutes = (onChange: () => void) => NostrCore.onMutesChanged(onChange);
+
+/**
+ * A note from somebody muted is not drawn — in the feed, in a thread's
+ * replies, in a profile's lists, anywhere a card appears.
+ *
+ * The feed dropped muted authors where it fetched, and nothing else did: a
+ * thread went on showing the replies of somebody just muted, and so did the
+ * feed until its next refresh. Deciding it here, once, covers every list, and
+ * listening for the mute list means a card disappears the moment its author
+ * is muted and comes back the moment they are not.
+ */
+const EventCard: React.FC<EventCardProps> = (props) => {
+  const muted = useSyncExternalStore(
+    subscribeToMutes,
+    () => NostrCore.isBlocked(props.event.pubkey)
+  );
+  if (muted && !props.showMuted) return null;
+  return <EventCardBody {...props} />;
 };
 
 export default EventCard;
