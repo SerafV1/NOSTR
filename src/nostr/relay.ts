@@ -49,6 +49,17 @@ export class RelayPool {
   // are the only real signal something's actually wrong with the socket.
   private relayTimeoutCounts: Map<string, number> = new Map();
   private excludedRelayUrls: Set<string> = new Set();
+  /**
+   * When each failing relay may be tried again.
+   *
+   * Every disconnected relay was retried on every health check — every
+   * ninety seconds from the app, every five from the Relays page — each
+   * attempt a new socket with its handlers, for as long as the tab stayed
+   * open. A relay that is down for the afternoon cost hundreds of them. Now
+   * each failure doubles the wait, from thirty seconds to half an hour, and
+   * a success clears it.
+   */
+  private retryAt: Map<string, { at: number; failures: number }> = new Map();
   private readonly STORAGE_KEY = 'nostr_relay_configs';
   private readonly EXCLUDED_KEY = 'nostr_excluded_relays';
 
@@ -218,6 +229,11 @@ export class RelayPool {
    * Add a relay to the pool
    */
   async addRelay(url: string, config?: Partial<RelayConfig>): Promise<boolean> {
+    // A relay known to answer nothing is not worth a socket — and a saved
+    // list, an import or a follow's relay list can all still name one. The
+    // one-time cleanup of saved lists only ran for the relays that were dead
+    // when it was written.
+    if (UNREACHABLE_RELAYS.includes(url.trim().replace(/\/+$/, ''))) return false;
     try {
       // A plain ws:// relay cannot be reached from a page served over https:
       // the browser blocks the connection as mixed content and reports the
@@ -980,6 +996,18 @@ export class RelayPool {
     }
   }
 
+  /** Whether a relay that has been failing is due another attempt */
+  private mayRetry(url: string): boolean {
+    const backoff = this.retryAt.get(url);
+    return !backoff || Date.now() >= backoff.at;
+  }
+
+  private noteFailure(url: string): void {
+    const failures = (this.retryAt.get(url)?.failures || 0) + 1;
+    const wait = Math.min(30_000 * 2 ** (failures - 1), 30 * 60_000);
+    this.retryAt.set(url, { at: Date.now() + wait, failures });
+  }
+
   /** nostr-tools has called this `unsub` and `close` in different versions */
   private closeSub(sub: any): void {
     try {
@@ -1102,7 +1130,15 @@ export class RelayPool {
               while (this.getReadyState(relay) === WebSocket.CONNECTING && Date.now() - start < 4000) {
                 await new Promise(resolve => setTimeout(resolve, 100));
               }
-            } else if (readyState !== WebSocket.OPEN && relay.connect && typeof relay.connect === 'function') {
+            } else if (readyState !== WebSocket.OPEN) {
+              // A relay that has been failing sits this query out until its
+              // turn comes round again. Every query used to try to reconnect
+              // every closed relay first — and there is a query every few
+              // seconds — so a relay down for the afternoon got a new socket
+              // almost continuously, and every query waited up to four
+              // seconds for it to fail again.
+              if (!this.mayRetry(url)) return;
+              if (!relay.connect || typeof relay.connect !== 'function') return;
               // Actually closed/closing — a socket that died quietly
               // (backgrounded tab, sleep, network drop) just hangs a query
               // until our own timeout below, so give it a quick chance to
@@ -1112,12 +1148,13 @@ export class RelayPool {
                   relay.connect(),
                   new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Reconnect timeout')), 4000))
                 ]);
+                this.retryAt.delete(url);
                 // A fresh socket doesn't carry over subscriptions issued on
                 // the old one — reattach every active live subscription now
                 this.applyActiveSubscriptions(url, relay);
               } catch {
-                // Still couldn't connect — fall through and let the query
-                // below time out/fail quickly rather than retrying here
+                this.noteFailure(url);
+                return;
               }
             }
             this.relayConnectionState.set(url, this.isActuallyConnected(relay));
@@ -1403,7 +1440,9 @@ export class RelayPool {
         const currentStatus = this.isActuallyConnected(relay);
         this.relayConnectionState.set(url, currentStatus);
 
-        // If relay is not connected, try to reconnect
+        // If relay is not connected, try to reconnect — unless it has been
+        // failing, and its turn has not come round again
+        if (!currentStatus && !this.mayRetry(url)) return;
         if (!currentStatus && relay.connect && typeof relay.connect === 'function') {
           try {
             console.log(`[Status] Attempting to reconnect to ${url}`);
@@ -1414,6 +1453,7 @@ export class RelayPool {
               )
             ]);
             console.log(`[Status] ✓ Reconnected to ${url}`);
+            this.retryAt.delete(url);
             this.relayConnectionState.set(url, this.isActuallyConnected(relay));
             // A fresh socket doesn't carry over subscriptions issued on
             // the old one — reattach every active live subscription now
@@ -1421,6 +1461,7 @@ export class RelayPool {
           } catch (error) {
             console.log(`[Status] Reconnection failed for ${url}: ${error}`);
             this.relayConnectionState.set(url, false);
+            this.noteFailure(url);
           }
         }
       } catch (error) {
@@ -1477,7 +1518,7 @@ export interface RelayCapabilities {
 /**
  * The relays a new account starts on.
  *
- * Ten, chosen by measurement rather than by reputation (September 2026):
+ * Chosen by measurement rather than by reputation (September 2026):
  * every candidate was connected to, asked for the last hour of notes, the
  * day's live streams, the week's articles and videos, and handed a small
  * event to store. What is here answered quickly, kept a broad slice of the
@@ -1513,7 +1554,9 @@ export const UNREACHABLE_RELAYS = [
   'wss://purplepag.es',
   'wss://offchain.pub',
   'wss://relay.nostr.band',
-  'wss://nostr.band'
+  'wss://nostr.band',
+  // Its name stopped resolving in September 2026; it had been a default
+  'wss://relay.0xchat.com'
 ];
 
 export const DEFAULT_RELAYS = [
@@ -1529,9 +1572,6 @@ export const DEFAULT_RELAYS = [
   // Slower, but the one that kept accepting writes while the others were
   // rate-limiting them
   'wss://relay.nostr.net',
-  // Where private messages sent from phones land: 0xchat and Amethyst use
-  // this as a NIP-17 inbox, so gift wraps arrive here or nowhere
-  'wss://relay.0xchat.com',
   // Flaky, and still the largest relay on the network
   'wss://relay.damus.io'
 ];
