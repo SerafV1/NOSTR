@@ -339,6 +339,11 @@ export class DirectMessageCore {
   private static readonly OPENED_LIMIT = 3000;
   private static readonly RETRY_FAILED_MS = 10 * 60 * 1000;
 
+  /** How many opened messages are held, for the memory readout in Settings */
+  static openedCount(): number {
+    return this.opened.size;
+  }
+
   private static async open(event: NostrEventSigned, ownPubkey: string): Promise<DirectMessage | null> {
     // Per account as well as per message: who is on the other side of a
     // conversation depends on whose inbox it is being read into

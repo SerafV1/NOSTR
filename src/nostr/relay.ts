@@ -560,6 +560,19 @@ export class RelayPool {
     this.relayConfigs = this.relayConfigs.filter(c => c.url !== url);
   }
 
+  /** How much this is holding, for the memory readout in Settings */
+  stats(): { relays: number; connected: number; subscriptions: number; relaySubscriptions: number; seenOn: number } {
+    let relaySubscriptions = 0;
+    for (const perRelay of this.liveSubs.values()) relaySubscriptions += perRelay.size;
+    return {
+      relays: this.relays.size,
+      connected: [...this.relays.values()].filter(r => this.isActuallyConnected(r)).length,
+      subscriptions: this.subscriptions.size,
+      relaySubscriptions,
+      seenOn: this.seenOn.size
+    };
+  }
+
   /**
    * Get relay configs - only for relays that are in the active relays map
    */

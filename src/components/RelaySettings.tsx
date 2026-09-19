@@ -3,6 +3,7 @@ import { RelayMark } from './RelayBadges';
 import { getRelayPool } from '../nostr/relay';
 import { NostrCore } from '../nostr/core';
 import { readFeedTrail } from '../utils/feedTrail';
+import { memoryTrailText } from '../utils/memoryTrail';
 import { CredentialManager } from '../nostr/crypto';
 import { RelayConfig } from '../types';
 
@@ -123,6 +124,9 @@ const RelaySettings: React.FC = () => {
 
   const [showTrail, setShowTrail] = useState(false);
   const [trailCopied, setTrailCopied] = useState(false);
+  const [showMemory, setShowMemory] = useState(false);
+  const [memoryCopied, setMemoryCopied] = useState(false);
+  const memory = showMemory ? memoryTrailText() : '';
   const trail = showTrail ? readFeedTrail() : [];
 
   const handleAddRelay = async (e: React.FormEvent) => {
@@ -444,6 +448,45 @@ const RelaySettings: React.FC = () => {
               }}
             >
               {trailCopied ? '✓ Copied' : 'Copy'}
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* What the page is holding, sampled every five minutes while it runs.
+          Kept here for the same reason as the feed's record: the reports that
+          need it come from somebody's own long session, not from a test. */}
+      <div className="feed-trail">
+        <button
+          type="button"
+          className="feed-trail-toggle"
+          onClick={() => setShowMemory(open => !open)}
+        >
+          {showMemory ? 'Hide memory' : 'Memory'}
+        </button>
+
+        {showMemory && (
+          <>
+            <p className="settings-hint">
+              What this tab is holding, every five minutes since it was opened, and now.
+              If the app grows over a long session, whichever column keeps climbing is the
+              cause — copy it and send it over.
+            </p>
+            <pre className="feed-trail-lines">{memory}</pre>
+            <button
+              type="button"
+              className="add-relay-btn"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(memory);
+                  setMemoryCopied(true);
+                  setTimeout(() => setMemoryCopied(false), 2000);
+                } catch {
+                  prompt('Copy this:', memory);
+                }
+              }}
+            >
+              {memoryCopied ? '✓ Copied' : 'Copy'}
             </button>
           </>
         )}

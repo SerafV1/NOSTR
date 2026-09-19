@@ -3346,6 +3346,15 @@ export class EventCache {
   // index — looking one up by event id is not something a caller can do.
   private static addressable: Map<string, NostrEventSigned> = new Map();
 
+  /** How much this is holding, for the memory readout in Settings */
+  static stats(): { events: number; profiles: number; addressable: number } {
+    return {
+      events: this.cache.size,
+      profiles: this.profiles().size,
+      addressable: this.addressable.size
+    };
+  }
+
   static addAddressable(event: NostrEventSigned): void {
     const dTag = event.tags.find(t => t[0] === 'd')?.[1] || '';
     const key = `${event.kind}:${event.pubkey}:${dTag}`;
