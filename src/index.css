@@ -5397,6 +5397,10 @@ a.capability-indicator.paid:hover {
 .notification-text {
   font-size: 0.95rem;
   color: var(--text-primary);
+  /* A name with no spaces in it — a run of emoji, a pasted key, somebody's
+     idea of a handle — has nowhere to break, and ran out through the side of
+     the row. Broken anywhere rather than overflowing. */
+  overflow-wrap: anywhere;
 }
 
 .notification-actor {
@@ -5407,6 +5411,11 @@ a.capability-indicator.paid:hover {
   font-size: 0.95rem;
   color: var(--text-primary);
   cursor: pointer;
+  /* A button keeps its text on one line and centred unless told otherwise */
+  white-space: normal;
+  text-align: left;
+  overflow-wrap: anywhere;
+  max-width: 100%;
 }
 
 .notification-actor:hover {
