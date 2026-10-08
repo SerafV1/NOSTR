@@ -9,7 +9,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
-    "lint": "eslint src --ext ts,tsx"
+    "lint": "eslint src --ext ts,tsx",
+    "postinstall": "node scripts/patch-nostr-tools.mjs"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",

@@ -2612,7 +2612,43 @@ export class NostrCore {
    * follow publishes there are not yours to announce, and would tell the
    * network to look for your posts where they are not.
    */
-  static async publishRelayList(): Promise<boolean> {
+  /**
+   * Relays worth asking about somebody's own relay list, beyond the ones
+   * this browser reads. Somebody who curates a NIP-65 list often keeps it on
+   * their own relays, which this client has no reason to be connected to —
+   * and not finding it there is exactly how it came to be overwritten.
+   */
+  private static readonly WIDE_RELAYS = ['wss://nostr.wine', 'wss://premium.primal.net'];
+
+  /** Thrown rather than guessing that an account has no relay list */
+  static readonly NO_EXISTING_RELAY_LIST = 'NO_EXISTING_RELAY_LIST';
+
+  /**
+   * The relay list this account has out there, looked for properly: the
+   * relays this browser reads, the ones it remembers publishing to, and a
+   * couple of wide ones that answer without an account.
+   */
+  private static async findPublishedRelayList(ownPubkey: string): Promise<NostrEventSigned | null> {
+    const pool = getRelayPool();
+    const filters = [{ kinds: [EVENT_KINDS.RELAY_LIST], authors: [ownPubkey], limit: 5 }];
+
+    const [mine, wider] = await Promise.all([
+      this.fetchReplaceableListEvent(EVENT_KINDS.RELAY_LIST, ownPubkey).catch(() => null),
+      pool.fetchEventsFromExtraRelays(this.WIDE_RELAYS, filters).catch(() => [])
+    ]);
+
+    const remembered = PersistentCache.get<NostrEventSigned>(
+      this.listCacheKey(EVENT_KINDS.RELAY_LIST, ownPubkey)
+    );
+
+    return [mine, remembered, ...wider.filter(e => e.pubkey === ownPubkey)]
+      .filter((e): e is NostrEventSigned => !!e)
+      .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0] || null;
+  }
+
+  static async publishRelayList(
+    options: { createIfMissing?: boolean } = {}
+  ): Promise<boolean> {
     const ownPubkey = CredentialManager.getPublicKey();
     if (!ownPubkey || !CredentialManager.canSign()) return false;
 
@@ -2644,7 +2680,21 @@ export class NostrCore {
      */
     const excluded = pool.getExcludedRelays();
     const ours = new Set(configs.map(c => c.url));
-    const alreadyPublished = await this.fetchReplaceableListEvent(EVENT_KINDS.RELAY_LIST, ownPubkey);
+    const alreadyPublished = await this.findPublishedRelayList(ownPubkey);
+
+    /**
+     * Not finding one is not the same as there not being one.
+     *
+     * A list that lives on relays this browser does not read looks exactly
+     * like no list at all, and publishing on that assumption replaces it —
+     * which is what happened to somebody who keeps theirs on their own
+     * relays. So where none was found, nothing is published unless the owner
+     * has been asked and said yes.
+     */
+    if (!alreadyPublished && !options.createIfMissing) {
+      throw new Error(this.NO_EXISTING_RELAY_LIST);
+    }
+
     for (const tag of alreadyPublished?.tags || []) {
       if (tag[0] !== 'r' || !tag[1]) continue;
       const url = tag[1].trim();
@@ -2653,37 +2703,6 @@ export class NostrCore {
     }
 
     return this.publishReplaceableList(EVENT_KINDS.RELAY_LIST, tags, '');
-  }
-
-  /**
-   * Publish it if this account has never said anything, or if what it said
-   * no longer matches the relays in front of the reader.
-   *
-   * Quiet by design: an account with a list that still holds is left alone,
-   * because every publish here is a signature, and on a remote signer that
-   * is a prompt.
-   */
-  static async announceRelayListIfChanged(): Promise<boolean> {
-    const ownPubkey = CredentialManager.getPublicKey();
-    if (!ownPubkey || !CredentialManager.canSign()) return false;
-
-    try {
-      const mine = getRelayPool().getAllSavedRelayConfigs()
-        .filter(config => !config.outbox && /^wss:\/\//i.test(config.url));
-      if (mine.length === 0) return false;
-
-      // Only where the account has never said anything. An account that has
-      // a list has one for a reason — it was written somewhere, by somebody,
-      // and starting this client is not a request to change it. Editing the
-      // relays here is, and that path publishes.
-      const announced = await this.fetchReplaceableListEvent(EVENT_KINDS.RELAY_LIST, ownPubkey);
-      if (announced) return false;
-
-      return await this.publishRelayList();
-    } catch (error) {
-      console.error('Failed to announce the relay list:', error);
-      return false;
-    }
   }
 
   /**

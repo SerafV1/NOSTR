@@ -5319,6 +5319,17 @@ a.capability-indicator.paid:hover {
   white-space: nowrap;
 }
 
+/* Telling the network where you post, as something to ask for */
+.relay-announce {
+  margin: var(--spacing-lg) 0;
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+}
+
 /* The one choice the page offers, beside its title */
 .notifications-follows-only {
   display: inline-flex;

@@ -125,6 +125,9 @@ const RelaySettings: React.FC = () => {
   const [showTrail, setShowTrail] = useState(false);
   const [trailCopied, setTrailCopied] = useState(false);
   const [showMemory, setShowMemory] = useState(false);
+  /** Asked only when no list of this account's own could be found anywhere */
+  const [needsFirstList, setNeedsFirstList] = useState(false);
+  const [published, setPublished] = useState<number | null>(null);
   const [memoryCopied, setMemoryCopied] = useState(false);
   const memory = showMemory ? memoryTrailText() : '';
   const trail = showTrail ? readFeedTrail() : [];
@@ -166,11 +169,21 @@ const RelaySettings: React.FC = () => {
    * Quiet if it fails: the relays are already changed, and a refused
    * signature should not read as the change not having happened.
    */
-  const announceRelays = async () => {
+  const announceRelays = async (options: { createIfMissing?: boolean } = {}) => {
     try {
-      await NostrCore.publishRelayList();
+      await NostrCore.publishRelayList(options);
+      setPublished(Date.now());
     } catch (err) {
+      if (err instanceof Error && err.message === NostrCore.NO_EXISTING_RELAY_LIST) {
+        // Nothing of this account's own was found out there. It may have none
+        // — or may keep one on relays this browser does not read, in which
+        // case publishing would replace it. Its owner decides.
+        setError(null);
+        setNeedsFirstList(true);
+        return;
+      }
       console.error('Failed to publish the relay list:', err);
+      setError('Could not publish your relay list');
     }
   };
 
@@ -279,6 +292,45 @@ const RelaySettings: React.FC = () => {
       </form>
 
       {error && <div className="error-message">{error}</div>}
+
+      {/* Telling the network where to find you (NIP-65). Never done on its
+          own: a list kept on relays this browser does not read looks like no
+          list at all, and publishing over it took somebody's own away. */}
+      <div className="relay-announce">
+        {needsFirstList ? (
+          <>
+            <p className="settings-hint">
+              No relay list of yours could be found. If you keep one in another client, publishing
+              from here would replace it — open that client instead. If you have never had one,
+              publishing lets others find where you post.
+            </p>
+            <button
+              type="button"
+              className="add-relay-btn"
+              onClick={() => { setNeedsFirstList(false); void announceRelays({ createIfMissing: true }); }}
+            >
+              Publish my relay list anyway
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-small"
+              onClick={() => setNeedsFirstList(false)}
+            >
+              Leave it alone
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="settings-hint">
+              Other clients find where you post by reading the relay list you publish (NIP-65).
+              Publishing from here keeps every relay already in it and adds the ones above.
+            </p>
+            <button type="button" className="add-relay-btn" onClick={() => announceRelays()}>
+              {published ? '✓ Published' : 'Publish my relay list'}
+            </button>
+          </>
+        )}
+      </div>
 
       <div className="relays-list">
         <h3 style={{ marginTop: 0 }}>Configured Relays</h3>
