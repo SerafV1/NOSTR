@@ -2646,6 +2646,70 @@ export class NostrCore {
       .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0] || null;
   }
 
+  /**
+   * Reading and writing where this account says it does (NIP-65).
+   *
+   * A published relay list is not a courtesy to other clients — it is this
+   * account's own statement of where its posts live, and a client that
+   * ignores it is not reading the same person other clients are. A user who
+   * had written "I post to these three" found this one still connecting to
+   * its own ten and publishing there: their list was respected by everyone
+   * except the client they were using.
+   *
+   * So the list is adopted at startup. Every relay in it is opened with the
+   * part it was given — `read`, `write`, or both where no marker says
+   * otherwise — and the relays this browser holds of its own keep reading
+   * but stop being published to, since a post belongs where its author said
+   * it would be. A relay taken out here on purpose stays out.
+   *
+   * Nothing happens for an account that has published no list: there is
+   * nothing to respect, and the relays here are all it has.
+   */
+  static async adoptOwnRelayList(): Promise<{ read: string[]; write: string[] } | null> {
+    const ownPubkey = CredentialManager.getPublicKey();
+    if (!ownPubkey) return null;
+
+    try {
+      const list = await this.findPublishedRelayList(ownPubkey);
+      if (!list) return null;
+
+      const declared = new Map<string, { read: boolean; write: boolean }>();
+      for (const tag of list.tags) {
+        if (tag[0] !== 'r' || !tag[1]) continue;
+        const url = tag[1].trim().replace(/\/+$/, '');
+        if (!/^wss:\/\//i.test(url)) continue;
+        const marker = (tag[2] || '').toLowerCase();
+        // NIP-65: no marker means both ways
+        declared.set(url, { read: marker !== 'write', write: marker !== 'read' });
+      }
+      if (declared.size === 0) return null;
+
+      const pool = getRelayPool();
+      const excluded = pool.getExcludedRelays();
+      const mine = [...declared].filter(([url]) => !excluded.has(url));
+
+      await Promise.all(mine.map(([url, how]) => pool.addRelay(url, how).catch(() => false)));
+      for (const [url, how] of mine) pool.updateRelayCapabilities(url, how.read, how.write);
+
+      // Where the account names anywhere to write at all, that is where its
+      // posts go — the rest of what this browser holds becomes read-only
+      if (mine.some(([, how]) => how.write)) {
+        for (const config of pool.getAllSavedRelayConfigs()) {
+          if (config.outbox || declared.has(config.url)) continue;
+          if (config.write) pool.updateRelayCapabilities(config.url, config.read, false);
+        }
+      }
+
+      return {
+        read: mine.filter(([, how]) => how.read).map(([url]) => url),
+        write: mine.filter(([, how]) => how.write).map(([url]) => url)
+      };
+    } catch (error) {
+      console.error('Failed to adopt this account\'s own relay list:', error);
+      return null;
+    }
+  }
+
   static async publishRelayList(
     options: { createIfMissing?: boolean } = {}
   ): Promise<boolean> {

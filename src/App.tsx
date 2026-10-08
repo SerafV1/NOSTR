@@ -458,6 +458,11 @@ function App() {
       // the choice itself once it knows who is followed.
       void NostrCore.connectRememberedOutboxRelays();
 
+      // Where this account says it reads and writes (NIP-65): its own list is
+      // its own configuration, and a client that ignores it is reading a
+      // different person than everyone else is.
+      void NostrCore.adoptOwnRelayList();
+
       // Nothing is published about this account's own relays on starting up.
       // A relay list that lives on relays this browser does not read looks
       // exactly like no list at all, and publishing on that assumption
