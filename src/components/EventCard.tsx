@@ -20,7 +20,7 @@ import MediaEmbed from './MediaEmbed';
 import Nip05Handle from './Nip05Handle';
 import ProfileHoverCard from './ProfileHoverCard';
 import Markdown from './Markdown';
-import { describeAddressRef } from '../utils/nostrLinks';
+import { describeAddressRef, cutLength } from '../utils/nostrLinks';
 import GroupRef from './GroupRef';
 import { useNavigate } from 'react-router-dom';
 import VideoPlayer from './VideoPlayer';
@@ -874,8 +874,10 @@ const EventCardBody: React.FC<EventCardProps> = ({
           const stripped = stripMediaUrls(noteContent);
           if (!stripped) return null;
           const isLong = stripped.length > CONTENT_TRUNCATE_LENGTH;
+          // Not at the five hundredth character, but at the last place that
+          // does not cut a mention or a link in half — see cutLength
           const displayText = isLong && !expanded
-            ? `${stripped.slice(0, CONTENT_TRUNCATE_LENGTH).trimEnd()}…`
+            ? `${stripped.slice(0, cutLength(stripped, CONTENT_TRUNCATE_LENGTH)).trimEnd()}…`
             : stripped;
           return (
             <>

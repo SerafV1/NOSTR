@@ -130,3 +130,47 @@ export function describeAddressRef(
     return null;
   }
 }
+
+/**
+ * Where to stop a long note so nothing is cut in half.
+ *
+ * A card shows the first five hundred characters and offers the rest behind
+ * "Show more". Cut by counting alone, the five hundredth character lands in
+ * the middle of whatever happens to be there — and what is often there is a
+ * reference: `nostr:nprofile1…` is over a hundred characters long, a naddr
+ * or an nevent much the same. Half of one resolves to nobody, so the mention
+ * that should have been somebody's name was printed as a line of bech32 with
+ * the end missing.
+ *
+ * So the cut moves back to the start of anything it would have split — a
+ * nostr reference or a link — and then back again to the nearest space, so a
+ * word is not halved either.
+ */
+const SPLITTABLE = new RegExp(
+  `(?:nostr:)?${ENTITY_SOURCE}|(?:naddr1|nsec1)[023456789acdefghjklmnpqrstuvwxyz]{20,}|https?:\\/\\/\\S+`,
+  'gi'
+);
+
+/** How far back a word boundary is worth looking for */
+const TIDY_WITHIN = 80;
+
+export function cutLength(text: string, limit: number): number {
+  if (text.length <= limit) return text.length;
+
+  let cut = limit;
+  for (const match of text.matchAll(SPLITTABLE)) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    // Straddling the cut: keep all of it or none of it
+    if (start < cut && end > cut) {
+      cut = start;
+      break;
+    }
+  }
+
+  const space = text.lastIndexOf(' ', cut);
+  const line = text.lastIndexOf('\n', cut);
+  const boundary = Math.max(space, line);
+  if (boundary > 0 && cut - boundary <= TIDY_WITHIN) return boundary;
+  return cut;
+}
