@@ -53,25 +53,28 @@ const reactionIcon = (content: string): string => {
 };
 
 /**
- * The note a reaction, repost or zap is actually about.
+ * The note a reaction, repost or zap is actually about: the last 'e' tag.
  *
- * A reaction carries the 'e' tags of the note it is about as well as the
- * note itself, so the thread's root is usually in there too — and a tag
- * marked "root" is the top of the conversation, never the thing being
- * reacted to. Preferring it named the wrong note: someone liking a reply
- * showed up as liking the post it hung under, which is often their own.
- * Seen exactly that way in the wild, on
- * ["e", <"is primal down?">, "", "root"], ["e", <the reply to it>].
+ * A reaction carries the tags of the thread as well as the note it is for,
+ * and NIP-25 puts the note being reacted to last. Preferring a marker
+ * instead was wrong both ways round. "root" named the top of the
+ * conversation — someone liking a reply showed up as liking the post it hung
+ * under. "reply" names the note that was *answered*, which is how a like on
+ * somebody's own answer came through as a notification about the post they
+ * had answered: measured over his last twenty reactions carrying more than
+ * one 'e' tag, seven pointed at the wrong note, every one of them a reply
+ * marker copied from the thread, with the liked note sitting last where the
+ * spec says it is.
  *
- * A tag marked "reply" is the note being answered, and where a reaction
- * copies one it is the note being reacted to. Otherwise the last 'e' tag,
- * which is what NIP-25 says the reaction is for.
+ * The last tag also keeps the case where a reaction is not about this
+ * account's note at all — someone liking another person's reply in a thread
+ * this account is tagged in — pointing at what was actually liked rather
+ * than at whichever note here happens to be nearby.
  */
 const reactedNoteId = (event: { tags: string[][] }): string | undefined => {
   const eTags = event.tags.filter(t => t[0] === 'e' && t[1]);
   if (eTags.length === 0) return undefined;
-  const marked = eTags.find(t => t[3] === 'reply');
-  return (marked || eTags[eTags.length - 1])[1];
+  return eTags[eTags.length - 1][1];
 };
 
 /**
