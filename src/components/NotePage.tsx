@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { NostrEventSigned } from '../types';
 import { NostrCore, EventCache } from '../nostr/core';
 import EventCard from './EventCard';
+import { isQuoteOf } from '../utils/threads';
 
 interface NotePageProps {
   noteId: string;
@@ -273,6 +274,8 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
   const knownReplyIds = new Set(replies.map(r => r.id));
   const directReplies = replies
     .filter(reply => {
+      // Quoting a post is not answering it — see utils/threads
+      if (isQuoteOf(reply, noteId)) return false;
       const parent = directParentId(reply);
       // Unknown parent means the branch it belongs to wasn't fetched;
       // it still references this note, so showing it beats dropping it

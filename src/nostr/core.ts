@@ -7,6 +7,7 @@ import {
   EventWithMetadata
 } from '../types';
 import { nip19 } from 'nostr-tools';
+import { isQuoteOf } from '../utils/threads';
 import { NostrCrypto, CredentialManager, ExtensionManager } from './crypto';
 import { getRelayPool, RelayPool, DEFAULT_RELAYS, UNREACHABLE_RELAYS } from './relay';
 import { replyTags } from './replyTags';
@@ -2094,6 +2095,9 @@ export class NostrCore {
 
       for (const ev of events) {
         if (ev.kind === EVENT_KINDS.TEXT_NOTE || ev.kind === EVENT_KINDS.COMMENT) {
+          // Somebody quoting this note has not answered it, and counting
+          // them made the reply number disagree with the replies shown
+          if (isQuoteOf(ev, eventId)) continue;
           result.replies++;
         } else if (ev.kind === EVENT_KINDS.REPOST) {
           result.reposts++;

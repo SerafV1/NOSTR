@@ -11,6 +11,7 @@ import { parseLiveEvent, encodeLiveNaddr, isAudioRoom, LiveStreamInfo } from '..
 import { noteFeedChange } from '../utils/feedTrail';
 import EventCard from './EventCard';
 import Pic from './Pic';
+import { isReplyEvent } from '../utils/threads';
 
 interface HomePageProps {
   relaysConnected: boolean;
@@ -866,7 +867,9 @@ const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfil
   };
 
   // A kind-1 note referencing another event is a reply
-  const isReply = (e: NostrEventSigned) => e.tags.some(t => t[0] === 'e');
+  // A quote carries an 'e' tag too, and reading that as an answer filed
+  // quotes under Replies — see utils/threads
+  const isReply = (e: NostrEventSigned) => isReplyEvent(e);
   const visibleEvents = events.filter(e => (contentTab === 'replies' ? isReply(e) : !isReply(e)));
   // pendingEvents mixes posts and replies — only count/show the ones that
   // actually match the active tab, otherwise the "N new posts" button can
