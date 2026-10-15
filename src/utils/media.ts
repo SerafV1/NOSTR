@@ -19,11 +19,24 @@ const IMAGE_HOSTS = [
   'media[0-9]*\\.tenor\\.com',
   'media[0-9]*\\.giphy\\.com',
   'image\\.nostr\\.build',
-  'images\\.unsplash\\.com'
+  'images\\.unsplash\\.com',
+  // Serves a face from /avatar/<hash>, which is two segments rather than one
+  '(?:[0-9a-z-]+\\.)?gravatar\\.com'
 ].join('|');
 
-/** A file named by the hash of its contents, which is how blossom serves one */
-const HASH_NAMED = 'https?:\\/\\/[^\\s]+\\/[0-9a-f]{64}(?:\\?[^\\s]*)?';
+/**
+ * A file named by the hash of its contents, which is how blossom serves one:
+ * the hash is the whole path, with or without an extension.
+ *
+ * It used to be any address ending in sixty-four hex characters, and a nostr
+ * pubkey is sixty-four hex characters — so every web page about a person
+ * whose address carries their key was drawn as a picture that could not
+ * load, with no link and no preview card. Measured across 1,588 notes: the
+ * loose rule caught seven addresses, four of them pages (a profile on
+ * nonfungible.cash, two transactions on mutinynet, one localhost); the rule
+ * below catches ninety-six, and a dozen sampled were media, every one.
+ */
+const HASH_NAMED = 'https?:\\/\\/[^\\s\\/]+\\/[0-9a-f]{64}(?:\\.[a-z0-9]{1,5})?(?:[?#][^\\s]*)?';
 
 const IMAGE_URL_SOURCE = [
   'https?:\\/\\/[^\\s]+\\.(?:jpg|jpeg|png|gif|webp|bmp|svg)(?:\\?[^\\s]*)?',

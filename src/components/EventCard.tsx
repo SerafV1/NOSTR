@@ -485,7 +485,25 @@ const EventCardBody: React.FC<EventCardProps> = ({
     const combinedRegex = /(?:(@?(?:nostr:)?nprofile1[a-z0-9]{20,})|(@?(?:nostr:)?npub1[a-z0-9]{20,})|([a-fA-F0-9]{64})|((?:nostr:)?(?:note1|nevent1)[a-z0-9]{20,}))/gi;
     let match;
 
+    /**
+     * Where the links are, so nothing is lifted out of the middle of one.
+     *
+     * A nostr key is sixty-four hex characters, and so is the path of a web
+     * page about somebody — nonfungible.cash/p/<key>, a block explorer's
+     * /tx/<id>. Reading that key as a mention cut the address in half: the
+     * link that was left pointed at nonfungible.cash/p/ and the rest of it
+     * became a name standing on its own.
+     */
+    const linkRanges: [number, number][] = [];
+    for (const link of content.matchAll(/https?:\/\/[^\s]+/gi)) {
+      const start = link.index ?? 0;
+      linkRanges.push([start, start + link[0].length]);
+    }
+    const insideALink = (at: number) => linkRanges.some(([from, to]) => at >= from && at < to);
+
     while ((match = combinedRegex.exec(content)) !== null) {
+      // A reference written inside a web address belongs to the address
+      if (insideALink(match.index)) continue;
       let pubkey: string | null = null;
       let noteId: string | null = null;
 
