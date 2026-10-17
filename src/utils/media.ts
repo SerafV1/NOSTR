@@ -24,9 +24,13 @@ const IMAGE_HOSTS = [
   '(?:[0-9a-z-]+\\.)?gravatar\\.com'
 ].join('|');
 
+/** What a picture's file is called, where it is called anything at all */
+const IMAGE_EXTENSIONS = 'jpg|jpeg|png|gif|webp|bmp|svg';
+const VIDEO_EXTENSIONS = 'mp4|webm|mov|m4v|ogv';
+
 /**
  * A file named by the hash of its contents, which is how blossom serves one:
- * the hash is the whole path, with or without an extension.
+ * the hash is the whole path, either bare or carrying a picture's extension.
  *
  * It used to be any address ending in sixty-four hex characters, and a nostr
  * pubkey is sixty-four hex characters — so every web page about a person
@@ -35,15 +39,21 @@ const IMAGE_HOSTS = [
  * loose rule caught seven addresses, four of them pages (a profile on
  * nonfungible.cash, two transactions on mutinynet, one localhost); the rule
  * below catches ninety-six, and a dozen sampled were media, every one.
+ *
+ * The extension has to be a picture's, and where there is one it has to be
+ * the whole of it. Read as any short word, it took in `<hash>.mp4` as well,
+ * so a blossom video was a picture and a video both, and every one of them
+ * had a broken image sitting on top of it. Read as optional and nothing
+ * more, it matched the hash and left the `.mp4` behind as a word of text.
  */
-const HASH_NAMED = 'https?:\\/\\/[^\\s\\/]+\\/[0-9a-f]{64}(?:\\.[a-z0-9]{1,5})?(?:[?#][^\\s]*)?';
+const HASH_NAMED = `https?:\\/\\/[^\\s\\/]+\\/[0-9a-f]{64}(?:\\.(?:${IMAGE_EXTENSIONS}))?(?![.\\w])(?:[?#][^\\s]*)?`;
 
 const IMAGE_URL_SOURCE = [
-  'https?:\\/\\/[^\\s]+\\.(?:jpg|jpeg|png|gif|webp|bmp|svg)(?:\\?[^\\s]*)?',
+  `https?:\\/\\/[^\\s]+\\.(?:${IMAGE_EXTENSIONS})(?:\\?[^\\s]*)?`,
   `https?:\\/\\/(?:${IMAGE_HOSTS})\\/[^\\s]+`,
   HASH_NAMED
 ].join('|');
-const VIDEO_URL_SOURCE = 'https?:\\/\\/[^\\s]+\\.(?:mp4|webm|mov|m4v|ogv)(?:\\?[^\\s]*)?';
+const VIDEO_URL_SOURCE = `https?:\\/\\/[^\\s]+\\.(?:${VIDEO_EXTENSIONS})(?:\\?[^\\s]*)?`;
 // A live stream is a playlist, not a file: outside Safari the browser cannot
 // open it without hls.js, so it is kept apart from the video URLs above and
 // handed to the player that carries it.
