@@ -5445,6 +5445,40 @@ a.capability-indicator.paid:hover {
   -webkit-box-orient: vertical;
 }
 
+/* Two lines of text clamp; a row of pictures is not text and must not be
+   squeezed into a line box */
+.notification-preview:has(.notification-preview-media) {
+  display: block;
+}
+
+.notification-preview-media {
+  display: flex;
+  gap: var(--spacing-xs);
+  align-items: center;
+}
+
+.notification-preview-media img,
+.notification-preview-plate {
+  width: 80px;
+  height: 80px;
+  border-radius: var(--border-radius);
+  object-fit: cover;
+  background: var(--light-bg);
+  flex-shrink: 0;
+}
+
+.notification-preview-plate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+}
+
+.notification-preview-more {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
 .notification-time {
   font-size: 0.8rem;
   color: var(--text-secondary);

@@ -20,6 +20,7 @@ import { formatDate, formatAddress } from '../utils/helpers';
 import RichText from './RichText';
 import EmojiText from './EmojiText';
 import Pic from './Pic';
+import Thumbnail from './Thumbnail';
 import { customEmojiMap } from '../utils/customEmoji';
 import {
   stripMediaUrls,
@@ -125,31 +126,59 @@ const describeTarget = (
 };
 
 /**
- * What a note holds, when it holds no words.
+ * A note that holds no words, shown rather than described.
  *
- * A preview prints the text and leaves out the pictures, videos and quote
- * references, because those are drawn rather than printed — so a note made
- * of nothing but those strips down to an empty string. That gap used to be
- * filled with "🔁 Quoted a post", which reads as a description of what the
- * person did, in the one place on the row that describes the note they did
- * it to: a like on a note that was only a photograph was announced as
- * somebody quoting a post. Naming what is in the note says the true thing
- * either way round.
+ * A preview prints the note's text and leaves out its pictures, videos and
+ * quote references, because those are drawn rather than printed — so a note
+ * made of nothing but those strips down to an empty string. The gap was
+ * filled first with "🔁 Quoted a post", a description of an action in the
+ * one place on the row that describes the note the action was aimed at, and
+ * then with "🖼 a picture", which is at least true but is still a word
+ * standing in for a photograph anyone can recognise at a glance.
+ *
+ * So the picture itself goes there, small, asked for at the size it is
+ * drawn. Only what has a picture to show can be shown: a plain video file
+ * carries no poster anywhere in the note, so that one still says what it is.
  */
 const AUDIO_EMBEDS = ['spotify', 'soundcloud', 'applemusic', 'deezer', 'tidal'];
 
-const describeWordlessNote = (content: string): string | null => {
+/** How many fit on a row before the rest are better left unsaid */
+const PREVIEW_PICTURES = 3;
+/** Twice the drawn size, so it is sharp on a dense screen */
+const PREVIEW_PICTURE_WIDTH = 160;
+
+const previewWordlessNote = (content: string): React.ReactNode => {
   if (quoteRefRegex('i').test(content)) return '🔁 a quoted post';
-  if (extractVideoUrls(content).length || extractStreamUrls(content).length) return '🎬 a video';
 
   const embeds = extractEmbeds(content);
-  if (embeds.length) {
-    return embeds.every(e => AUDIO_EMBEDS.includes(e.kind)) ? '🎵 a track' : '🎬 a video';
+  const posters = [
+    ...extractImageUrls(content),
+    ...embeds.map(embed => embed.thumbnail).filter((url): url is string => !!url)
+  ];
+
+  if (posters.length) {
+    return (
+      <span className="notification-preview-media">
+        {posters.slice(0, PREVIEW_PICTURES).map(url => (
+          <Thumbnail
+            key={url}
+            src={url}
+            width={PREVIEW_PICTURE_WIDTH}
+            fallback="🖼"
+            fallbackClassName="notification-preview-plate"
+          />
+        ))}
+        {posters.length > PREVIEW_PICTURES && (
+          <span className="notification-preview-more">+{posters.length - PREVIEW_PICTURES}</span>
+        )}
+      </span>
+    );
   }
 
-  const pictures = extractImageUrls(content).length;
-  if (pictures > 1) return `🖼 ${pictures} pictures`;
-  if (pictures) return '🖼 a picture';
+  if (extractVideoUrls(content).length || extractStreamUrls(content).length) return '🎬 a video';
+  if (embeds.length) {
+    return embeds.every(embed => AUDIO_EMBEDS.includes(embed.kind)) ? '🎵 a track' : '🎬 a video';
+  }
 
   return null;
 };
@@ -403,10 +432,10 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
 
     // Raw content can be just a "nostr:nevent1..."/"note1..." quote
     // reference, a photograph or a video with no other text — strip it like
-    // EventCard does instead of showing that literal string, and say what
-    // the note is made of when stripping leaves nothing to print
+    // EventCard does instead of showing that literal string, and show the
+    // note itself when stripping leaves nothing to print
     const stripped = stripMediaUrls(rawContent);
-    if (!stripped) return describeWordlessNote(rawContent);
+    if (!stripped) return previewWordlessNote(rawContent);
 
     // Mentions, hashtags and links were showing as raw "nostr:npub1…" text
     return (
