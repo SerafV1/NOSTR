@@ -12,6 +12,7 @@ import {
   readCachedTargets,
   dropMuted,
   dropStrangers,
+  notificationActor,
   notificationsFromFollowsOnly,
   setNotificationsFromFollowsOnly
 } from '../nostr/notifications';
@@ -256,7 +257,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
       // about `fetched` left those rows showing a shortened key and a blank
       // avatar until something else happened to load that profile.
       const [actorProfiles] = await Promise.all([
-        NostrCore.fetchProfiles(shown.map(n => n.event.pubkey)),
+        NostrCore.fetchProfiles(shown.map(n => notificationActor(n.event))),
         fetchTargets([...shown, ...fetched])
       ]);
       setProfiles(prev => ({ ...prev, ...Object.fromEntries(actorProfiles) }));
@@ -305,7 +306,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
 
   const handleClick = (notification: NostrNotification) => {
     if (notification.type === 'follow' || notification.type === 'unfollow') {
-      onNavigateToProfile(notification.event.pubkey);
+      onNavigateToProfile(notificationActor(notification.event));
       return;
     }
     if (notification.type === 'livechat') {
@@ -332,7 +333,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
     if (targetId) {
       onNavigateToNote(targetId);
     } else {
-      onNavigateToProfile(notification.event.pubkey);
+      onNavigateToProfile(notificationActor(notification.event));
     }
   };
 
@@ -415,12 +416,16 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
 
       <div className="notification-list">
         {shown.map((notification) => {
+          // A zap receipt is signed by the wallet service that settled the
+          // payment, not by the person who chose to send it — so every zap
+          // was announced as "Alby Zapper", with the sender's own name only
+          // inside the request the receipt carries
+          const actor = notificationActor(notification.event);
           // Profiles persist locally, so the name and avatar are usually
           // known before any request goes out — reading them here stops the
           // list rendering as anonymous placeholders on every visit
-          const profile = profiles[notification.event.pubkey]
-            || EventCache.getProfile(notification.event.pubkey);
-          const displayName = profile?.display_name || profile?.name || formatAddress(notification.event.pubkey);
+          const profile = profiles[actor] || EventCache.getProfile(actor);
+          const displayName = profile?.display_name || profile?.name || formatAddress(actor);
           const meta = TYPE_META[notification.type];
           const icon = notification.type === 'reaction'
             ? reactionIcon(notification.event.content)
@@ -462,7 +467,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
                 <div className="notification-text">
                   <button
                     className="notification-actor"
-                    onClick={(e) => { e.stopPropagation(); onNavigateToProfile(notification.event.pubkey); }}
+                    onClick={(e) => { e.stopPropagation(); onNavigateToProfile(actor); }}
                   >
                     <EmojiText text={displayName} emojis={profile?.emojis} />
                   </button>{' '}
