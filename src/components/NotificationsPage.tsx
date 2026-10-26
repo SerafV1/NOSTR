@@ -21,7 +21,14 @@ import RichText from './RichText';
 import EmojiText from './EmojiText';
 import Pic from './Pic';
 import { customEmojiMap } from '../utils/customEmoji';
-import { stripMediaUrls } from '../utils/media';
+import {
+  stripMediaUrls,
+  extractImageUrls,
+  extractVideoUrls,
+  extractStreamUrls,
+  extractEmbeds,
+  quoteRefRegex
+} from '../utils/media';
 
 interface NotificationsPageProps {
   pubkey: string;
@@ -115,6 +122,36 @@ const describeTarget = (
     default:
       return { noun: fallback, preview: target.content, tags: target.tags };
   }
+};
+
+/**
+ * What a note holds, when it holds no words.
+ *
+ * A preview prints the text and leaves out the pictures, videos and quote
+ * references, because those are drawn rather than printed — so a note made
+ * of nothing but those strips down to an empty string. That gap used to be
+ * filled with "🔁 Quoted a post", which reads as a description of what the
+ * person did, in the one place on the row that describes the note they did
+ * it to: a like on a note that was only a photograph was announced as
+ * somebody quoting a post. Naming what is in the note says the true thing
+ * either way round.
+ */
+const AUDIO_EMBEDS = ['spotify', 'soundcloud', 'applemusic', 'deezer', 'tidal'];
+
+const describeWordlessNote = (content: string): string | null => {
+  if (quoteRefRegex('i').test(content)) return '🔁 a quoted post';
+  if (extractVideoUrls(content).length || extractStreamUrls(content).length) return '🎬 a video';
+
+  const embeds = extractEmbeds(content);
+  if (embeds.length) {
+    return embeds.every(e => AUDIO_EMBEDS.includes(e.kind)) ? '🎵 a track' : '🎬 a video';
+  }
+
+  const pictures = extractImageUrls(content).length;
+  if (pictures > 1) return `🖼 ${pictures} pictures`;
+  if (pictures) return '🖼 a picture';
+
+  return null;
 };
 
 const NotificationsPage: React.FC<NotificationsPageProps> = ({
@@ -365,11 +402,11 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
     if (!rawContent) return null;
 
     // Raw content can be just a "nostr:nevent1..."/"note1..." quote
-    // reference with no other text — strip it like EventCard does instead
-    // of showing that literal string, falling back to a plain label when
-    // stripping leaves nothing else to preview
+    // reference, a photograph or a video with no other text — strip it like
+    // EventCard does instead of showing that literal string, and say what
+    // the note is made of when stripping leaves nothing to print
     const stripped = stripMediaUrls(rawContent);
-    if (!stripped) return '🔁 Quoted a post';
+    if (!stripped) return describeWordlessNote(rawContent);
 
     // Mentions, hashtags and links were showing as raw "nostr:npub1…" text
     return (
