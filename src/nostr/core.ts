@@ -2348,12 +2348,34 @@ export class NostrCore {
     try {
       const relayPool = getRelayPool();
 
+      // Ask for this one address. The `d` tag is the one tag every relay
+      // indexes, because it is what addresses a replaceable event at all:
+      // measured across the nine default relays, every one that held a
+      // given live stream answered a {kind, author, #d} query with exactly
+      // that event and nothing else, while the author-only query below made
+      // each of them send fifty. That matters beyond the wire: a streaming
+      // service signs every one of its broadcasters' events, and accounts
+      // with 268, 208 and 144 addresses are on the relays today — a window
+      // of fifty of an author's newest is not a way to find one of them.
+      //
       // waitForAll: true — a single specific event must not be lost just
       // because some other, faster relay answered first with unrelated
       // matches of the same kind (the default early-exit optimization is
       // tuned for feed loads, not a single-item lookup like this one)
-      let events = await relayPool.fetchEvents([{ kinds: [kind], authors: [pubkey], limit: 50 }], true);
+      let events = identifier
+        ? await relayPool.fetchEvents(
+          [{ kinds: [kind], authors: [pubkey], '#d': [identifier], limit: 5 }],
+          true
+        )
+        : [];
       let matches = events.filter(matchesAddress);
+
+      // Some relays answer a filter combining a kind, an author and a tag
+      // with nothing at all. Widen a step at a time rather than give up.
+      if (matches.length === 0) {
+        events = await relayPool.fetchEvents([{ kinds: [kind], authors: [pubkey], limit: 50 }], true);
+        matches = events.filter(matchesAddress);
+      }
 
       // Narrow query came up empty — some relays don't reliably answer a
       // combined kind+authors filter. Fall back to a kind-only query and

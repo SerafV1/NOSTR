@@ -34,6 +34,25 @@ interface LiveStreamPageProps {
 /** Faces shown before the rest fold into a "+N" */
 const VISIBLE_FACES = 8;
 
+/**
+ * How long ago the broadcaster's software last rewrote the event.
+ *
+ * The viewer count is a tag on a replaceable event, and two clients reading
+ * the same stream can only disagree about it when they hold different
+ * editions — measured on one broadcast, every relay holding it carried the
+ * same number, and the service had not rewritten the event in thirty-six
+ * minutes. So the figure says when it was true.
+ */
+const sinceWhen = (at: number): string => {
+  if (!at) return 'at an unknown time';
+  const minutes = Math.floor((Date.now() - at * 1000) / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes === 1) return 'a minute ago';
+  if (minutes < 60) return `${minutes} minutes ago`;
+  const hours = Math.floor(minutes / 60);
+  return hours === 1 ? 'an hour ago' : `${hours} hours ago`;
+};
+
 const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifier, relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
   // On a phone the chat sits below the video and the details, far from what
   // it is about. Opening it over the page keeps the stream in view while
@@ -498,7 +517,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                   title={
                     present.length > (published ?? 0)
                       ? 'How many people have spoken in the chat lately — more than the broadcaster\'s own software is publishing'
-                      : "The number the broadcaster's own software publishes — nostr has no other source for it"
+                      : `The number the broadcaster's own software publishes — nostr has no other source for it. Last published ${sinceWhen(stream.publishedAt)}.`
                   }
                 >
                   👁 {counted} viewers

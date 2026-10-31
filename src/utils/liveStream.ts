@@ -5,6 +5,13 @@ export type LiveStreamStatus = 'planned' | 'live' | 'ended';
 
 export interface LiveStreamInfo {
   id: string;
+  /**
+   * When this edition of the event was published. A live event is a
+   * replaceable one the broadcaster's software rewrites as the stream goes
+   * on, and everything in it — the viewer count above all — is only as
+   * current as this moment.
+   */
+  publishedAt: number;
   /** Author of the event — often a platform account, not the streamer */
   pubkey: string;
   /**
@@ -132,6 +139,7 @@ export function parseLiveEvent(event: NostrEventSigned): LiveStreamInfo {
 
   return {
     id: event.id,
+    publishedAt: event.created_at || 0,
     pubkey: event.pubkey,
     hostPubkey: hostTag?.[1] || event.pubkey,
     dTag: tag('d') || '',
