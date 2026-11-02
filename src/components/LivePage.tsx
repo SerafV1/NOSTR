@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Thumbnail from './Thumbnail';
 import { UserProfile, EVENT_KINDS, NostrEventSigned } from '../types';
 import { NostrCore, PersistentCache } from '../nostr/core';
@@ -7,6 +7,7 @@ import { parseLiveEvent, encodeLiveNaddr, isEffectivelyLive, isAudioRoom, poster
 import { usePosterTick } from '../hooks/usePosterTick';
 import { formatAddress } from '../utils/helpers';
 import Pic from './Pic';
+import { LIVE_CATEGORIES, ALL_LIVE, inCategory, isLiveCategory } from '../utils/liveCategories';
 
 // Public list, identical for everyone, so it isn't keyed per account
 const LIVE_CACHE_KEY = 'live_now';
@@ -30,6 +31,21 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
   // it is being rewritten while it is looked at
   const posterAt = usePosterTick();
 
+  /**
+   * Which tab is open, kept in the address so it can be sent to somebody
+   * and so a reload lands back where the reader was. A word that names no
+   * tab — a typo, or a category this version does not have — opens all of
+   * them rather than an empty page.
+   */
+  const [params, setParams] = useSearchParams();
+  const asked = params.get('c') || ALL_LIVE;
+  const category = isLiveCategory(asked) ? asked : ALL_LIVE;
+  const chooseCategory = (id: string) => {
+    const next = new URLSearchParams(params);
+    if (id === ALL_LIVE) next.delete('c'); else next.set('c', id);
+    setParams(next, { replace: true });
+  };
+
   // Whoever is on air now, most watched first. Not newest-announcement
   // first, which is what the order used to be: a running stream announces
   // itself again every minute or so, and with the list now keeping itself up
@@ -49,6 +65,24 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
         b.at - a.at)
       .map(({ info }) => info),
     [events]
+  );
+
+  /**
+   * How many of the streams on air belong to each tab, so a reader can see
+   * where there is something to watch without opening every one. Counted
+   * over everything live, not over what the open tab shows.
+   */
+  const counts = useMemo(() => {
+    const tally = new Map<string, number>([[ALL_LIVE, streams.length]]);
+    for (const { id } of LIVE_CATEGORIES) {
+      tally.set(id, streams.filter(stream => inCategory(stream, id)).length);
+    }
+    return tally;
+  }, [streams]);
+
+  const shown = useMemo(
+    () => streams.filter(stream => inCategory(stream, category)),
+    [streams, category]
   );
 
   const takeEvents = (incoming: NostrEventSigned[]) => {
@@ -143,16 +177,42 @@ const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
       <div className="live-page-container">
         <h1>Live Now</h1>
 
+        {/* What a stream is about is a hashtag on it, written by whoever
+            started it — so a tab holds whoever said the word, and plenty of
+            broadcasts say nothing at all and live only under "All live". */}
+        <div className="live-category-tabs" role="tablist" aria-label="Stream categories">
+          {[{ id: ALL_LIVE, label: 'All live' }, ...LIVE_CATEGORIES].map(tab => {
+            const held = counts.get(tab.id) ?? 0;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={category === tab.id}
+                className={`live-category-tab${category === tab.id ? ' active' : ''}${held === 0 ? ' empty' : ''}`}
+                onClick={() => chooseCategory(tab.id)}
+              >
+                {tab.label}
+                <span className="live-category-count">{held}</span>
+              </button>
+            );
+          })}
+        </div>
+
         {loading && <div className="loading">Loading live streams...</div>}
 
-        {!loading && streams.length === 0 && (
+        {!loading && shown.length === 0 && (
           <div className="empty-state">
-            <p>No one is live right now.</p>
+            <p>
+              {streams.length === 0
+                ? 'No one is live right now.'
+                : 'Nobody is live under this one — the rest are under All live.'}
+            </p>
           </div>
         )}
 
         <div className="live-streams-grid">
-          {streams.map(stream => {
+          {shown.map(stream => {
             const profile = profiles.get(stream.pubkey);
             // Whoever is actually presenting — the same person the stream
             // page names, which on zap.stream is not the account that signed

@@ -5858,6 +5858,64 @@ a.capability-indicator.paid:hover {
   margin-top: var(--spacing-lg);
 }
 
+/* A row of subjects, scrolled sideways on a narrow screen rather than
+   wrapped into a block that pushes the streams off the first screenful */
+.live-category-tabs {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+  padding-bottom: var(--spacing-xs);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.live-category-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.live-category-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
+  padding: var(--spacing-xs) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--light-bg);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.live-category-tab:hover {
+  color: var(--text-primary);
+  border-color: var(--primary-color);
+}
+
+.live-category-tab.active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #fff;
+}
+
+/* Nothing on air under it: still reachable, but it says so before it is
+   pressed rather than answering with an empty page */
+.live-category-tab.empty:not(.active) {
+  opacity: 0.55;
+}
+
+.live-category-count {
+  font-size: 0.75rem;
+  padding: 0 0.4em;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.live-category-tab.active .live-category-count {
+  background: rgba(0, 0, 0, 0.25);
+}
+
 .live-stream-card {
   display: flex;
   flex-direction: column;
