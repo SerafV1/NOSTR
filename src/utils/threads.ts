@@ -31,6 +31,32 @@ export function isQuoteOf(event: NostrEventSigned, noteId: string): boolean {
  * one too, and reading every `e` tag as an answer took quotes out of the
  * Posts tab and filed them under Replies.
  */
+/**
+ * The note this one is a direct answer to. NIP-10 marks it 'reply', with
+ * the top of the thread marked 'root'; older notes use the positional
+ * convention where the last 'e' tag is the parent.
+ */
+export function directParentId(event: NostrEventSigned): string | null {
+  const eTags = event.tags.filter(t => t[0] === 'e');
+  if (eTags.length === 0) return null;
+  const marked = eTags.find(t => t[3] === 'reply');
+  if (marked) return marked[1] || null;
+  const root = eTags.find(t => t[3] === 'root');
+  // Only a root marker means this answers the top of the thread directly
+  if (root && eTags.length === 1) return root[1] || null;
+  return eTags[eTags.length - 1][1] || null;
+}
+
+/**
+ * What a reaction, a repost or a zap receipt is about: the last `e` tag.
+ * NIP-25 says so for a reaction, and the others follow the same
+ * convention — the thread's other ids are carried alongside it.
+ */
+export function targetOfResponse(event: NostrEventSigned): string | null {
+  const eTags = event.tags.filter(t => t[0] === 'e' && t[1]);
+  return eTags.length ? eTags[eTags.length - 1][1] : null;
+}
+
 export function isReplyEvent(event: NostrEventSigned): boolean {
   const quoted = new Set(
     event.tags.filter(t => t[0] === 'q' && t[1]).map(t => t[1])

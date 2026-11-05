@@ -7,7 +7,7 @@ import {
   EventWithMetadata
 } from '../types';
 import { nip19 } from 'nostr-tools';
-import { isQuoteOf } from '../utils/threads';
+import { isQuoteOf, directParentId, targetOfResponse } from '../utils/threads';
 import { NostrCrypto, CredentialManager, ExtensionManager } from './crypto';
 import { getRelayPool, RelayPool, DEFAULT_RELAYS, UNREACHABLE_RELAYS } from './relay';
 import { replyTags } from './replyTags';
@@ -3245,6 +3245,67 @@ export class NostrCore {
   }
 
   /**
+   * Everything several notes have drawn, in one pass over the relays.
+   *
+   * `fetchEngagement` asks about one note, which is right for a card
+   * somebody is looking at; ranking a page of replies that way would be a
+   * round trip per reply. This asks once, for every kind that counts and
+   * every id at once, and tallies the answers here.
+   */
+  static async fetchEngagementTotals(eventIds: string[]): Promise<Map<string, EngagementTotals>> {
+    const totals = new Map<string, EngagementTotals>();
+    if (eventIds.length === 0) return totals;
+    for (const id of eventIds) {
+      totals.set(id, { likes: 0, reposts: 0, replies: 0, zaps: 0, sats: 0 });
+    }
+
+    try {
+      const wanted = new Set(eventIds);
+      const responses = await getRelayPool().fetchEvents([{
+        kinds: [
+          EVENT_KINDS.TEXT_NOTE,
+          EVENT_KINDS.REPOST,
+          EVENT_KINDS.REACTION,
+          EVENT_KINDS.ZAP_RECEIPT
+        ],
+        '#e': eventIds,
+        limit: 2000
+      }]);
+
+      // The same answer can arrive from several relays
+      const counted = new Set<string>();
+      for (const event of responses) {
+        if (counted.has(event.id)) continue;
+        counted.add(event.id);
+
+        if (event.kind === EVENT_KINDS.TEXT_NOTE) {
+          const parent = directParentId(event);
+          if (!parent || !wanted.has(parent) || isQuoteOf(event, parent)) continue;
+          totals.get(parent)!.replies += 1;
+          continue;
+        }
+
+        const target = targetOfResponse(event);
+        if (!target || !wanted.has(target)) continue;
+        const held = totals.get(target)!;
+        if (event.kind === EVENT_KINDS.REPOST) held.reposts += 1;
+        else if (event.kind === EVENT_KINDS.REACTION) {
+          // A thumbs-down is not a mark of popularity
+          if (event.content.trim() === '-') continue;
+          held.likes += 1;
+        } else {
+          held.zaps += 1;
+          held.sats += this.parseZapAmountSats(event);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch engagement totals:', error);
+    }
+
+    return totals;
+  }
+
+  /**
    * Pull recipient/sender/note/amount out of a zap receipt. The sender is
    * only reliably known via the NIP-57 `P` (uppercase) tag; not every
    * receipt has one, so this falls back to the embedded zap request's own
@@ -3356,6 +3417,17 @@ export interface EngagementCounts {
   reposts: number;
   likes: number;
   zapSats: number;
+}
+
+/** What one note has drawn, counted alongside a batch of its siblings */
+export interface EngagementTotals {
+  likes: number;
+  reposts: number;
+  replies: number;
+  /** How many people paid, which counts like the rest */
+  zaps: number;
+  /** How much they paid, which does not — kept for breaking a tie */
+  sats: number;
 }
 
 export class PersistentCache {

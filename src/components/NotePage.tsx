@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { NostrEventSigned } from '../types';
-import { NostrCore, EventCache } from '../nostr/core';
+import { NostrCore, EventCache, EngagementTotals } from '../nostr/core';
 import EventCard from './EventCard';
-import { isQuoteOf } from '../utils/threads';
+import { isQuoteOf, directParentId } from '../utils/threads';
 
 interface NotePageProps {
   noteId: string;
@@ -13,21 +13,27 @@ interface NotePageProps {
   onBack: () => void;
 }
 
+/** How the answers under a post are arranged */
+type ReplyOrder = 'oldest' | 'newest' | 'top';
+
+const ORDERS: { id: ReplyOrder; label: string; title: string }[] = [
+  { id: 'oldest', label: 'Oldest', title: 'In the order they were written, which is how a conversation reads' },
+  { id: 'newest', label: 'Newest', title: 'The most recent answers first' },
+  { id: 'top', label: 'Top', title: 'Whatever drew the most — likes, reposts, answers and zaps together' }
+];
+
 /**
- * The note this one is a direct answer to. NIP-10 marks it 'reply', with
- * the top of the thread marked 'root'; older notes use the positional
- * convention where the last 'e' tag is the parent.
+ * How much a reply drew, as one number.
+ *
+ * Likes, reposts, answers and the number of people who zapped all count the
+ * same: each is one person doing something about it. The amount paid is
+ * deliberately not in the sum — a single large zap would otherwise outrank
+ * a reply the whole room answered — but it breaks a tie, because between
+ * two replies that drew the same attention the better-paid one is the one
+ * people meant it about.
  */
-const directParentId = (ev: NostrEventSigned): string | null => {
-  const eTags = ev.tags.filter(t => t[0] === 'e');
-  if (eTags.length === 0) return null;
-  const marked = eTags.find(t => t[3] === 'reply');
-  if (marked) return marked[1] || null;
-  const root = eTags.find(t => t[3] === 'root');
-  // Only a root marker means this answers the top of the thread directly
-  if (root && eTags.length === 1) return root[1] || null;
-  return eTags[eTags.length - 1][1] || null;
-};
+const standing = (totals: EngagementTotals | undefined): number =>
+  totals ? totals.likes + totals.reposts + totals.replies + totals.zaps : 0;
 
 const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, onBack }) => {
   const [note, setNote] = useState<NostrEventSigned | null>(null);
@@ -36,6 +42,10 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
   // just the one post immediately above it
   const [parentNotes, setParentNotes] = useState<NostrEventSigned[]>([]);
   const [replies, setReplies] = useState<NostrEventSigned[]>([]);
+  const [order, setOrder] = useState<ReplyOrder>('oldest');
+  /** What each reply has drawn, once somebody asks to see the best ones */
+  const [totals, setTotals] = useState<Map<string, EngagementTotals>>(new Map());
+  const [ranking, setRanking] = useState(false);
   const [loading, setLoading] = useState(true);
 
   /**
@@ -271,6 +281,24 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
   // what answers *this* note belongs in the list: a reply to a reply reads
   // as an answer to the post when shown alongside the direct ones. Open the
   // reply itself and the chain above it, plus its own replies, are there.
+  /**
+   * What the answers drew, asked for only when somebody wants the best
+   * ones. A page of replies is read in the order they were written far more
+   * often than it is ranked, and counting is a query of its own.
+   */
+  const replyIds = useMemo(() => replies.map(r => r.id).sort().join(','), [replies]);
+
+  useEffect(() => {
+    if (order !== 'top' || !relaysConnected || !replyIds) return;
+    let dropped = false;
+    setRanking(true);
+    NostrCore.fetchEngagementTotals(replyIds.split(','))
+      .then(found => { if (!dropped) setTotals(found); })
+      .catch(error => console.error('Failed to rank replies:', error))
+      .finally(() => { if (!dropped) setRanking(false); });
+    return () => { dropped = true; };
+  }, [order, replyIds, relaysConnected]);
+
   const knownReplyIds = new Set(replies.map(r => r.id));
   const directReplies = replies
     .filter(reply => {
@@ -281,7 +309,18 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
       // it still references this note, so showing it beats dropping it
       return !parent || parent === noteId || !knownReplyIds.has(parent);
     })
-    .sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+    .sort((a, b) => {
+      if (order === 'newest') return (b.created_at || 0) - (a.created_at || 0);
+      if (order === 'top') {
+        const byStanding = standing(totals.get(b.id)) - standing(totals.get(a.id));
+        if (byStanding) return byStanding;
+        const bySats = (totals.get(b.id)?.sats || 0) - (totals.get(a.id)?.sats || 0);
+        if (bySats) return bySats;
+        // Nothing drew anything: the newest of them is the live one
+        return (b.created_at || 0) - (a.created_at || 0);
+      }
+      return (a.created_at || 0) - (b.created_at || 0);
+    });
 
   return (
     <div className="note-page">
@@ -335,7 +374,29 @@ const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigate
 
             {directReplies.length > 0 && (
               <>
-                <div className="thread-divider">Replies</div>
+                <div className="thread-divider">
+                  <span>Replies</span>
+                  {/* Only worth offering where there is something to
+                      arrange — two answers are in whatever order they are */}
+                  {directReplies.length > 1 && (
+                    <span className="reply-order" role="tablist" aria-label="Order of replies">
+                      {ORDERS.map(choice => (
+                        <button
+                          key={choice.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={order === choice.id}
+                          className={`reply-order-btn${order === choice.id ? ' active' : ''}`}
+                          title={choice.title}
+                          onClick={() => setOrder(choice.id)}
+                        >
+                          {choice.label}
+                        </button>
+                      ))}
+                      {ranking && <span className="reply-order-working">counting…</span>}
+                    </span>
+                  )}
+                </div>
                 {directReplies.map(reply => (
                   <div className="thread-reply" key={reply.id}>
                     <EventCard
