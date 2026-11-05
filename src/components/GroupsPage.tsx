@@ -804,6 +804,10 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
       );
     } finally {
       setSending(false);
+      // Pressing Send puts the focus on the button, which is then disabled
+      // while the message is in the air, and a disabled element loses the
+      // focus to the page body. So it is handed back to the box.
+      draftRef.current?.focus();
     }
   };
 

@@ -899,6 +899,11 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
       alert(error instanceof Error ? error.message : 'Failed to send message');
     } finally {
       setSending(false);
+      // Back in the box, ready for the next line. Pressing Send with the
+      // mouse puts the focus on the button, and the button is disabled for
+      // as long as the message is in the air — a disabled element loses the
+      // focus to the page body, so the next thing typed went nowhere.
+      inputRef.current?.focus();
     }
   };
 
@@ -1342,6 +1347,11 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
             underneath. Side by side, the five of them squeezed the message
             box down to a slot barely wider than the word in it. */}
         <div className="live-chat-line">
+        {/* The box is not disabled while a message is on its way: it is
+            emptied the moment it is sent, so there is nothing left in it to
+            protect, and disabling it threw the cursor out of the chat — a
+            disabled element loses the focus to the page body — as well as
+            stopping the next line being typed while the relays answered. */}
         <input
           ref={inputRef}
           type="text"
@@ -1361,7 +1371,7 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
           }}
           onKeyDown={(e) => { if (e.key === 'Escape') closeSuggestions(); }}
           onFocus={() => setShowEmojiPicker(false)}
-          disabled={!isLoggedIn || disabled || sending}
+          disabled={!isLoggedIn || disabled}
           maxLength={500}
         />
         <button

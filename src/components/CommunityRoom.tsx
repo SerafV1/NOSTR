@@ -279,6 +279,10 @@ const CommunityRoom: React.FC<CommunityRoomProps> = ({
       setNotice(error instanceof Error ? error.message : 'Could not send that');
     } finally {
       setSending(false);
+      // Pressing Send puts the focus on the button, which is then disabled
+      // while the message is in the air, and a disabled element loses the
+      // focus to the page body. So it is handed back to the box.
+      draftRef.current?.focus();
     }
   };
 
@@ -474,7 +478,7 @@ const CommunityRoom: React.FC<CommunityRoomProps> = ({
           value={draft}
           rows={1}
           maxLength={2000}
-          disabled={sending || !channel}
+          disabled={!channel}
           onChange={e => setDraft(e.target.value)}
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void say(e as any); }

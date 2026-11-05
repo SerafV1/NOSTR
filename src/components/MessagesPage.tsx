@@ -69,6 +69,8 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const threadEndRef = useRef<HTMLDivElement>(null);
+  /** So the cursor can be put back where it was after a message goes */
+  const draftRef = useRef<HTMLTextAreaElement>(null);
 
   const loadMessages = async () => {
     const cached = PersistentCache.get<DirectMessage[]>(`dm_${pubkey}`);
@@ -188,6 +190,10 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
       alert(error instanceof Error ? error.message : 'Failed to send message');
     } finally {
       setSending(false);
+      // Pressing Send puts the focus on the button, which is then disabled
+      // while the message is in the air, and a disabled element loses the
+      // focus to the page body. So it is handed back to the box.
+      draftRef.current?.focus();
     }
   };
 
@@ -276,6 +282,7 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
 
         <form className="thread-compose" onSubmit={handleSend}>
           <textarea
+            ref={draftRef}
             className="thread-compose-input"
             placeholder={alone ? 'Write a private message...' : 'Write to the group...'}
             value={draft}
@@ -284,7 +291,6 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
               if (e.key === 'Enter' && e.ctrlKey) handleSend(e as any);
             }}
             rows={2}
-            disabled={sending}
           />
           <button type="submit" className="btn btn-primary" disabled={!draft.trim() || sending}>
             {sending ? 'Sending...' : 'Send'}
