@@ -165,6 +165,32 @@ const LiveVideoPlayer: React.FC<LiveVideoPlayerProps> = ({ src, className, onMin
          * the player needs in hand anyway.
          */
         backBufferLength: 30,
+        /**
+         * Catching back up to the broadcast.
+         *
+         * A live player falls behind every time anything goes wrong — a
+         * rebuffer, a slow segment, a laptop that cannot decode fast enough
+         * — because it keeps its place while the broadcast moves on. Nothing
+         * in hls.js's defaults ever wins that time back: `maxLiveSyncPlaybackRate`
+         * is 1, which makes its catch-up return immediately, and
+         * `liveMaxLatencyDurationCount` is Infinity, so the test for a
+         * re-sync, `currentTime < edge - maxLatency`, can never be true. The
+         * lag is therefore permanent and cumulative, which is why a stream
+         * watched for an hour is a minute behind its own chat. Measured on a
+         * live broadcast: a forty-second stall left the picture 13s behind,
+         * and two minutes later it was 27s behind, with the playback rate
+         * sitting at exactly 1 throughout.
+         *
+         * A rate of up to 1.2 pulls back small drift without anything
+         * audible — hls.js ramps it on a curve and only inside the live
+         * range. Beyond ten target durations it stops being drift and a
+         * seek is the honest answer, which is what the latency cap does.
+         * `liveSyncDurationCount` has to be given alongside it: hls.js
+         * throws if the cap is set without it.
+         */
+        liveSyncDurationCount: 3,
+        liveMaxLatencyDurationCount: 10,
+        maxLiveSyncPlaybackRate: 1.2,
         fetchSetup: (context, initParams) =>
           new Request(context.url, { ...initParams, cache: 'no-store' }),
         xhrSetup: (xhr) => {
