@@ -8,6 +8,7 @@ import {
 } from '../utils/liveStream';
 import { CredentialManager } from '../nostr/crypto';
 import { NostrCore } from '../nostr/core';
+import { useReloadOnNewBuild } from '../hooks/useReloadOnNewBuild';
 
 interface LiveZappersPageProps {
   kind: number;
@@ -29,6 +30,10 @@ const LiveZappersPage: React.FC<LiveZappersPageProps> = ({
   relaysConnected,
   onNavigateToProfile
 }) => {
+  // Left running in OBS for days at a time, so it picks up a new build on
+  // its own rather than showing yesterday's code until somebody refreshes
+  useReloadOnNewBuild();
+
   const params = new URLSearchParams(window.location.search);
   const [transparent, setTransparent] = useState(() => params.get('transparent') === '1');
   const [bold, setBold] = useState(() => params.get('bold') === '1');

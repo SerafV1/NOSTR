@@ -8,6 +8,7 @@ import {
 } from '../utils/liveStream';
 import { CredentialManager } from '../nostr/crypto';
 import { NostrCore } from '../nostr/core';
+import { useReloadOnNewBuild } from '../hooks/useReloadOnNewBuild';
 
 interface LiveChatPageProps {
   kind: number;
@@ -36,6 +37,10 @@ const LiveChatPage: React.FC<LiveChatPageProps> = ({
   onNavigateToNote,
   onNavigateToTopic
 }) => {
+  // Left running in OBS for days at a time, so it picks up a new build on
+  // its own rather than showing yesterday's code until somebody refreshes
+  useReloadOnNewBuild();
+
   const params = new URLSearchParams(window.location.search);
   const [transparent, setTransparent] = useState(() => params.get('transparent') === '1');
   // Over a moving picture, heavier text carries better

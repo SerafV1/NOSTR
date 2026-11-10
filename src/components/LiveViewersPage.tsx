@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { NostrCore } from '../nostr/core';
 import { useRoomPresence } from '../hooks/useRoomPresence';
+import { useReloadOnNewBuild } from '../hooks/useReloadOnNewBuild';
 import { CredentialManager } from '../nostr/crypto';
 import {
   encodeHostParam,
@@ -34,6 +35,10 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
   identifier,
   relaysConnected
 }) => {
+  // Left running in OBS for days at a time, so it picks up a new build on
+  // its own rather than showing yesterday's code until somebody refreshes
+  useReloadOnNewBuild();
+
   const params = new URLSearchParams(window.location.search);
   const [transparent, setTransparent] = useState(() => params.get('transparent') === '1');
   const [bold, setBold] = useState(() => params.get('bold') === '1');
