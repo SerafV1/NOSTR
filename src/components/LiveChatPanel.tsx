@@ -971,17 +971,18 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   }, [inChatKey, profiles]);
 
   // Messages and zaps are two separate subscriptions but one conversation,
-  // so they are interleaved by time the way the room actually experienced them
-  // Zaps sit in the conversation, not on top of it: the relays replay every
-  // one the stream has ever taken, and being the newest events they landed
-  // at the bottom — where the chat scrolls to — leaving a screen of nothing
-  // but zap boxes. Only those from the stretch of time the messages cover
-  // are shown, and only the last few of them.
-  const oldestMessage = messages.length
-    ? Math.min(...messages.map(m => m.created_at || 0))
-    : 0;
-  const zapsInView = zaps
-    .filter(zap => (zap.created_at || 0) >= oldestMessage)
+  // so they are interleaved by time the way the room actually experienced
+  // them. The relays replay every zap the stream has ever taken, and a chat
+  // is a conversation rather than a ledger — so only the last few sit in it,
+  // and the zappers panel keeps the full tally.
+  //
+  // The cut used to be a time as well: nothing older than the oldest message
+  // in the room. That moved the moment anybody spoke. A stream whose chat
+  // was quiet showed its zaps, and the first line anybody wrote set the
+  // window to that instant and took every one of them off the screen —
+  // which is exactly what a zap vanishing after a message looked like.
+  const zapsInView = [...zaps]
+    .sort((a, b) => (a.created_at || 0) - (b.created_at || 0))
     .slice(-CHAT_ZAP_HISTORY);
 
   const timeline: TimelineEntry[] = !muteListRead ? [] : [
