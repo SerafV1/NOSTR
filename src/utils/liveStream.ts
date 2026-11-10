@@ -38,6 +38,8 @@ export interface LiveStreamInfo {
    */
   thumb: string;
   streamingUrl: string;
+  /** Relays the event names for its own room, where it names any (NIP-53) */
+  roomRelays: string[];
   /**
    * What this client shows it as: the broadcaster's own status, except that
    * a "live" nobody has refreshed in hours counts as over — otherwise the
@@ -149,7 +151,10 @@ export function parseLiveEvent(event: NostrEventSigned): LiveStreamInfo {
     service: tag('service') || '',
     labels: event.tags.filter(t => t[0] === 'l' && t[1]).map(t => t[1]),
     thumb: tag('thumb') || '',
-    streamingUrl: tag('streaming') || '',
+      streamingUrl: tag('streaming') || '',
+    // Where the broadcaster says the room lives (NIP-53 `relays`), so its
+    // chat and its zaps can be read where they actually land
+    roomRelays: (event.tags.find(t => t[0] === 'relays') || []).slice(1).filter(Boolean),
     status,
     announcedStatus,
     starts: tag('starts') ? Number(tag('starts')) : undefined,

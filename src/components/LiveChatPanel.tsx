@@ -286,7 +286,13 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
     let subId: string | null = null;
     let zapSubId: string | null = null;
 
+    // A room's talk and its zaps land wherever the client that made them
+    // writes, which need not be anywhere this app reads. Opened before the
+    // history is asked for, so the first question already covers them.
+    const roomRelays = NostrCore.connectStreamRelays();
+
     (async () => {
+      await roomRelays.catch(() => []);
       const [history, zapHistory] = await Promise.all([
         NostrCore.fetchLiveChatMessages(address),
         NostrCore.fetchLiveZaps(address)

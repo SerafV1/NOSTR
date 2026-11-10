@@ -84,6 +84,10 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
       }
     };
 
+    // The chat this counts from lands wherever the people talking write to,
+    // which need not be anywhere this app reads
+    void NostrCore.connectStreamRelays().catch(() => []);
+
     const refetch = async () => {
       const event = await NostrCore.fetchEventByAddress(kind, pubkey, identifier);
       if (event) readCount(event);

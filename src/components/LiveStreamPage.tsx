@@ -141,6 +141,9 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
           setStream(parseLiveEvent(event));
         }
         const parsed = parseLiveEvent(event);
+        // Where the broadcaster says this room lives, on top of the relays
+        // every room is read on
+        void NostrCore.connectStreamRelays(parsed.roomRelays).catch(() => []);
         // The zap and the host line follow whoever is presenting, which on
         // a platform-published stream is not the account that signed the
         // event — that one has no Lightning address, so the zap button

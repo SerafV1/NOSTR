@@ -55,6 +55,11 @@ const LiveZappersPanel: React.FC<LiveZappersPanelProps> = ({
     };
 
     (async () => {
+      // A stream's zaps land wherever the zapper's own client writes, which
+      // need not be anywhere this app reads — so the room's relays are
+      // opened before the tally is asked for
+      await NostrCore.connectStreamRelays().catch(() => []);
+      if (cancelled) return;
       const history = await NostrCore.fetchLiveZaps(address);
       if (cancelled) return;
       remember(history);

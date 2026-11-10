@@ -2874,6 +2874,39 @@ export class NostrCore {
   }
 
   /**
+   * Where a live room's talk and its zaps actually land.
+   *
+   * A chat line or a zap for a stream goes to whatever relays the client
+   * that made it writes to, and those need not be any of the ones being
+   * read here. A zap of 69 sats was reported missing from a stream's chat:
+   * it existed, signed and valid, on relay.zap.stream and purplerelay.com,
+   * and on none of this app's nine.
+   *
+   * Measured over sixty streams that were on air, six hours of their chat
+   * and zaps: seventeen events in all, of which this app's own relays held
+   * fifteen. relay.ditto.pub held all seventeen on its own — including both
+   * of the zaps from the stream that was reported — so it is read as well.
+   * It is the relay zap.stream itself uses to find stream providers, which
+   * is presumably why stream traffic collects there.
+   *
+   * Read-only, opened only while a live room is open, and never written to
+   * or added to anyone's relay list.
+   */
+  static readonly STREAM_RELAYS = ['wss://relay.ditto.pub'];
+
+  /**
+   * Open those, plus any a stream names for itself. A live event may carry
+   * a `relays` tag saying where its room lives — 87 of 996 on the relays do
+   * — and that is the broadcaster telling clients where to listen.
+   */
+  static async connectStreamRelays(named: string[] = []): Promise<string[]> {
+    const urls = [...this.STREAM_RELAYS, ...named]
+      .map(url => (url || '').trim().replace(/\/+$/, ''))
+      .filter(url => /^wss:\/\//i.test(url));
+    return this.openOutboxRelays([...new Set(urls)]);
+  }
+
+  /**
    * Work out which relays the people you follow publish to, and open them.
    * Cheap to call: the answer stands for six hours.
    */
