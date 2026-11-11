@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import EmojiText from './EmojiText';
 import Nip05Handle from './Nip05Handle';
 import { UserProfile } from '../types';
@@ -15,12 +16,6 @@ interface ProfileHoverCardProps {
   onNavigateToProfile: (pubkey: string) => void;
   /** Called after a mute, so the surrounding feed can drop the author */
   onBlocked?: (pubkey: string) => void;
-  /**
-   * Draw the card fixed to the viewport instead of inside the flow. For
-   * places that clip their overflow — the chat panel cuts anything reaching
-   * past its edge, card included.
-   */
-  escapesClipping?: boolean;
   children: React.ReactNode;
 }
 
@@ -48,7 +43,6 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
   profile: knownProfile,
   onNavigateToProfile,
   onBlocked,
-  escapesClipping,
   children
 }) => {
   const [open, setOpen] = useState(false);
@@ -104,7 +98,15 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, pubkey]);
 
-  /** Where the card goes when it has to escape a clipping container */
+  /**
+   * Where the card goes. Always fixed to the viewport, because it is drawn
+   * at the end of the page rather than inside the post it belongs to.
+   *
+   * `top` and `bottom` are both set every time: the stylesheet gives the
+   * card a `top` of its own, and leaving the inline one out let that one
+   * apply alongside the `bottom` here, which stretched the card down the
+   * whole window.
+   */
   const placeFixed = (rect: DOMRect) => {
     const width = 280;
     const margin = 8;
@@ -113,8 +115,8 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
       position: 'fixed',
       width,
       left: Math.min(Math.max(margin, rect.left), window.innerWidth - width - margin),
-      top: below ? rect.bottom + margin : undefined,
-      bottom: below ? undefined : window.innerHeight - rect.top + margin
+      top: below ? rect.bottom + margin : 'auto',
+      bottom: below ? 'auto' : window.innerHeight - rect.top + margin
     });
   };
 
@@ -128,7 +130,7 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
       const rect = wrapperRef.current?.getBoundingClientRect();
       if (rect) {
         setPlaceAbove(window.innerHeight - rect.bottom < 320);
-        if (escapesClipping) placeFixed(rect);
+        placeFixed(rect);
       }
       setOpen(true);
     }, OPEN_DELAY_MS);
@@ -205,10 +207,20 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
     >
       {children}
 
-      {open && (
+      {/* Drawn at the end of the page rather than inside the post.
+          A card carries `content-visibility: auto`, which brings layout
+          containment with it — and that makes the post both a containing
+          block and a stacking context of its own. A popover inside one is
+          therefore trapped in it however high its z-index: measured on a
+          thread, the card reached 55px past the bottom of the post it
+          belonged to and the next reply, a stacking context in its turn,
+          was painted straight over the part that stuck out. */}
+      {open && createPortal(
         <div
           className={`profile-hover-card ${placeAbove ? 'above' : ''}`}
           style={fixedStyle}
+          onMouseEnter={scheduleOpen}
+          onMouseLeave={scheduleClose}
           onClick={(e) => e.stopPropagation()}
         >
           <button
@@ -257,7 +269,8 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
           )}
 
           {error && <p className="hover-card-error">{error}</p>}
-        </div>
+        </div>,
+        document.body
       )}
     </span>
   );

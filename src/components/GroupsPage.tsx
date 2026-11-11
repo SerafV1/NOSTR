@@ -1463,7 +1463,6 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                       <ProfileHoverCard
                         pubkey={message.pubkey}
                         profile={profiles[message.pubkey]}
-                        escapesClipping
                         onNavigateToProfile={onNavigateToProfile}
                       >
                         <button
@@ -1648,7 +1647,6 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToPr
                     key={pubkey}
                     pubkey={pubkey}
                     profile={profiles[pubkey]}
-                    escapesClipping
                     onNavigateToProfile={onNavigateToProfile}
                   >
                   <button

@@ -21,6 +21,7 @@ import RichText from './RichText';
 import EmojiText from './EmojiText';
 import Pic from './Pic';
 import Thumbnail from './Thumbnail';
+import ProfileHoverCard from './ProfileHoverCard';
 import { customEmojiMap } from '../utils/customEmoji';
 import {
   stripMediaUrls,
@@ -516,27 +517,41 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
                   ? <EmojiText text={icon} emojis={customEmojiMap(notification.event.tags)} />
                   : icon}
               </span>
-              {profile?.picture ? (
-                <Pic
-                  src={profile.picture}
-                  alt={displayName}
-                  className="notification-avatar"
-                  width={48}
-                  height={48}
-                />
-              ) : (
-                <div className="notification-avatar-placeholder">
-                  {displayName.charAt(0).toUpperCase()}
-                </div>
-              )}
+              {/* Pointing at whoever did this says who they are and offers
+                  to follow or mute them, the same as it does in a feed */}
+              <ProfileHoverCard
+                pubkey={actor}
+                profile={profile}
+                onNavigateToProfile={onNavigateToProfile}
+              >
+                {profile?.picture ? (
+                  <Pic
+                    src={profile.picture}
+                    alt={displayName}
+                    className="notification-avatar"
+                    width={48}
+                    height={48}
+                  />
+                ) : (
+                  <div className="notification-avatar-placeholder">
+                    {displayName.charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </ProfileHoverCard>
               <div className="notification-body">
                 <div className="notification-text">
-                  <button
-                    className="notification-actor"
-                    onClick={(e) => { e.stopPropagation(); onNavigateToProfile(actor); }}
+                  <ProfileHoverCard
+                    pubkey={actor}
+                    profile={profile}
+                    onNavigateToProfile={onNavigateToProfile}
                   >
-                    <EmojiText text={displayName} emojis={profile?.emojis} />
-                  </button>{' '}
+                    <button
+                      className="notification-actor"
+                      onClick={(e) => { e.stopPropagation(); onNavigateToProfile(actor); }}
+                    >
+                      <EmojiText text={displayName} emojis={profile?.emojis} />
+                    </button>
+                  </ProfileHoverCard>{' '}
                   {meta.verb}
                   {(notification.type === 'reaction' || notification.type === 'repost')
                     ? ` ${describeTarget(targetOf(notification), 'your note').noun}`

@@ -1176,7 +1176,6 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                     <ProfileHoverCard
                       pubkey={author || ''}
                       profile={profile}
-                      escapesClipping
                       onNavigateToProfile={onNavigateToProfile}
                     >
                       <button className="live-chat-author" onClick={() => author && onNavigateToProfile(author)}>
@@ -1191,7 +1190,6 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                         <ProfileHoverCard
                           pubkey={recipient}
                           profile={recipientProfile}
-                          escapesClipping
                           onNavigateToProfile={onNavigateToProfile}
                         >
                           <button className="live-chat-author" onClick={() => onNavigateToProfile(recipient)}>
@@ -1230,7 +1228,6 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
                   <ProfileHoverCard
                     pubkey={author || ''}
                     profile={profile}
-                    escapesClipping
                     onNavigateToProfile={onNavigateToProfile}
                   >
                     <button className="live-chat-author" onClick={() => author && onNavigateToProfile(author)}>
