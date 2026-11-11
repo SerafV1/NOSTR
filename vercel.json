@@ -1,6 +1,17 @@
 {
   "rewrites": [
     {
+      "source": "/:kind(e|a|p|live)/:ref",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*([Bb]ot\\b|[Bb]ot/|[Cc]rawler|[Ss]pider|facebookexternalhit|WhatsApp|[Tt]elegram|[Ss]lack|[Dd]iscord|Twitterbot|Pinterest|redditbot|Applebot|[Ee]mbedly|Iframely|vkShare|Nuzzel|[Qq]uora|[Pp]review|Google|[Bb]ing|Yandex|Baidu|DuckDuckGo|Mastodon|nostr).*"
+        }
+      ],
+      "destination": "/api/preview?kind=:kind&ref=:ref"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

@@ -374,7 +374,15 @@ function App() {
   // the page in a browser of its own, with none of this browser's storage, so
   // it only ever saw the login screen. Writing still asks for a login, in the
   // chat box itself.
-  const publicPage = /^\/live(\/|$)/.test(location.pathname);
+  //
+  // A single note and a long-form post are the same case. Both are what a
+  // link to this client points at, and showing a login screen to whoever
+  // followed that link wasted the link — the note is public on the relays
+  // either way, and every other client shows it. It is also the only thing
+  // a search engine could ever read here: a crawler has no account, so
+  // behind the login screen there was one page to index, repeated at every
+  // address. A profile stays behind it.
+  const publicPage = /^\/(live|e|a)(\/|$)/.test(location.pathname);
   const browsingAnonymously = !isLoggedIn && publicPage;
 
   // Show a "back to top" button once the page content is scrolled down a
