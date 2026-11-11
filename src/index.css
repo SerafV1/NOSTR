@@ -3926,6 +3926,78 @@ button.poll-option-vote:disabled {
 
 /* Everything on your own media servers: a picture, what it weighs, where it
    lives, and the two things anybody wants from it */
+/* Picking something already uploaded, from the composer or a line of chat */
+.media-library-popup {
+  width: 320px;
+  max-width: 92vw;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--light-bg);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  z-index: 300;
+}
+
+.media-library-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding-bottom: var(--spacing-xs);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.media-library-head select {
+  padding: 2px var(--spacing-xs);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--dark-bg);
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.media-library-note {
+  padding: var(--spacing-sm) var(--spacing-xs);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.media-library-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.media-library-item {
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  background: var(--dark-bg);
+  cursor: pointer;
+}
+
+.media-library-item:hover {
+  border-color: var(--primary-color);
+}
+
+.media-library-item img,
+.media-library-plate {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+}
+
 .uploaded-media-controls {
   display: flex;
   align-items: center;

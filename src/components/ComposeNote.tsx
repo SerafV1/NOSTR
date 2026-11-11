@@ -4,6 +4,7 @@ import { NostrEventSigned, UserProfile } from '../types';
 import { NostrCore, EventCache, PersistentCache } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
 import { BlossomClient } from '../nostr/blossom';
+import MediaLibraryPicker from './MediaLibraryPicker';
 import { loadBlossomServers } from '../utils/blossomServers';
 import {
   extractImageUrls,
@@ -62,6 +63,8 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
   const emojiPicker = useAnchoredPopup(showEmojiPicker, () => setShowEmojiPicker(false));
   const [showGifPicker, setShowGifPicker] = useState(false);
   const gifPicker = useAnchoredPopup(showGifPicker, () => setShowGifPicker(false));
+  const [showLibrary, setShowLibrary] = useState(false);
+  const library = useAnchoredPopup(showLibrary, () => setShowLibrary(false));
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [showPoll, setShowPoll] = useState(false);
@@ -796,6 +799,35 @@ const ComposeNote: React.FC<ComposeNoteProps> = ({ onPublished, replyTo, quoteNo
               >
                 <ImageIcon />
               </button>
+              {/* Something already on your own servers, rather than sending
+                  the same picture up a second time */}
+              <span className="compose-library-wrapper" ref={library.containerRef}>
+                <button
+                  ref={library.triggerRef}
+                  type="button"
+                  className="compose-media-btn"
+                  onClick={() => {
+                    if (showLibrary) { setShowLibrary(false); return; }
+                    library.openPopup();
+                    setShowLibrary(true);
+                  }}
+                  disabled={uploads.length > 0}
+                  title="Pick from your media"
+                >
+                  🗂
+                </button>
+                {showLibrary && library.render(
+                  <div className="media-library-popup" ref={library.popupRef} style={library.style}>
+                    <MediaLibraryPicker
+                      onClose={() => setShowLibrary(false)}
+                      onPick={(url) => {
+                        const separator = contentRef.current && !contentRef.current.endsWith('\n') ? '\n' : '';
+                        updateContent(`${contentRef.current}${separator}${url} `);
+                      }}
+                    />
+                  </div>
+                )}
+              </span>
               {mediaServers.length > 1 && (
                 <select
                   className="compose-server-select"

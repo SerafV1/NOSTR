@@ -8,6 +8,7 @@ import { resolveMentionHandles, handleFromName, detectMentionTrigger } from '../
 import { EventCache } from '../nostr/core';
 import EmojiPicker from './EmojiPicker';
 import GifPicker from './GifPicker';
+import MediaLibraryPicker from './MediaLibraryPicker';
 import ZapButton from './ZapButton';
 import { ZapIcon, ImageIcon } from './Icons';
 import { BlossomClient } from '../nostr/blossom';
@@ -266,7 +267,9 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
   // than the button it hangs off — anchored in CSS it was cut to a strip
   const emoji = useAnchoredPopup(showEmojiPicker, () => setShowEmojiPicker(false));
   const [showGifPicker, setShowGifPicker] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
   const gifPicker = useAnchoredPopup(showGifPicker, () => setShowGifPicker(false));
+  const library = useAnchoredPopup(showLibrary, () => setShowLibrary(false));
   // How far the picture being sent has got, or null when none is going up
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1427,6 +1430,34 @@ const LiveChatPanel: React.FC<LiveChatPanelProps> = ({ address, relayHint, disab
         >
           {uploadPct === null ? <ImageIcon /> : <span className="live-chat-upload-pct">{uploadPct}%</span>}
         </button>
+        {/* Something already on your own servers, without uploading it again */}
+        <div className="live-chat-emoji-wrapper" ref={library.containerRef}>
+          <button
+            ref={library.triggerRef}
+            type="button"
+            className="live-chat-emoji-btn live-chat-library-btn"
+            onClick={() => {
+              if (showLibrary) { setShowLibrary(false); return; }
+              library.openPopup();
+              setShowLibrary(true);
+            }}
+            disabled={!isLoggedIn || disabled || sending}
+            title="Pick from your media"
+          >
+            🗂
+          </button>
+          {showLibrary && library.render(
+            <div className="live-chat-emoji-popup media-library-popup" ref={library.popupRef} style={library.style}>
+              <MediaLibraryPicker
+                onClose={() => setShowLibrary(false)}
+                onPick={(url) => {
+                  setInput(current => (current ? `${current.trimEnd()} ${url}` : url));
+                  inputRef.current?.focus();
+                }}
+              />
+            </div>
+          )}
+        </div>
         <div className="live-chat-emoji-wrapper" ref={gifPicker.containerRef}>
           <button
             ref={gifPicker.triggerRef}
