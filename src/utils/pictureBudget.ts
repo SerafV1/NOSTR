@@ -63,6 +63,16 @@ const skip = (img: HTMLImageElement): boolean => {
 };
 
 /**
+ * A measurement below this is not a box, it is an element the page has not
+ * laid out yet: an `<img>` with nothing in it and no width of its own
+ * measures a pixel or two, and asking for a picture that size bakes a smudge
+ * into the request for good. Measured on the composer's preview, which is
+ * inserted empty and sized by the picture that arrives: it was asked for at
+ * three pixels by four and drawn at 550 by 240.
+ */
+const TOO_SMALL_TO_BE_A_BOX = 32;
+
+/**
  * The box this is drawn in. Its own, where it has been laid out; otherwise
  * what its parent allows, since a picture that has not loaded yet has no
  * size of its own to measure.
@@ -70,20 +80,45 @@ const skip = (img: HTMLImageElement): boolean => {
 const boxOf = (img: HTMLImageElement): { width: number; height?: number } => {
   const rect = img.getBoundingClientRect();
   const style = getComputedStyle(img);
+  /**
+   * Only a length in pixels says anything about the box. `max-width: 100%`
+   * was being read as a hundred of them, which is how a picture across the
+   * whole width of a card could be asked for at a hundred pixels wide.
+   */
   const capped = (value: string): number | undefined => {
+    if (!/^[\d.]+px$/.test((value || '').trim())) return undefined;
     const px = parseFloat(value);
     return Number.isFinite(px) && px > 0 ? px : undefined;
   };
 
-  const width = Math.round(rect.width) || capped(style.maxWidth)
+  const own = Math.round(rect.width);
+  const width = (own >= TOO_SMALL_TO_BE_A_BOX ? own : 0)
+    || capped(style.maxWidth)
     || Math.round(img.parentElement?.getBoundingClientRect().width || 0)
     || 700;
-  const height = Math.round(rect.height) || capped(style.maxHeight);
+  const ownHeight = Math.round(rect.height);
+  const height = (ownHeight >= TOO_SMALL_TO_BE_A_BOX ? ownHeight : 0) || capped(style.maxHeight);
   return { width: Math.min(width, 1200), height: height ? Math.min(height, 1200) : undefined };
 };
 
-const size = (img: HTMLImageElement): void => {
+/** Waiting for the page to lay it out, so it is not measured twice over */
+const settling = new WeakSet<HTMLImageElement>();
+
+/** How many frames to wait for a box before giving up and guessing */
+const FRAMES_TO_SETTLE = 3;
+
+const size = (img: HTMLImageElement, frame: number = 0): void => {
   if (touched.has(img) || skip(img)) return;
+
+  // Measured the instant it is added to the page, before anything has been
+  // laid out, a picture has no box worth reading. One frame later it does.
+  if (Math.round(img.getBoundingClientRect().width) < TOO_SMALL_TO_BE_A_BOX && frame < FRAMES_TO_SETTLE) {
+    if (settling.has(img) && frame === 0) return;
+    settling.add(img);
+    requestAnimationFrame(() => size(img, frame + 1));
+    return;
+  }
+
   touched.add(img);
 
   const original = img.getAttribute('src') || '';
