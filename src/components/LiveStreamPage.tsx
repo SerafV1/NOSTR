@@ -18,6 +18,7 @@ import EmojiText from './EmojiText';
 import { ZapIcon, PopOutIcon, ShareIcon } from './Icons';
 import ComposeModal from './ComposeModal';
 import Pic from './Pic';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 interface LiveStreamPageProps {
   kind: number;
@@ -95,6 +96,9 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   /** When the copy on screen was published, so an older one cannot replace it */
   const latestAt = useRef(0);
   const [stream, setStream] = useState<LiveStreamInfo | null>(null);
+  // Anyone can watch without an account, so this is a page a search engine
+  // can actually read — give it the stream's own title and summary
+  usePageMeta({ title: stream?.title, description: stream?.summary });
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);

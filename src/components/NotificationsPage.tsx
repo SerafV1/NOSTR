@@ -31,6 +31,7 @@ import {
   extractEmbeds,
   quoteRefRegex
 } from '../utils/media';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 interface NotificationsPageProps {
   pubkey: string;
@@ -192,6 +193,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
   onNavigateToStream,
   onMarkRead
 }) => {
+  usePageMeta({ title: 'Notifications', noindex: true });
   const [notifications, setNotifications] = useState<NostrNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});

@@ -9,6 +9,7 @@ import {
 import { CredentialManager } from '../nostr/crypto';
 import { NostrCore } from '../nostr/core';
 import { useReloadOnNewBuild } from '../hooks/useReloadOnNewBuild';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 interface LiveChatPageProps {
   kind: number;
@@ -37,6 +38,7 @@ const LiveChatPage: React.FC<LiveChatPageProps> = ({
   onNavigateToNote,
   onNavigateToTopic
 }) => {
+  usePageMeta({ title: 'Chat', noindex: true });
   // Left running in OBS for days at a time, so it picks up a new build on
   // its own rather than showing yesterday's code until somebody refreshes
   useReloadOnNewBuild();

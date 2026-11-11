@@ -7,6 +7,7 @@ import { extractImageUrls, extractVideoUrls, extractEmbeds } from '../utils/medi
 import { loadCustomFeeds, addCustomFeed } from '../utils/customFeeds';
 import EventCard from './EventCard';
 import Pic from './Pic';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 const MAX_RECENT_SEARCHES = 8;
 
@@ -65,6 +66,7 @@ const hasMedia = (content: string) =>
   extractEmbeds(content).length > 0;
 
 const SearchPage: React.FC<SearchPageProps> = ({ relaysConnected, onNavigateToProfile, onNavigateToNote, initialTopic, topicNavKey }) => {
+  usePageMeta({ title: 'Search', noindex: true });
   const [query, setQuery] = useState('');
   const [searchedQuery, setSearchedQuery] = useState('');
   const [activeTab, setActiveTab] = useState<TabKey>('feeds');

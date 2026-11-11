@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { NostrEventSigned } from '../types';
 import { NostrCore } from '../nostr/core';
 import EventCard from './EventCard';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 interface ArticlePageProps {
   kind: number;
@@ -32,6 +33,10 @@ const ArticlePage: React.FC<ArticlePageProps> = ({
   onNavigateToTopic
 }) => {
   const [article, setArticle] = useState<NostrEventSigned | null>(null);
+  // A long-form post carries its own title and summary (NIP-23)
+  const articleTag = (name: string): string | undefined =>
+    article?.tags.find(tag => tag[0] === name)?.[1] || undefined;
+  usePageMeta({ title: articleTag('title'), description: articleTag('summary') || article?.content });
   const [state, setState] = useState<'loading' | 'ready' | 'missing'>('loading');
 
   useEffect(() => {

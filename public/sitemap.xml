@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The pages that are always there. Everything else on this site is somebody
+  else's note, profile or stream: it comes from relays, it is written and
+  deleted by its author, and the same note is served by every other nostr
+  client as well — so listing it here would be claiming it, and the list
+  would be wrong within the hour. Those pages are found by being linked to.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://razr.social/</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://razr.social/live</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://razr.social/s</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>
+</urlset>

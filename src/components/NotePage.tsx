@@ -3,6 +3,7 @@ import { NostrEventSigned } from '../types';
 import { NostrCore, EventCache, EngagementTotals } from '../nostr/core';
 import EventCard from './EventCard';
 import { isQuoteOf, directParentId } from '../utils/threads';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 interface NotePageProps {
   noteId: string;
@@ -37,6 +38,12 @@ const standing = (totals: EngagementTotals | undefined): number =>
 
 const NotePage: React.FC<NotePageProps> = ({ noteId, relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic, onBack }) => {
   const [note, setNote] = useState<NostrEventSigned | null>(null);
+  // A note has no title of its own, so it is headed with its own first words
+  const noteLine = note?.content.replace(/\s+/g, ' ').trim();
+  usePageMeta({
+    title: noteLine ? (noteLine.length > 70 ? `${noteLine.slice(0, 69)}…` : noteLine) : undefined,
+    description: noteLine,
+  });
   // Root-first: index 0 is the top of the thread, last item is the note's
   // direct parent — a reply-to-a-reply needs the whole chain shown, not
   // just the one post immediately above it

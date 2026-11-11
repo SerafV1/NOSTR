@@ -13,6 +13,7 @@ import RichText from './RichText';
 import EmojiText from './EmojiText';
 import Pic from './Pic';
 import ProfileHoverCard from './ProfileHoverCard';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 interface MessagesPageProps {
   pubkey: string;
@@ -59,6 +60,7 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
   onMarkRead,
   initialRecipient
 }) => {
+  usePageMeta({ title: 'Messages', noindex: true });
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
   const [loading, setLoading] = useState(true);

@@ -1,0 +1,24 @@
+# Every address here is answered with the same index.html, so a crawler can
+# ask for anything and get a page. These are the ones worth reading.
+
+User-agent: *
+Allow: /
+
+# A reader's own things. Nothing here belongs in a search result, and the
+# page a stranger would be shown is the login screen anyway.
+Disallow: /messages
+Disallow: /notifications
+Disallow: /settings
+
+# A search page's address is a query somebody typed — endlessly many of
+# them, all of them thin
+Disallow: /search
+
+# The chat, the viewer count and the zap list open as windows of their own,
+# for a stream overlay. They are parts of a page, not pages.
+Disallow: /live/*/chat
+Disallow: /live/*/viewers
+Disallow: /live/*/zappers
+Disallow: /live/*/with/
+
+Sitemap: https://razr.social/sitemap.xml

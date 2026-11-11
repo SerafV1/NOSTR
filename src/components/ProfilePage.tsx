@@ -18,6 +18,7 @@ import { ZapIcon, MessageIcon, CopyIcon, CheckIcon, BitcoinIcon, MoneroIcon } fr
 import { paymentTargets, shortAddress } from '../utils/paymentTargets';
 import Pic from './Pic';
 import UploadedMedia from './UploadedMedia';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 interface MediaThumbnail {
   noteId: string;
@@ -70,6 +71,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   onNavigateToMessages
 }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  // The name this page is of, in the tab and in a search result
+  usePageMeta({ title: profile?.display_name || profile?.name, description: profile?.about });
   const [notes, setNotes] = useState<NostrEventSigned[]>([]);
   const [reposts, setReposts] = useState<{ repost: NostrEventSigned; original: NostrEventSigned }[]>([]);
   const [loading, setLoading] = useState(true);

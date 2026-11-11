@@ -10,6 +10,7 @@ import {
   readdressed
 } from '../utils/liveStream';
 import { EVENT_KINDS } from '../types';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 /** How long after speaking someone still counts as being in the chat */
 const PRESENT_FOR_MS = 10 * 60 * 1000;
@@ -35,6 +36,7 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
   identifier,
   relaysConnected
 }) => {
+  usePageMeta({ title: 'Viewers', noindex: true });
   // Left running in OBS for days at a time, so it picks up a new build on
   // its own rather than showing yesterday's code until somebody refreshes
   useReloadOnNewBuild();

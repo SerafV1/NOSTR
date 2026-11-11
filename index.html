@@ -9,13 +9,19 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#0d0d18" />
     <meta name="apple-mobile-web-app-title" content="RAZR" />
-    <meta name="description" content="RAZR — a nostr client" />
+    <meta name="description" content="RAZR is a nostr client for the open social web: read and write notes, follow people across relays, watch live streams with chat and zaps, and send encrypted messages. No account, no email — your own key." />
 
     <!-- What another client draws when someone shares a link to this one -->
-    <meta property="og:title" content="RAZR" />
-    <meta property="og:description" content="A nostr client" />
+    <meta property="og:title" content="RAZR — a nostr client for notes, live streams and zaps" />
+    <meta property="og:description" content="RAZR is a nostr client for the open social web: read and write notes, follow people across relays, watch live streams with chat and zaps, and send encrypted messages. No account, no email — your own key." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://razr.social/" />
+    <meta property="og:site_name" content="RAZR" />
+    <!-- Which address this page really is. Every address here is answered
+         with this same file, so without it a link with a tracking parameter
+         on the end counts as a second page competing with the first. The
+         app rewrites this as you move between pages. -->
+    <link rel="canonical" href="https://razr.social/" />
     <meta property="og:image" content="https://razr.social/razr-og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
@@ -31,7 +37,23 @@
       exception.
     -->
     <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests" />
-    <title>RAZR</title>
+    <title>RAZR — a nostr client for notes, live streams and zaps</title>
+
+    <!-- What this site is, for the search engines that read it rather than
+         guess from the words on the page -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "RAZR",
+        "url": "https://razr.social/",
+        "applicationCategory": "SocialNetworkingApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript",
+        "description": "RAZR is a nostr client for the open social web: read and write notes, follow people across relays, watch live streams with chat and zaps, and send encrypted messages. No account, no email — your own key.",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

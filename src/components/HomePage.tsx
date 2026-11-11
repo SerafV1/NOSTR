@@ -12,6 +12,7 @@ import { noteFeedChange } from '../utils/feedTrail';
 import EventCard from './EventCard';
 import Pic from './Pic';
 import { isReplyEvent } from '../utils/threads';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 interface HomePageProps {
   relaysConnected: boolean;
@@ -50,6 +51,7 @@ const readCachedLiveStreams = (): { info: LiveStreamInfo; followedPubkey: string
 };
 
 const HomePage: React.FC<HomePageProps> = ({ relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
+  usePageMeta({ title: 'Home' });
   const [events, setEvents] = useState<NostrEventSigned[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedType, setFeedType] = useState<FeedType>('home');

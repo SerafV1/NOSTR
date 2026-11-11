@@ -10,12 +10,17 @@ import {
   forgetPairing,
   EVERYDAY_PERMISSIONS
 } from '../nostr/bunker';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 interface LoginPageProps {
   onLogin: (privkey: string) => void;
 }
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
+  // The page anyone without an account lands on, whatever address they
+  // asked for — so this is the one a search engine reads. No title of its
+  // own: it takes the site's.
+  usePageMeta({});
   const [amberError, setAmberError] = useState<string | null>(null);
   // A signer that can't hand the answer back through the URL copies it to
   // the clipboard instead — NIP-55 says as much, and Amber does exactly that

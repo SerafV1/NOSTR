@@ -8,6 +8,7 @@ import { usePosterTick } from '../hooks/usePosterTick';
 import { formatAddress } from '../utils/helpers';
 import Pic from './Pic';
 import { LIVE_CATEGORIES, ALL_LIVE, inCategory, isLiveCategory } from '../utils/liveCategories';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 // Public list, identical for everyone, so it isn't keyed per account
 const LIVE_CACHE_KEY = 'live_now';
@@ -20,6 +21,7 @@ const addressOf = (event: NostrEventSigned): string =>
   `${event.pubkey}:${event.tags.find(t => t[0] === 'd')?.[1] || ''}`;
 
 const LivePage: React.FC<LivePageProps> = ({ relaysConnected }) => {
+  usePageMeta({ title: 'Live now', description: 'Every nostr stream that is live right now — watch it with its chat and zap the host, no account needed.' });
   // The events themselves rather than what was parsed out of them: a stream
   // announces itself over and over as it runs, and each announcement replaces
   // the last — which can only be judged by comparing the two.

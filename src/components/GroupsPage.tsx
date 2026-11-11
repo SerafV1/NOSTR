@@ -62,6 +62,7 @@ import {
   syncCommunityList
 } from '../nostr/concordStore';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 interface GroupsPageProps {
   /** The account's own relays, which is where the shared list of groups lives */
@@ -133,6 +134,7 @@ const plural = (role: string): string => {
  * groups people are in through Armada, Chachi or 0xchat.
  */
 const GroupsPage: React.FC<GroupsPageProps> = ({ relaysConnected, onNavigateToProfile, onNavigateToNote, onNavigateToTopic }) => {
+  usePageMeta({ title: 'Groups', description: 'Public rooms and communities on nostr, read and joined from RAZR.' });
   // A server and a group each have an address of their own, so either can be
   // linked to and opened straight into
   const { server, groupId, communityId } = useParams();

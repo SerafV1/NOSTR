@@ -9,6 +9,7 @@ import {
 import { CredentialManager } from '../nostr/crypto';
 import { NostrCore } from '../nostr/core';
 import { useReloadOnNewBuild } from '../hooks/useReloadOnNewBuild';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 interface LiveZappersPageProps {
   kind: number;
@@ -30,6 +31,7 @@ const LiveZappersPage: React.FC<LiveZappersPageProps> = ({
   relaysConnected,
   onNavigateToProfile
 }) => {
+  usePageMeta({ title: 'Zappers', noindex: true });
   // Left running in OBS for days at a time, so it picks up a new build on
   // its own rather than showing yesterday's code until somebody refreshes
   useReloadOnNewBuild();

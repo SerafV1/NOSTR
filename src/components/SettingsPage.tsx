@@ -5,12 +5,14 @@ import MediaServerSettings from './MediaServerSettings';
 import MutedSettings from './MutedSettings';
 import BackupSettings from './BackupSettings';
 import WalletSettings from './WalletSettings';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 interface SettingsPageProps {
   relaysConnected: boolean;
 }
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ relaysConnected }) => {
+  usePageMeta({ title: 'Settings', noindex: true });
   const location = useLocation();
   const section = location.pathname.endsWith('/media')
     ? 'media'
