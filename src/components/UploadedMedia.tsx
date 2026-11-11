@@ -43,7 +43,11 @@ const UploadedMedia: React.FC<UploadedMediaProps> = ({ pubkey }) => {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
-  /** Which of the servers from Settings to put a new file on, or all of them */
+  /**
+   * Which of the servers from Settings is being worked with: what is listed
+   * and where an upload goes. Empty means all of them — everything they
+   * hold between them, and an upload offered to each in turn.
+   */
   const [target, setTarget] = useState('');
   const [uploading, setUploading] = useState<number | null>(null);
   const servers = loadBlossomServers().filter(server => server.enabled);
@@ -127,7 +131,11 @@ const UploadedMedia: React.FC<UploadedMediaProps> = ({ pubkey }) => {
   if (error && !blobs) return <div className="empty-state"><p>{error}</p></div>;
   if (!blobs) return <div className="loading">Reading your media servers…</div>;
 
-  const totalSize = blobs.reduce((sum, blob) => sum + blob.size, 0);
+  // Picking one server narrows what is shown to what that server holds: a
+  // file commonly sits on several, and the point of choosing one is to see
+  // what is on it
+  const shown = target ? blobs.filter(blob => blob.servers.includes(target)) : blobs;
+  const totalSize = shown.reduce((sum, blob) => sum + blob.size, 0);
 
   return (
     <div className="uploaded-media">
@@ -147,9 +155,9 @@ const UploadedMedia: React.FC<UploadedMediaProps> = ({ pubkey }) => {
             value={target}
             onChange={e => setTarget(e.target.value)}
             disabled={uploading !== null}
-            title="Which of your media servers to upload to"
+            title="The server to show and to upload to"
           >
-            <option value="">Every server (try in turn)</option>
+            <option value="">All servers</option>
             {servers.map(server => (
               <option key={server.url} value={server.url}>
                 {server.url.replace(/^https?:\/\//, '')}
@@ -160,9 +168,11 @@ const UploadedMedia: React.FC<UploadedMediaProps> = ({ pubkey }) => {
       </div>
 
       <div className="uploaded-media-summary">
-        {blobs.length === 0
-          ? 'Nothing on your media servers yet'
-          : `${blobs.length} file${blobs.length === 1 ? '' : 's'}${totalSize ? ` · ${readableSize(totalSize)}` : ''}`}
+        {shown.length === 0
+          ? (target
+            ? `Nothing on ${target.replace(/^https?:\/\//, '')}`
+            : 'Nothing on your media servers yet')
+          : `${shown.length} file${shown.length === 1 ? '' : 's'}${totalSize ? ` · ${readableSize(totalSize)}` : ''}`}
         {failed.length > 0 && (
           <span className="uploaded-media-refused">
             {' '}· {failed.map(f => `${f.server.replace(/^https?:\/\//, '')} (${f.reason})`).join(', ')}
@@ -173,7 +183,7 @@ const UploadedMedia: React.FC<UploadedMediaProps> = ({ pubkey }) => {
       {error && <p className="uploaded-media-error">{error}</p>}
 
       <div className="uploaded-media-grid">
-        {blobs.map(blob => (
+        {shown.map(blob => (
           <div className="uploaded-media-item" key={blob.sha256}>
             <a className="uploaded-media-thumb" href={blob.url} target="_blank" rel="noopener noreferrer">
               {isPicture(blob) ? (
