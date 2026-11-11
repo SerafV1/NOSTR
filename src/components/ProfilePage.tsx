@@ -17,6 +17,7 @@ import Thumbnail from './Thumbnail';
 import { ZapIcon, MessageIcon, CopyIcon, CheckIcon, BitcoinIcon, MoneroIcon } from './Icons';
 import { paymentTargets, shortAddress } from '../utils/paymentTargets';
 import Pic from './Pic';
+import UploadedMedia from './UploadedMedia';
 
 interface MediaThumbnail {
   noteId: string;
@@ -80,7 +81,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const emptyRunsRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState(false);
-  const [contentTab, setContentTab] = useState<'posts' | 'articles' | 'replies' | 'media' | 'zaps' | 'bookmarks' | 'following' | 'followers'>('posts');
+  const [contentTab, setContentTab] = useState<'posts' | 'articles' | 'replies' | 'media' | 'uploads' | 'zaps' | 'bookmarks' | 'following' | 'followers'>('posts');
   // Long-form articles (NIP-23), fetched when the tab is first opened
   const [articles, setArticles] = useState<NostrEventSigned[]>([]);
   const [articlesLoaded, setArticlesLoaded] = useState(false);
@@ -935,6 +936,16 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
               >
                 Media
               </button>
+              {/* Only your own: a server lists what it holds for an account,
+                  and nobody else's files are yours to fetch or take away */}
+              {isOwnProfile && (
+                <button
+                  className={`feed-tab ${contentTab === 'uploads' ? 'active' : ''}`}
+                  onClick={() => setContentTab('uploads')}
+                >
+                  Uploads
+                </button>
+              )}
               <button
                 className={`feed-tab ${contentTab === 'zaps' ? 'active' : ''}`}
                 onClick={() => setContentTab('zaps')}
@@ -1050,6 +1061,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                   ))}
                 </div>
               )
+            )}
+
+            {contentTab === 'uploads' && isOwnProfile && (
+              <UploadedMedia pubkey={pubkey} />
             )}
 
             {contentTab === 'media' && (

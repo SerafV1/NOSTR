@@ -3924,6 +3924,119 @@ button.poll-option-vote:disabled {
   gap: 2px;
 }
 
+/* Everything on your own media servers: a picture, what it weighs, where it
+   lives, and the two things anybody wants from it */
+.uploaded-media-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+  padding: var(--spacing-md);
+}
+
+.uploaded-media-controls label {
+  cursor: pointer;
+  margin: 0;
+}
+
+.uploaded-media-controls select {
+  padding: 4px var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--light-bg);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+.uploaded-media-summary {
+  padding: 0 var(--spacing-md) var(--spacing-sm);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.uploaded-media-refused,
+.uploaded-media-error {
+  color: var(--warning-color);
+}
+
+.uploaded-media-error {
+  padding: 0 var(--spacing-md) var(--spacing-sm);
+  font-size: 0.85rem;
+}
+
+.uploaded-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--spacing-sm);
+  padding: 0 var(--spacing-md) var(--spacing-md);
+}
+
+.uploaded-media-item {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  background: var(--light-bg);
+}
+
+.uploaded-media-thumb {
+  display: block;
+  aspect-ratio: 1;
+  background: var(--dark-bg);
+}
+
+.uploaded-media-thumb img,
+.uploaded-media-plate {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+}
+
+.uploaded-media-facts {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.uploaded-media-where {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uploaded-media-actions {
+  display: flex;
+  border-top: 1px solid var(--border-color);
+}
+
+.uploaded-media-actions button {
+  flex: 1;
+  padding: var(--spacing-xs);
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.uploaded-media-actions button:first-child {
+  border-right: 1px solid var(--border-color);
+}
+
+.uploaded-media-actions button:hover:not(:disabled) {
+  background: var(--card-hover-bg);
+  color: var(--text-primary);
+}
+
 .media-grid-item {
   position: relative;
   aspect-ratio: 1;
