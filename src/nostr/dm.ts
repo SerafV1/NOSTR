@@ -2,6 +2,7 @@ import * as nostrTools from 'nostr-tools';
 import { NostrEvent, NostrEventSigned, NostrFilter, EVENT_KINDS } from '../types';
 import { NostrCrypto, CredentialManager, ExtensionManager } from './crypto';
 import { getRelayPool } from './relay';
+import { NostrCore } from './core';
 
 export interface DirectMessage {
   id: string;
@@ -399,6 +400,30 @@ export class DirectMessageCore {
     }
   }
 
+  /**
+   * Nothing from somebody muted.
+   *
+   * The mute list reached the feed, the replies and the notifications, and
+   * left the one door where somebody can write to you directly standing
+   * open. A line from a muted person is dropped wherever it is — a room of
+   * five is still worth reading without it — and a conversation whose only
+   * other person is muted goes altogether, rather than sitting in the list
+   * as a room with nothing in it but your own half.
+   *
+   * Your own words always stay: muting somebody is not forgetting what you
+   * said to them.
+   */
+  static dropMuted(messages: DirectMessage[], ownPubkey: string): DirectMessage[] {
+    const muted = NostrCore.getBlockedPubkeys();
+    if (muted.size === 0) return messages;
+
+    return messages.filter(message => {
+      const others = message.participants.filter(pubkey => pubkey !== ownPubkey);
+      if (others.length > 0 && others.every(pubkey => muted.has(pubkey))) return false;
+      return !muted.has(message.senderPubkey);
+    });
+  }
+
   /** A flat message list as conversations — by who is in them — newest first */
   static groupConversations(messages: DirectMessage[]): Conversation[] {
     const byRoom = new Map<string, DirectMessage>();
@@ -469,6 +494,20 @@ export class DirectMessageStore {
       return now;
     } catch {
       return 0;
+    }
+  }
+
+  /**
+   * Every room marked as seen up to its newest line. For an inbox somebody
+   * has let pile up, where opening each one in turn is the only way the
+   * badge ever goes out.
+   */
+  static markAllRead(ownPubkey: string, conversations: Conversation[]): void {
+    for (const conversation of conversations) {
+      const seen = this.getLastSeen(ownPubkey, conversation.key);
+      if (conversation.lastMessage.createdAt > seen) {
+        this.setLastSeen(ownPubkey, conversation.key, conversation.lastMessage.createdAt);
+      }
     }
   }
 

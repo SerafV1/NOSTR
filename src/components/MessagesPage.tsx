@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { UserProfile } from '../types';
 import { NostrCore, PersistentCache } from '../nostr/core';
 import { formatAddress, formatDate } from '../utils/helpers';
@@ -12,6 +12,7 @@ import {
 import RichText from './RichText';
 import EmojiText from './EmojiText';
 import Pic from './Pic';
+import ProfileHoverCard from './ProfileHoverCard';
 
 interface MessagesPageProps {
   pubkey: string;
@@ -133,23 +134,49 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
       : null);
   }, [initialRecipient]);
 
-  const conversations = DirectMessageCore.groupConversations(messages);
+  /**
+   * Everything muted people have written, gone — and gone the moment they
+   * are muted, which is why this listens rather than waiting for the next
+   * poll to come round.
+   */
+  const [muteTick, setMuteTick] = useState(0);
+  useEffect(() => NostrCore.onMutesChanged(() => setMuteTick(n => n + 1)), []);
+  // The list itself was only ever read from the relays when the feed loaded,
+  // so opening this page straight from a link applied nothing. A mute made
+  // on another device counts here as much as anywhere.
+  useEffect(() => {
+    if (relaysConnected) void NostrCore.fetchBlockedPubkeys();
+  }, [relaysConnected]);
+  const visible = useMemo(
+    () => DirectMessageCore.dropMuted(messages, pubkey),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [messages, pubkey, muteTick]
+  );
+
+  const conversations = DirectMessageCore.groupConversations(visible);
+  /** Bumped when everything is marked read, so the rows lose their mark at once */
+  const [readTick, setReadTick] = useState(0);
+  const unreadCount = useMemo(
+    () => DirectMessageStore.countUnread(pubkey, conversations),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [conversations, pubkey, readTick]
+  );
 
   // Mark the open thread as read once its messages are in, and let the
   // header badge recompute from the (now-updated) last-seen markers
   useEffect(() => {
     if (!open) return;
-    const thread = messages.filter(m => m.key === open.key);
+    const thread = visible.filter(m => m.key === open.key);
     if (thread.length === 0) return;
     const newest = Math.max(...thread.map(m => m.createdAt));
     DirectMessageStore.setLastSeen(pubkey, open.key, newest);
     onMarkRead?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, open?.key, pubkey]);
+  }, [visible, open?.key, pubkey]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ block: 'end' });
-  }, [open?.key, messages.length]);
+  }, [open?.key, visible.length]);
 
   const nameFor = (pk: string) => profiles[pk]?.display_name || profiles[pk]?.name || formatAddress(pk);
 
@@ -198,7 +225,7 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
   };
 
   if (open) {
-    const thread = messages
+    const thread = visible
       .filter(m => m.key === open.key)
       .sort((a, b) => a.createdAt - b.createdAt);
     // The name a group last gave itself, so a room opened from the list
@@ -216,16 +243,22 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
           </button>
 
           {alone ? (
-            <button className="thread-contact" onClick={() => onNavigateToProfile(open.participants[0])}>
-              {profile?.picture ? (
-                <Pic src={profile.picture} className="thread-contact-avatar" width={48} height={48} />
-              ) : (
-                <div className="thread-contact-avatar-placeholder">
-                  {nameFor(open.participants[0]).charAt(0).toUpperCase()}
-                </div>
-              )}
-              <span><EmojiText text={nameFor(open.participants[0])} emojis={profile?.emojis} /></span>
-            </button>
+            <ProfileHoverCard
+              pubkey={open.participants[0]}
+              profile={profiles[open.participants[0]]}
+              onNavigateToProfile={onNavigateToProfile}
+            >
+              <button className="thread-contact" onClick={() => onNavigateToProfile(open.participants[0])}>
+                {profile?.picture ? (
+                  <Pic src={profile.picture} className="thread-contact-avatar" width={48} height={48} />
+                ) : (
+                  <div className="thread-contact-avatar-placeholder">
+                    {nameFor(open.participants[0]).charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <span><EmojiText text={nameFor(open.participants[0])} emojis={profile?.emojis} /></span>
+              </button>
+            </ProfileHoverCard>
           ) : (
             <div className="thread-room">
               <span className="thread-title">{roomName(room)}</span>
@@ -253,13 +286,19 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
                 {/* In a group, who said it — a bubble on its own says only
                     whether it was you */}
                 {!alone && !message.isOwn && (
-                  <button
-                    type="button"
-                    className="dm-bubble-who"
-                    onClick={() => onNavigateToProfile(message.senderPubkey)}
+                  <ProfileHoverCard
+                    pubkey={message.senderPubkey}
+                    profile={profiles[message.senderPubkey]}
+                    onNavigateToProfile={onNavigateToProfile}
                   >
-                    <EmojiText text={nameFor(message.senderPubkey)} emojis={profiles[message.senderPubkey]?.emojis} />
-                  </button>
+                    <button
+                      type="button"
+                      className="dm-bubble-who"
+                      onClick={() => onNavigateToProfile(message.senderPubkey)}
+                    >
+                      <EmojiText text={nameFor(message.senderPubkey)} emojis={profiles[message.senderPubkey]?.emojis} />
+                    </button>
+                  </ProfileHoverCard>
                 )}
                 <div className="dm-bubble-content">
                   {/* Pictures are deliberately not loaded here: fetching one
@@ -304,6 +343,22 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
     <div className="messages-page">
       <div className="notifications-header">
         <h2>Messages</h2>
+        {/* An inbox left to pile up can only be put out by opening each room
+            in turn, which nobody wants to do to clear a badge */}
+        {unreadCount > 0 && (
+          <button
+            type="button"
+            className="btn btn-secondary btn-small"
+            onClick={() => {
+              DirectMessageStore.markAllRead(pubkey, conversations);
+              setReadTick(n => n + 1);
+              onMarkRead?.();
+            }}
+            title="Mark every conversation as read"
+          >
+            Mark all as read
+          </button>
+        )}
       </div>
 
       {loading && <div className="loading">Loading messages...</div>}
@@ -337,11 +392,26 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
                 subject: conversation.subject
               })}
             >
-              {alone && profile?.picture ? (
-                <Pic src={profile.picture} className="notification-avatar" width={48} height={48} />
+              {/* A room with one person in it is that person, so the face
+                  offers what a face offers anywhere else. A group's circle
+                  is a count, and stands for nobody. */}
+              {alone ? (
+                <ProfileHoverCard
+                  pubkey={conversation.participants[0]}
+                  profile={profiles[conversation.participants[0]]}
+                  onNavigateToProfile={onNavigateToProfile}
+                >
+                  {profile?.picture ? (
+                    <Pic src={profile.picture} className="notification-avatar" width={48} height={48} />
+                  ) : (
+                    <div className="notification-avatar-placeholder">
+                      {displayName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                </ProfileHoverCard>
               ) : (
                 <div className="notification-avatar-placeholder">
-                  {alone ? displayName.charAt(0).toUpperCase() : conversation.participants.length + 1}
+                  {conversation.participants.length + 1}
                 </div>
               )}
               <div className="notification-body">

@@ -584,7 +584,10 @@ function App() {
     const refreshUnread = async () => {
       try {
         const messages = await DirectMessageCore.fetchMessages(publicKey);
-        const conversations = DirectMessageCore.groupConversations(messages);
+        // Somebody muted should not be able to light the badge either
+        const conversations = DirectMessageCore.groupConversations(
+          DirectMessageCore.dropMuted(messages, publicKey)
+        );
         setUnreadMessages(DirectMessageStore.countUnread(publicKey, conversations));
       } catch (error) {
         console.error('Failed to refresh message badge:', error);
