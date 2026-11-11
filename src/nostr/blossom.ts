@@ -155,24 +155,40 @@ export class BlossomClient {
    * each in turn — so they are merged by their hash, which is what names a
    * blob at all, and each one remembers where it was found.
    *
-   * The endpoint is public in the spec, so it is asked plainly first and
-   * only signed for when that is refused — a reader is not made to sign for
-   * a list nobody was guarding. What "refused" looks like varies: measured,
-   * nostr.download answers 401 and blossom.primal.net answers 400 with
-   * "missing auth event", so any refusal is worth one signed retry.
+   * Signed for up front, wherever this browser can sign at all.
+   *
+   * The endpoint is public in the spec, so asking plainly first and signing
+   * only when refused looks kinder — but a refusal is not always something
+   * the page can see. Measured from a browser: blossom.primal.net's
+   * "400 missing auth event" carries no `access-control-allow-origin`, so
+   * the browser blocks the reply, `fetch` throws a bare network error, and
+   * the retry never happens — the server shows up as unreachable while it
+   * is sitting there asking politely to be identified. nostr.download's 401
+   * does carry the header, which is why that one worked either way.
+   *
+   * One authorization is signed for the whole listing, not one per server:
+   * a BUD-01 list auth names a verb, not a host.
    */
   static async list(pubkey: string): Promise<{ blobs: StoredBlob[]; failed: ServerFailure[] }> {
     const servers = loadBlossomServers().filter(s => s.enabled).map(s => s.url);
     const failed: ServerFailure[] = [];
     const byHash = new Map<string, StoredBlob>();
 
+    let authHeader: string | null = null;
+    if (CredentialManager.canSign()) {
+      try {
+        authHeader = toAuthHeader(await signBlossomAuth('list'));
+      } catch (error) {
+        console.warn('[Blossom] Could not sign the listing authorization:', error);
+      }
+    }
+
     const ask = async (server: string) => {
       const url = `${server.replace(/\/$/, '')}/list/${pubkey}`;
-      let answer = await fetch(url);
-      if (!answer.ok) {
-        const auth = toAuthHeader(await signBlossomAuth('list'));
-        answer = await fetch(url, { headers: { Authorization: auth } });
-      }
+      const headers = authHeader ? { Authorization: authHeader } : undefined;
+      let answer = await fetch(url, { headers });
+      // A server that wants no authorization and dislikes being given one
+      if (!answer.ok && authHeader) answer = await fetch(url);
       if (!answer.ok) throw new Error(`HTTP ${answer.status}`);
       const held = await answer.json();
       if (!Array.isArray(held)) throw new Error('answered with something other than a list');
