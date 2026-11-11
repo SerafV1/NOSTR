@@ -62,6 +62,18 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrapperRef = useRef<HTMLSpanElement>(null);
+  /**
+   * When the reader last followed, unfollowed, muted or unmuted from here.
+   *
+   * The relays are asked whether this person is followed whenever the card
+   * opens, and on a slow answer that question is still in the air when the
+   * button is pressed. Arriving afterwards, it overwrote what had just been
+   * done: the card flipped back to "Follow" a second after the follow was
+   * published, which reads as the press having been ignored.
+   */
+  const actedAt = useRef(0);
+  /** Readable from a timer, which cannot see the state */
+  const busyRef = useRef<null | 'follow' | 'block'>(null);
 
   const isOwnProfile = pubkey === CredentialManager.getPublicKey();
 
@@ -89,8 +101,13 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
     const stale = Date.now() - followListCheckedAt > FOLLOW_LIST_STALE_MS;
     if (!isOwnProfile && (isFollowing === null || stale)) {
       followListCheckedAt = Date.now();
+      const askedAt = Date.now();
       NostrCore.isFollowing(pubkey).then(result => {
-        if (!cancelled) setIsFollowing(result);
+        if (cancelled) return;
+        // Asked before the reader pressed anything, so it describes how
+        // things were rather than how they are, however late it arrives
+        if (askedAt <= actedAt.current) return;
+        setIsFollowing(result);
       });
     }
 
@@ -138,52 +155,80 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
 
   const scheduleClose = () => {
     if (openTimer.current) clearTimeout(openTimer.current);
-    closeTimer.current = setTimeout(() => setOpen(false), CLOSE_DELAY_MS);
+    // Not while it is still doing what it was asked: a press that fails has
+    // its reason printed on the card, and closing on the way out threw that
+    // away — leaving nothing to say why the follow did not happen
+    const closeWhenIdle = () => {
+      if (busyRef.current) {
+        closeTimer.current = setTimeout(closeWhenIdle, CLOSE_DELAY_MS);
+        return;
+      }
+      setOpen(false);
+    };
+    closeTimer.current = setTimeout(closeWhenIdle, CLOSE_DELAY_MS);
+  };
+
+  /** Kept in a ref as well, so a timer can see whether anything is happening */
+  const markBusy = (what: null | 'follow' | 'block') => {
+    busyRef.current = what;
+    setBusy(what);
   };
 
   const handleFollowToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (busy || isFollowing === null) return;
-    setBusy('follow');
+    markBusy('follow');
     setError(null);
     // Answered on the card at once; the list is rewritten underneath, and
     // the card goes back to what it said if that does not happen
+    actedAt.current = Date.now();
     const was = isFollowing;
     setIsFollowing(!isFollowing);
     try {
+      // Taken, or not taken: these answer `false` when no relay would have
+      // the list, which is a failure as surely as a thrown error and was
+      // being read as success — the card went on saying the thing had
+      // happened while the relays held nothing of the sort
+      let saved: boolean;
       if (was) {
-        await NostrCore.unfollowUser(pubkey);
+        saved = await NostrCore.unfollowUser(pubkey);
       } else {
         try {
-          await NostrCore.followUser(pubkey);
+          saved = await NostrCore.followUser(pubkey);
         } catch (err) {
           if (err instanceof Error && err.message === NostrCore.NO_EXISTING_CONTACT_LIST) {
             if (!window.confirm(NO_CONTACT_LIST_PROMPT)) { setIsFollowing(was); return; }
-            await NostrCore.followUser(pubkey, { createIfMissing: true });
+            saved = await NostrCore.followUser(pubkey, { createIfMissing: true });
           } else {
             throw err;
           }
         }
       }
+      if (!saved) throw new Error('No relay would take the change — try again in a moment');
     } catch (err) {
       setIsFollowing(was);
       setError(err instanceof Error ? err.message : 'Failed to update follow list');
     } finally {
-      setBusy(null);
+      markBusy(null);
     }
   };
 
   const handleBlockToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (busy) return;
-    setBusy('block');
+    actedAt.current = Date.now();
+    markBusy('block');
     setError(null);
     try {
       if (blocked) {
-        await NostrCore.unblockUser(pubkey);
+        if (!await NostrCore.unblockUser(pubkey)) {
+          throw new Error('No relay would take the change — try again in a moment');
+        }
         setBlocked(false);
       } else {
-        await NostrCore.blockUser(pubkey);
+        if (!await NostrCore.blockUser(pubkey)) {
+          throw new Error('No relay would take the change — try again in a moment');
+        }
         setBlocked(true);
         setOpen(false);
         onBlocked?.(pubkey);
@@ -191,7 +236,7 @@ const ProfileHoverCard: React.FC<ProfileHoverCardProps> = ({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update your mute list');
     } finally {
-      setBusy(null);
+      markBusy(null);
     }
   };
 
