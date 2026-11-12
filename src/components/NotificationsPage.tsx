@@ -229,9 +229,19 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
    * whole — unticking the box puts the hidden ones back without another
    * fetch, and without having lost the ones that arrived while it was on.
    */
+  // Muting somebody from this very page — the card over their name has the
+  // button — has to take their rows away now. They were only dropped as new
+  // ones were merged in, so the person stayed on screen until the next poll.
+  const [muteTick, setMuteTick] = useState(0);
+  useEffect(() => NostrCore.onMutesChanged(() => setMuteTick(n => n + 1)), []);
+
   const shown = useMemo(
-    () => (followsOnly ? dropStrangers(notifications, follows) : notifications),
-    [notifications, followsOnly, follows]
+    () => {
+      const heard = dropMuted(notifications);
+      return followsOnly ? dropStrangers(heard, follows) : heard;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [notifications, followsOnly, follows, muteTick]
   );
 
   /**
@@ -255,10 +265,10 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
     setNotifications(prev => {
       const byId = new Map(prev.map(n => [n.id, n]));
       for (const notification of incoming) byId.set(notification.id, notification);
-      return dropMuted(
-        Array.from(byId.values())
-          .sort((a, b) => (b.event.created_at || 0) - (a.event.created_at || 0))
-      );
+      // Kept whole, muted people included: they are taken out on the way to
+      // the screen, so unmuting puts their rows back without a fetch
+      return Array.from(byId.values())
+        .sort((a, b) => (b.event.created_at || 0) - (a.event.created_at || 0));
     });
   };
 
