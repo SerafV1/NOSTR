@@ -3,6 +3,7 @@ import { NostrEvent, NostrEventSigned, NostrFilter, EVENT_KINDS } from '../types
 import { NostrCrypto, CredentialManager, ExtensionManager } from './crypto';
 import { getRelayPool } from './relay';
 import { NostrCore } from './core';
+import { fetchInboxWraps, deliverToInbox } from './dmInbox';
 
 export interface DirectMessage {
   id: string;
@@ -211,19 +212,24 @@ export class DirectMessageCore {
 
     const rumor = this.buildRumor(senderPubkey, recipients, content, replyTo, subject);
 
-    const wraps = await Promise.all(
-      [...recipients, senderPubkey].map(target => this.sealAndWrap(rumor, target))
-    );
+    const targets = [...recipients, senderPubkey];
+    const wraps = await Promise.all(targets.map(target => this.sealAndWrap(rumor, target)));
 
+    // Each copy goes where its reader says they read (NIP-17, kind 10050)
+    // as well as to our own relays. A client that keeps to the rule looks
+    // nowhere but its inbox relays, so a message left only on ours was one
+    // such a reader never received.
     const relayPool = getRelayPool();
-    const results = await Promise.all(wraps.map(wrap => relayPool.publishEvent(wrap)));
+    const [results, inboxes] = await Promise.all([
+      Promise.all(wraps.map(wrap => relayPool.publishEvent(wrap))),
+      Promise.all(wraps.map((wrap, i) => deliverToInbox(wrap, targets[i])))
+    ]);
 
     // Our own copy landing is not the message arriving anywhere, so the
     // wraps for the others are what says whether it went
-    const forOthers = results.slice(0, recipients.length);
-    if (!forOthers.some(result => Array.from(result.values()).some(Boolean))) {
-      throw new Error('No relay accepted the message');
-    }
+    const reached = recipients.some((_, i) =>
+      inboxes[i] || Array.from(results[i].values()).some(Boolean));
+    if (!reached) throw new Error('No relay accepted the message');
     return true;
   }
 
@@ -384,7 +390,16 @@ export class DirectMessageCore {
 
     try {
       const relayPool = getRelayPool();
-      const events = await relayPool.fetchEvents(filters);
+      // Our own relays, and the inbox relays we tell others to write to —
+      // which is where a client that follows NIP-17 puts its replies
+      const [events, inbox] = await Promise.all([
+        relayPool.fetchEvents(filters),
+        fetchInboxWraps(ownPubkey, limit).catch(() => [] as NostrEventSigned[])
+      ]);
+      const seen = new Set(events.map(event => event.id));
+      for (const wrap of inbox) {
+        if (!seen.has(wrap.id)) events.push(wrap);
+      }
 
       const results = await Promise.all(events.map(event => this.open(event, ownPubkey)));
 
