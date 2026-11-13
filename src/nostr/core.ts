@@ -9,7 +9,7 @@ import {
 import { nip19 } from 'nostr-tools';
 import { isQuoteOf, directParentId, targetOfResponse } from '../utils/threads';
 import { NostrCrypto, CredentialManager, ExtensionManager } from './crypto';
-import { getRelayPool, RelayPool, DEFAULT_RELAYS, UNREACHABLE_RELAYS } from './relay';
+import { getRelayPool, RelayPool, DEFAULT_RELAYS, restRelay, isRelayResting } from './relay';
 import { replyTags } from './replyTags';
 import { bunkerSignEvent } from './bunker';
 import { isEffectivelyLive, parseLiveEvent } from '../utils/liveStream';
@@ -2844,7 +2844,7 @@ export class NostrCore {
     ]);
     const excluded = pool.getExcludedRelays();
     const opening = urls.filter(
-      url => !already.has(url) && !excluded.has(url) && !UNREACHABLE_RELAYS.includes(url)
+      url => !already.has(url) && !excluded.has(url) && !isRelayResting(url)
     );
     if (opening.length === 0) return [];
 
@@ -2868,7 +2868,12 @@ export class NostrCore {
           relays: held.relays.filter(url => !refused.includes(url))
         });
       }
-      for (const url of refused) pool.forgetRelay(url);
+      for (const url of refused) {
+        pool.forgetRelay(url);
+        // Measured here and now, and only for a while: it is tried again
+        // once the rest is over, and adding it by hand ignores this
+        restRelay(url);
+      }
     }
     return opening.filter(url => !refused.includes(url));
   }
@@ -2950,7 +2955,7 @@ export class NostrCore {
       }
 
       const candidates = [...reach.entries()]
-        .filter(([url]) => !ours.has(url) && !excluded.has(url) && !UNREACHABLE_RELAYS.includes(url));
+        .filter(([url]) => !ours.has(url) && !excluded.has(url) && !isRelayResting(url));
 
       const chosen: string[] = [];
       // First: cover the people nothing else reaches, fewest relays first

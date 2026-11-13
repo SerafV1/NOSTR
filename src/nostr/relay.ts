@@ -101,7 +101,6 @@ export class RelayPool {
       }
       this.migrateRetiredRelays();
       this.migrateBrokenZapStreamRelay();
-      this.migrateDeadDefaultRelays();
     } catch (error) {
       console.error(`[Relay] Failed to load relay configs: ${error}`);
     }
@@ -173,26 +172,6 @@ export class RelayPool {
   }
 
   /**
-   * One-time cleanup: two relays that were defaults here answer nothing at
-   * all — purplepag.es returns 502 to every connection and offchain.pub
-   * refuses them. A browser that has them saved reconnects to both forever,
-   * which costs a socket and fills the console with failures on every page.
-   * Measured over six attempts each before removing them.
-   */
-  private migrateDeadDefaultRelays(): void {
-    const MIGRATION_KEY = 'nostr_relay_migration_v4';
-    if (localStorage.getItem(MIGRATION_KEY)) return;
-
-    const before = this.relayConfigs.length;
-    this.relayConfigs = this.relayConfigs.filter(c => !UNREACHABLE_RELAYS.includes(c.url));
-    if (this.relayConfigs.length !== before) {
-      console.log(`[Relay] Migration: removed ${before - this.relayConfigs.length} unreachable relays`);
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.relayConfigs));
-    }
-    localStorage.setItem(MIGRATION_KEY, 'done');
-  }
-
-  /**
    * Load excluded relay URLs from localStorage
    */
   private loadExcludedRelays(): void {
@@ -229,11 +208,6 @@ export class RelayPool {
    * Add a relay to the pool
    */
   async addRelay(url: string, config?: Partial<RelayConfig>): Promise<boolean> {
-    // A relay known to answer nothing is not worth a socket — and a saved
-    // list, an import or a follow's relay list can all still name one. The
-    // one-time cleanup of saved lists only ran for the relays that were dead
-    // when it was written.
-    if (UNREACHABLE_RELAYS.includes(url.trim().replace(/\/+$/, ''))) return false;
     try {
       // A plain ws:// relay cannot be reached from a page served over https:
       // the browser blocks the connection as mixed content and reports the
@@ -1541,23 +1515,45 @@ export interface RelayCapabilities {
  * (NIP-65) whether or not those are in here.
  */
 /**
- * Relays that answer nothing at all, measured rather than assumed.
+ * Relays that did not answer when this browser tried them, and until when
+ * they are left alone.
  *
- * purplepag.es returns 502 to every connection, offchain.pub refuses them,
- * and relay.nostr.band — which many people still name in their relay lists —
- * times out on both the socket and its own information document. They are
- * kept out of anywhere a relay can arrive from on its own: the defaults, the
- * cleanup of what a browser has saved, and the relays opened because
- * somebody you follow says they publish there.
+ * There used to be a list here, written into the code, of relays that had
+ * answered nothing when they were measured — and nothing could add them,
+ * not even the person using the app. That was wrong twice over: which
+ * relays somebody uses is theirs to say, and a measurement goes stale —
+ * two of the five on that list were answering normally when it was
+ * checked again.
+ *
+ * So nothing is refused by name. A relay the app opened on its own
+ * initiative — because somebody you follow publishes there — and that
+ * would not open is rested for a few hours, in this browser only, and
+ * tried again after. A relay you add yourself is never rested at all.
  */
-export const UNREACHABLE_RELAYS = [
-  'wss://purplepag.es',
-  'wss://offchain.pub',
-  'wss://relay.nostr.band',
-  'wss://nostr.band',
-  // Its name stopped resolving in September 2026; it had been a default
-  'wss://relay.0xchat.com'
-];
+const RESTING_KEY = 'nostr_relays_resting';
+const REST_MS = 6 * 60 * 60 * 1000;
+
+const readResting = (): Record<string, number> => {
+  try {
+    const held = JSON.parse(localStorage.getItem(RESTING_KEY) || '{}') as Record<string, number>;
+    const now = Date.now();
+    return Object.fromEntries(Object.entries(held).filter(([, until]) => until > now));
+  } catch {
+    return {};
+  }
+};
+
+/** Leave a relay that would not open alone for a while */
+export const restRelay = (url: string): void => {
+  try {
+    localStorage.setItem(RESTING_KEY, JSON.stringify({ ...readResting(), [url]: Date.now() + REST_MS }));
+  } catch {
+    // Without storage it is simply tried again next time
+  }
+};
+
+/** Whether a relay failed recently enough not to be worth a socket yet */
+export const isRelayResting = (url: string): boolean => url in readResting();
 
 export const DEFAULT_RELAYS = [
   // The workhorses: fastest to answer, and holding the most of everything
