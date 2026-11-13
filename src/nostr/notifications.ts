@@ -2,7 +2,7 @@ import { NostrEventSigned, NostrFilter, EVENT_KINDS } from '../types';
 import { getRelayPool } from './relay';
 import { PersistentCache, NostrCore } from './core';
 import { nip19 } from 'nostr-tools';
-import { directParentId, isReplyEvent } from '../utils/threads';
+import { directParentId, isReplyEvent, targetOfResponse } from '../utils/threads';
 
 export type NotificationType =
   | 'reply' | 'mention' | 'reaction' | 'repost' | 'zap' | 'livechat'
@@ -106,8 +106,22 @@ function namesInText(event: NostrEventSigned, pubkey: string): boolean {
   return false;
 }
 
-/** Only an ordinary reply can be thread chatter; everything else stands */
+/**
+ * A like or a repost of somebody else's note that happens to tag you.
+ *
+ * A reaction is meant to carry the tags of the note it reacts to, and a
+ * reply's tags name everyone in the thread above it — so a like on another
+ * person's reply, under your post or beside your own reply, tags you too,
+ * and arrived as "reacted to your note" about a note that was not yours.
+ */
+function isResponse(notification: NostrNotification): boolean {
+  return notification.event.kind === EVENT_KINDS.REACTION
+    || notification.event.kind === EVENT_KINDS.REPOST;
+}
+
+/** Only these can be the thread carrying on; everything else stands */
 function couldBeChatter(notification: NostrNotification): boolean {
+  if (isResponse(notification)) return true;
   return notification.event.kind === EVENT_KINDS.TEXT_NOTE && isReplyEvent(notification.event);
 }
 
@@ -158,7 +172,24 @@ async function judgeReplies(pubkey: string, notifications: NostrNotification[]):
 
   const parentOf = new Map<string, string>();
   const authorOf = new Map<string, string>();
-  for (const { event } of pending) {
+  /** What to say when the note a like points at cannot be found */
+  const fallback = new Map<string, 0 | 1>();
+  for (const notification of pending) {
+    const { event } = notification;
+    if (isResponse(notification)) {
+      const target = targetOfResponse(event);
+      if (!target) {
+        addressed[event.id] = 1;
+        continue;
+      }
+      parentOf.set(event.id, target);
+      // NIP-25: the last `p` tag is the author of the note reacted to. Used
+      // only when the note itself cannot be found, and only when there is
+      // more than one to choose between — a lone tag naming you is plain.
+      const people = event.tags.filter(t => t[0] === 'p' && t[1]).map(t => t[1]);
+      fallback.set(event.id, people.length > 1 && people[people.length - 1] !== pubkey ? 0 : 1);
+      continue;
+    }
     if (namesInText(event, pubkey)) {
       addressed[event.id] = 1;
       continue;
@@ -186,7 +217,7 @@ async function judgeReplies(pubkey: string, notifications: NostrNotification[]):
 
   for (const [id, parent] of parentOf) {
     const author = authorOf.get(parent);
-    addressed[id] = author && author !== pubkey ? 0 : 1;
+    addressed[id] = author ? (author === pubkey ? 1 : 0) : (fallback.get(id) ?? 1);
   }
 
   const entries = Object.entries(addressed);

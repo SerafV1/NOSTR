@@ -603,7 +603,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
             <div
               key={notification.id}
               className={`notification-item ${isNew ? 'unread' : ''} ${
-                notification.type === 'reply' && isThreadChatter(pubkey, notification.id) ? 'in-thread' : ''
+                isThreadChatter(pubkey, notification.id) ? 'in-thread' : ''
               }`}
               onClick={() => handleClick(notification)}
             >
@@ -650,12 +650,23 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
                       <EmojiText text={displayName} emojis={profile?.emojis} />
                     </button>
                   </ProfileHoverCard>{' '}
-                  {notification.type === 'reply' && isThreadChatter(pubkey, notification.id)
-                    ? <span className="notification-thread-label">replied to someone else in a thread you are in</span>
-                    : meta.verb}
-                  {(notification.type === 'reaction' || notification.type === 'repost')
-                    ? ` ${describeTarget(targetOf(notification), 'your note').noun}`
-                    : ''}
+                  {isThreadChatter(pubkey, notification.id) ? (
+                    // Not about anything of yours: said as what it is
+                    <span className="notification-thread-label">
+                      {notification.type === 'reaction'
+                        ? "reacted to someone else's note in a thread you are in"
+                        : notification.type === 'repost'
+                          ? "reposted someone else's note in a thread you are in"
+                          : 'replied to someone else in a thread you are in'}
+                    </span>
+                  ) : (
+                    <>
+                      {meta.verb}
+                      {(notification.type === 'reaction' || notification.type === 'repost')
+                        ? ` ${describeTarget(targetOf(notification), 'your note').noun}`
+                        : ''}
+                    </>
+                  )}
                   {notification.type === 'zap' && amountSats > 0 ? ` (${amountSats.toLocaleString()} sats)` : ''}
                 </div>
                 {preview && <div className="notification-preview">{preview}</div>}
