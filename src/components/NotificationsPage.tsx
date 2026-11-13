@@ -214,6 +214,12 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
   // Whether strangers are heard at all, and who counts as one. The follow
   // list is read from storage first so ticking the box acts at once rather
   // than after the relays answer.
+  // Reading further back than the first fetch reaches
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [reachedEnd, setReachedEnd] = useState(false);
+  const loadingOlderRef = useRef(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
   const [followsOnly, setFollowsOnly] = useState(notificationsFromFollowsOnly);
   // Replies between other people in a thread you are part of. Left out
   // unless asked for, and said to be what they are when shown.
@@ -302,6 +308,57 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
     for (const target of targets.values()) EventCache.addEvent(target);
     setTargetNotes(cacheTargets(pubkey, Object.fromEntries(targets)));
   };
+
+  /**
+   * The next page back. Every relay answers with its newest hundred, which
+   * for a busy account is about a week — and that was all there was: the
+   * relays held a year more, and nothing ever asked for it.
+   */
+  const loadOlder = async () => {
+    if (loadingOlderRef.current || reachedEnd || notifications.length === 0) return;
+    // A follow is stamped with its contact list's date, which says nothing
+    // about when it happened, so it does not mark how far back we have read
+    const dated = notifications.filter(n => n.type !== 'follow' && n.type !== 'unfollow');
+    if (dated.length === 0) return;
+    const oldest = Math.min(...dated.map(n => n.event.created_at || 0));
+
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const older = await NotificationCore.fetchNotifications(pubkey, 100, undefined, oldest);
+      const have = new Set(notifications.map(n => n.id));
+      const fresh = older.filter(n => !have.has(n.id));
+      if (fresh.length === 0) {
+        setReachedEnd(true);
+        return;
+      }
+      mergeIntoView(fresh);
+      const [actorProfiles] = await Promise.all([
+        NostrCore.fetchProfiles(fresh.map(n => notificationActor(n.event))),
+        fetchTargets(fresh)
+      ]);
+      setProfiles(prev => ({ ...prev, ...Object.fromEntries(actorProfiles) }));
+    } catch (error) {
+      console.error('Failed to load older notifications:', error);
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  };
+
+  // The end of the list coming into view asks for more, with a margin ahead
+  // of it so the next page is already arriving
+  useEffect(() => {
+    const sentinel = bottomRef.current;
+    if (!sentinel || loading || reachedEnd || !relaysConnected) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) void loadOlder(); },
+      { rootMargin: '600px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, reachedEnd, loadingOlder, relaysConnected, notifications.length]);
 
   const loadNotifications = async () => {
     const cached = readCachedNotifications(pubkey);
@@ -608,6 +665,16 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
           );
         })}
       </div>
+
+      {!loading && notifications.length > 0 && (
+        <div className="feed-end" ref={bottomRef}>
+          {loadingOlder
+            ? 'Loading older notifications…'
+            : reachedEnd
+              ? 'That is as far back as the relays go'
+              : ''}
+        </div>
+      )}
     </div>
   );
 };

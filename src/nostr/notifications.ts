@@ -383,7 +383,13 @@ export class NotificationCore {
   static async fetchNotifications(
     pubkey: string,
     limit: number = 100,
-    since?: number
+    since?: number,
+    /**
+     * Nothing newer than this — for reading further back. A relay answers
+     * with its newest hundred, so the first fetch reaches a week or so into
+     * a busy account; this is the next page.
+     */
+    until?: number
   ): Promise<NostrNotification[]> {
     const filters: NostrFilter[] = [
       {
@@ -400,15 +406,18 @@ export class NotificationCore {
         ],
         '#p': [pubkey],
         limit,
-        ...(since !== undefined ? { since } : {})
+        ...(since !== undefined ? { since } : {}),
+        ...(until !== undefined ? { until } : {})
       },
-      // Contact lists naming you: whoever publishes one follows you
-      {
+      // Contact lists naming you: whoever publishes one follows you. Not
+      // asked for when reading back: a follow is news only when it happens,
+      // and an old list says nothing about when that was.
+      ...(until !== undefined ? [] : [{
         kinds: [EVENT_KINDS.CONTACTS],
         '#p': [pubkey],
         limit,
         ...(since !== undefined ? { since } : {})
-      }
+      }])
     ];
 
     try {
