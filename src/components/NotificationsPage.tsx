@@ -602,7 +602,9 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
           return (
             <div
               key={notification.id}
-              className={`notification-item ${isNew ? 'unread' : ''}`}
+              className={`notification-item ${isNew ? 'unread' : ''} ${
+                notification.type === 'reply' && isThreadChatter(pubkey, notification.id) ? 'in-thread' : ''
+              }`}
               onClick={() => handleClick(notification)}
             >
               {/* A reaction can be a picture rather than an emoji — NIP-30
@@ -649,7 +651,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
                     </button>
                   </ProfileHoverCard>{' '}
                   {notification.type === 'reply' && isThreadChatter(pubkey, notification.id)
-                    ? 'replied to someone else in a thread you are in'
+                    ? <span className="notification-thread-label">replied to someone else in a thread you are in</span>
                     : meta.verb}
                   {(notification.type === 'reaction' || notification.type === 'repost')
                     ? ` ${describeTarget(targetOf(notification), 'your note').noun}`

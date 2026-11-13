@@ -5604,6 +5604,30 @@ a.capability-indicator.paid:hover {
   background: rgba(102, 126, 234, 0.08);
 }
 
+/* Somebody answering somebody else in a thread you are in: asked for, but
+   not addressed to you, so it is drawn as the quieter thing it is — a
+   dashed frame and no fill, new or not */
+.notification-item.in-thread,
+.notification-item.in-thread.unread {
+  border-style: dashed;
+  border-color: var(--border-color);
+  background: transparent;
+}
+
+.notification-item.in-thread:hover {
+  border-color: var(--primary-color);
+}
+
+/* The words that say so, set apart from "replied to your note" */
+.notification-thread-label {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.notification-item.in-thread .notification-icon {
+  opacity: 0.55;
+}
+
 .notification-icon {
   font-size: 1.1rem;
   flex-shrink: 0;
