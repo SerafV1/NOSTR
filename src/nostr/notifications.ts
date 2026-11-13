@@ -111,8 +111,37 @@ function couldBeChatter(notification: NostrNotification): boolean {
   return notification.event.kind === EVENT_KINDS.TEXT_NOTE && isReplyEvent(notification.event);
 }
 
+/**
+ * Whether the thread carrying on is wanted after all. Off unless asked for:
+ * some people do want to follow a conversation they joined, and for them
+ * these arrive — labelled as what they are, not as replies to them.
+ */
+const THREAD_REPLIES = 'nostr_notifications_thread_replies';
+
+export const notificationsIncludeThreads = (): boolean => {
+  try {
+    return localStorage.getItem(THREAD_REPLIES) === '1';
+  } catch {
+    return false;
+  }
+};
+
+export const setNotificationsIncludeThreads = (include: boolean): void => {
+  try {
+    localStorage.setItem(THREAD_REPLIES, include ? '1' : '0');
+  } catch {
+    // A browser that will not store it simply asks again next time
+  }
+};
+
+/** A reply found to be somebody answering somebody else in your thread */
+export function isThreadChatter(pubkey: string, notificationId: string): boolean {
+  return readAddressed(pubkey)[notificationId] === 0;
+}
+
 /** Leaves out the replies already found to be other people talking */
 export function dropThreadChatter(pubkey: string, notifications: NostrNotification[]): NostrNotification[] {
+  if (notificationsIncludeThreads()) return notifications;
   const addressed = readAddressed(pubkey);
   return notifications.filter(n => addressed[n.id] !== 0);
 }

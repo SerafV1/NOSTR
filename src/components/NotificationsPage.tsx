@@ -12,6 +12,9 @@ import {
   readCachedTargets,
   dropMuted,
   dropThreadChatter,
+  isThreadChatter,
+  notificationsIncludeThreads,
+  setNotificationsIncludeThreads,
   dropStrangers,
   notificationActor,
   notificationsFromFollowsOnly,
@@ -212,6 +215,9 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
   // list is read from storage first so ticking the box acts at once rather
   // than after the relays answer.
   const [followsOnly, setFollowsOnly] = useState(notificationsFromFollowsOnly);
+  // Replies between other people in a thread you are part of. Left out
+  // unless asked for, and said to be what they are when shown.
+  const [includeThreads, setIncludeThreads] = useState(notificationsIncludeThreads);
   const [follows, setFollows] = useState<Set<string>>(
     () => new Set(NostrCore.getCachedFollowedAccounts())
   );
@@ -245,7 +251,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
       return followsOnly ? dropStrangers(heard, follows) : heard;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [notifications, followsOnly, follows, muteTick]
+    [notifications, followsOnly, follows, muteTick, includeThreads]
   );
 
   /**
@@ -483,6 +489,23 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
           />
           Only people I follow
         </label>
+        <label
+          className="notifications-follows-only"
+          title="Also show replies other people write to each other in threads you took part in"
+        >
+          <input
+            type="checkbox"
+            checked={includeThreads}
+            onChange={(e) => {
+              setIncludeThreads(e.target.checked);
+              setNotificationsIncludeThreads(e.target.checked);
+              // What was left out was never brought to the page, so turning
+              // this on has to go and get it
+              if (e.target.checked) void loadNotifications();
+            }}
+          />
+          Threads I'm in
+        </label>
       </div>
 
       {loading && <div className="loading">Loading notifications...</div>}
@@ -568,7 +591,9 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
                       <EmojiText text={displayName} emojis={profile?.emojis} />
                     </button>
                   </ProfileHoverCard>{' '}
-                  {meta.verb}
+                  {notification.type === 'reply' && isThreadChatter(pubkey, notification.id)
+                    ? 'replied to someone else in a thread you are in'
+                    : meta.verb}
                   {(notification.type === 'reaction' || notification.type === 'repost')
                     ? ` ${describeTarget(targetOf(notification), 'your note').noun}`
                     : ''}

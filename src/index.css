@@ -5506,6 +5506,7 @@ a.capability-indicator.paid:hover {
 }
 
 .notifications-header {
+  flex-wrap: wrap;
   margin-bottom: var(--spacing-lg);
   /* The way to start a group sits beside the word Messages */
   display: flex;
@@ -5556,6 +5557,11 @@ a.capability-indicator.paid:hover {
 }
 
 /* The one choice the page offers, beside its title */
+/* The first option takes the free room, so the two sit together on the right */
+.notifications-header h2 {
+  margin-right: auto;
+}
+
 .notifications-follows-only {
   display: inline-flex;
   align-items: center;
