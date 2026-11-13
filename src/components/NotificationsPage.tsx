@@ -11,6 +11,7 @@ import {
   cacheTargets,
   readCachedTargets,
   dropMuted,
+  dropThreadChatter,
   dropStrangers,
   notificationActor,
   notificationsFromFollowsOnly,
@@ -237,7 +238,10 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({
 
   const shown = useMemo(
     () => {
-      const heard = dropMuted(notifications);
+      // Replies found to be other people answering each other are judged
+      // while the list is fetched — after what was kept from last time is
+      // already on screen — so they are taken out here too
+      const heard = dropThreadChatter(pubkey, dropMuted(notifications));
       return followsOnly ? dropStrangers(heard, follows) : heard;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps

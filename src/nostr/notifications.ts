@@ -1,6 +1,8 @@
 import { NostrEventSigned, NostrFilter, EVENT_KINDS } from '../types';
 import { getRelayPool } from './relay';
 import { PersistentCache, NostrCore } from './core';
+import { nip19 } from 'nostr-tools';
+import { directParentId, isReplyEvent } from '../utils/threads';
 
 export type NotificationType =
   | 'reply' | 'mention' | 'reaction' | 'repost' | 'zap' | 'livechat'
@@ -61,10 +63,117 @@ function watchingSince(pubkey: string): number {
   return PersistentCache.get<number>(followersSinceKey(pubkey)) || 0;
 }
 
+/**
+ * Whether a reply was written to you, or merely near you.
+ *
+ * A reply carries a `p` tag for everyone in the thread above it — that is
+ * how NIP-10 says to write one — so asking a relay for notes that tag you
+ * returns every reply in every conversation you have ever taken part in.
+ * Two other people answering each other under your post, or further down a
+ * thread you left a line in, each arrived as "replied to you".
+ *
+ * A reply is yours when the note it directly answers is yours, or when it
+ * names you in its text. Anything else is the thread carrying on. A parent
+ * that cannot be found is given the benefit of the doubt: a notification
+ * shown that need not have been costs a glance, one hidden that should
+ * have been shown costs an answer somebody is waiting on.
+ */
+const addressedKey = (pubkey: string): string => `notifications_addressed_${pubkey}`;
+const ADDRESSED_LIMIT = 1500;
+
+/** id → whether it was for you. Judged once; the answer does not change. */
+function readAddressed(pubkey: string): Record<string, 0 | 1> {
+  return PersistentCache.get<Record<string, 0 | 1>>(addressedKey(pubkey)) || {};
+}
+
+/** Named in the words themselves, not only in the tags */
+function namesInText(event: NostrEventSigned, pubkey: string): boolean {
+  const content = event.content || '';
+  for (const match of content.matchAll(/(?:nostr:)?(npub1[a-z0-9]{20,}|nprofile1[a-z0-9]{20,})/g)) {
+    try {
+      const decoded = nip19.decode(match[1]);
+      if (decoded.type === 'npub' && decoded.data === pubkey) return true;
+      if (decoded.type === 'nprofile' && (decoded.data as { pubkey: string }).pubkey === pubkey) return true;
+    } catch {
+      // Not a real address; it names nobody
+    }
+  }
+  // The older way of naming somebody: "#[2]" pointing at a tag
+  for (const match of content.matchAll(/#\[(\d+)\]/g)) {
+    const tag = event.tags[Number(match[1])];
+    if (tag?.[0] === 'p' && tag[1] === pubkey) return true;
+  }
+  return false;
+}
+
+/** Only an ordinary reply can be thread chatter; everything else stands */
+function couldBeChatter(notification: NostrNotification): boolean {
+  return notification.event.kind === EVENT_KINDS.TEXT_NOTE && isReplyEvent(notification.event);
+}
+
+/** Leaves out the replies already found to be other people talking */
+export function dropThreadChatter(pubkey: string, notifications: NostrNotification[]): NostrNotification[] {
+  const addressed = readAddressed(pubkey);
+  return notifications.filter(n => addressed[n.id] !== 0);
+}
+
+/**
+ * Judge the replies not judged yet, and remember the answers. The parents
+ * are looked up together, and most are already in memory: a thread you are
+ * in is one you have usually read.
+ */
+async function judgeReplies(pubkey: string, notifications: NostrNotification[]): Promise<void> {
+  const addressed = readAddressed(pubkey);
+  const pending = notifications.filter(n => couldBeChatter(n) && !(n.id in addressed));
+  if (pending.length === 0) return;
+
+  const parentOf = new Map<string, string>();
+  const authorOf = new Map<string, string>();
+  for (const { event } of pending) {
+    if (namesInText(event, pubkey)) {
+      addressed[event.id] = 1;
+      continue;
+    }
+    const parent = directParentId(event);
+    if (!parent) {
+      addressed[event.id] = 1;
+      continue;
+    }
+    parentOf.set(event.id, parent);
+    // NIP-10 lets the tag itself say who wrote the note it points at
+    const hinted = event.tags.find(t => t[0] === 'e' && t[1] === parent)?.[4];
+    if (hinted && /^[0-9a-f]{64}$/.test(hinted)) authorOf.set(parent, hinted);
+  }
+
+  const unknown = Array.from(new Set(parentOf.values())).filter(id => !authorOf.has(id));
+  if (unknown.length > 0) {
+    try {
+      const found = await NostrCore.fetchEventsByIds(unknown);
+      for (const [id, event] of found) authorOf.set(id, event.pubkey);
+    } catch {
+      // Unfound parents fall through as "for you" below
+    }
+  }
+
+  for (const [id, parent] of parentOf) {
+    const author = authorOf.get(parent);
+    addressed[id] = author && author !== pubkey ? 0 : 1;
+  }
+
+  const entries = Object.entries(addressed);
+  PersistentCache.set(
+    addressedKey(pubkey),
+    entries.length > ADDRESSED_LIMIT ? Object.fromEntries(entries.slice(-ADDRESSED_LIMIT)) : addressed
+  );
+}
+
 const notificationsCacheKey = (pubkey: string): string => `notifications_${pubkey}`;
 
 export function readCachedNotifications(pubkey: string): NostrNotification[] {
-  return PersistentCache.get<NostrNotification[]>(notificationsCacheKey(pubkey)) || [];
+  return dropThreadChatter(
+    pubkey,
+    PersistentCache.get<NostrNotification[]>(notificationsCacheKey(pubkey)) || []
+  );
 }
 
 /**
@@ -336,7 +445,14 @@ export class NotificationCore {
         .filter(e => e.kind !== EVENT_KINDS.CONTACTS)
         .map(e => ({ id: e.id, type: this.classify(e), event: e }));
 
-      return [...rest, ...follows]
+      // What is kept from earlier visits is judged along with what just
+      // arrived, so the chatter already sitting in the list goes as well
+      await judgeReplies(pubkey, [
+        ...rest,
+        ...(PersistentCache.get<NostrNotification[]>(notificationsCacheKey(pubkey)) || [])
+      ]);
+
+      return dropThreadChatter(pubkey, [...rest, ...follows])
         .sort((a, b) => (b.event.created_at || 0) - (a.event.created_at || 0))
         .slice(0, limit);
     } catch (error) {
