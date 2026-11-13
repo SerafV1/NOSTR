@@ -13,6 +13,7 @@ import { streamNaddrFromUrl } from '../utils/liveStream';
 import { CustomEmojiMap, customEmojiMap, splitCustomEmoji } from '../utils/customEmoji';
 import InlineQuotedNote from './InlineQuotedNote';
 import GroupRef from './GroupRef';
+import ProfileHoverCard from './ProfileHoverCard';
 
 interface RichTextProps {
   content: string;
@@ -309,15 +310,23 @@ const RichText: React.FC<RichTextProps> = ({
       if (pubkey) {
         const profile = profiles[pubkey];
         const name = profile?.display_name || profile?.name || formatAddress(pubkey);
+        // Pointing at a name written into a note says who that is and
+        // offers to follow or mute them, as it does for a note's author
         parts.push(
-          <button
+          <ProfileHoverCard
             key={key++}
-            type="button"
-            className="mention-link"
-            onClick={(e) => { e.stopPropagation(); onNavigateToProfile?.(pubkey); }}
+            pubkey={pubkey}
+            profile={profile}
+            onNavigateToProfile={(target) => onNavigateToProfile?.(target)}
           >
-            @{name}
-          </button>
+            <button
+              type="button"
+              className="mention-link"
+              onClick={(e) => { e.stopPropagation(); onNavigateToProfile?.(pubkey); }}
+            >
+              @{name}
+            </button>
+          </ProfileHoverCard>
         );
       } else if (addressRef) {
         if (!addressRef.openable) {

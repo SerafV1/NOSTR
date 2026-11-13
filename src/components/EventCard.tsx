@@ -548,31 +548,28 @@ const EventCardBody: React.FC<EventCardProps> = ({
         parts.push(content.substring(lastIndex, match.index));
       }
 
-      // Add mention as link — prefer the NIP-05 handle, like @user@domain
-      if (mentionProfile) {
-        const handle = mentionProfile.name || mentionProfile.display_name || mentionProfile.nip05 || formatAddress(pubkey);
-        parts.push(
+      // Add mention as link — prefer the NIP-05 handle, like @user@domain.
+      // Pointing at it opens the same card a note's author has: who this
+      // is, and whether to follow or mute them.
+      const handle = mentionProfile
+        ? (mentionProfile.name || mentionProfile.display_name || mentionProfile.nip05 || formatAddress(pubkey))
+        : formatAddress(pubkey);
+      const mentioned = pubkey;
+      parts.push(
+        <ProfileHoverCard
+          key={`mention-${keyIndex}-${mentioned}`}
+          pubkey={mentioned}
+          profile={mentionProfile}
+          onNavigateToProfile={onNavigateToProfile}
+        >
           <button
-            key={`mention-${keyIndex}-${pubkey}`}
-            onClick={(e) => { e.stopPropagation(); onNavigateToProfile(pubkey); }}
+            onClick={(e) => { e.stopPropagation(); onNavigateToProfile(mentioned); }}
             className="mention-link"
-            title={`@${handle}`}
           >
             @{handle}
           </button>
-        );
-      } else {
-        parts.push(
-          <button
-            key={`mention-${keyIndex}-${pubkey}`}
-            onClick={(e) => { e.stopPropagation(); onNavigateToProfile(pubkey); }}
-            className="mention-link"
-            title={formatAddress(pubkey)}
-          >
-            @{formatAddress(pubkey)}
-          </button>
-        );
-      }
+        </ProfileHoverCard>
+      );
 
       lastIndex = match.index + match[0].length;
       keyIndex++;
