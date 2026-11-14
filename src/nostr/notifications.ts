@@ -122,7 +122,24 @@ function isResponse(notification: NostrNotification): boolean {
 /** Only these can be the thread carrying on; everything else stands */
 function couldBeChatter(notification: NostrNotification): boolean {
   if (isResponse(notification)) return true;
+  // A comment (NIP-22) always answers something, and names the whole thread
+  // in its tags exactly as a reply does
+  if (notification.event.kind === EVENT_KINDS.COMMENT) return true;
   return notification.event.kind === EVENT_KINDS.TEXT_NOTE && isReplyEvent(notification.event);
+}
+
+/**
+ * What a comment answers, and who wrote that when the tags say so.
+ *
+ * NIP-22 keeps the thread's top in capital-letter tags and the thing being
+ * answered in small ones: `e` for a note, with its author fourth, or `a` for
+ * an article, whose address begins with its author.
+ */
+function commentParent(event: NostrEventSigned): { id?: string; author?: string } {
+  const note = event.tags.filter(t => t[0] === 'e' && t[1]).pop();
+  if (note) return { id: note[1], author: note[3] };
+  const address = event.tags.filter(t => t[0] === 'a' && t[1]).pop();
+  return { author: address?.[1].split(':')[1] };
 }
 
 /**
@@ -194,14 +211,22 @@ async function judgeReplies(pubkey: string, notifications: NostrNotification[]):
       addressed[event.id] = 1;
       continue;
     }
-    const parent = directParentId(event);
+    const comment = event.kind === EVENT_KINDS.COMMENT ? commentParent(event) : null;
+    if (comment && !comment.id) {
+      // Answering an article: its address says whose it is
+      addressed[event.id] = comment.author && comment.author !== pubkey ? 0 : 1;
+      continue;
+    }
+    const parent = comment ? comment.id! : directParentId(event);
     if (!parent) {
       addressed[event.id] = 1;
       continue;
     }
     parentOf.set(event.id, parent);
-    // NIP-10 lets the tag itself say who wrote the note it points at
-    const hinted = event.tags.find(t => t[0] === 'e' && t[1] === parent)?.[4];
+    // The tag itself may say who wrote the note it points at
+    const hinted = comment
+      ? comment.author
+      : event.tags.find(t => t[0] === 'e' && t[1] === parent)?.[4];
     if (hinted && /^[0-9a-f]{64}$/.test(hinted)) authorOf.set(parent, hinted);
   }
 
