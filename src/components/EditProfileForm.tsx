@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { UserProfile } from '../types';
 import { NostrCore } from '../nostr/core';
 import { cleanAddress, isPayable, fromPaytoEvent } from '../utils/paymentTargets';
+import ProfileMediaField from './ProfileMediaField';
 
 interface EditProfileFormProps {
   profile: UserProfile;
@@ -160,29 +161,21 @@ const EditProfileForm: React.FC<EditProfileFormProps> = ({ profile, onSave }) =>
         />
       </div>
 
-      <div className="form-group">
-        <label htmlFor="picture">Profile Picture URL</label>
-        <input
-          type="url"
-          id="picture"
-          name="picture"
-          value={formData.picture}
-          onChange={handleChange}
-          placeholder="https://example.com/avatar.jpg"
-        />
-      </div>
+      <ProfileMediaField
+        id="picture"
+        label="Profile Picture URL"
+        placeholder="https://example.com/avatar.jpg"
+        value={formData.picture}
+        onChange={url => setFormData(prev => ({ ...prev, picture: url }))}
+      />
 
-      <div className="form-group">
-        <label htmlFor="banner">Banner URL</label>
-        <input
-          type="url"
-          id="banner"
-          name="banner"
-          value={formData.banner}
-          onChange={handleChange}
-          placeholder="https://example.com/banner.jpg"
-        />
-      </div>
+      <ProfileMediaField
+        id="banner"
+        label="Banner URL"
+        placeholder="https://example.com/banner.jpg"
+        value={formData.banner}
+        onChange={url => setFormData(prev => ({ ...prev, banner: url }))}
+      />
 
       <div className="form-group">
         <label htmlFor="website">Website</label>

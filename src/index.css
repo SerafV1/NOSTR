@@ -9988,3 +9988,75 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   color: var(--error-color);
   background: var(--light-bg);
 }
+
+/* Profile picture and banner: the address, or one of your own uploads */
+.profile-media-field {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+.profile-media-field input {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-media-preview {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--border-color);
+}
+
+.profile-media-preview.banner {
+  width: 96px;
+  border-radius: 6px;
+}
+
+.profile-media-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  align-items: center;
+  margin-top: var(--spacing-sm);
+}
+
+.profile-media-server {
+  padding: 4px var(--spacing-xs);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--dark-bg);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  max-width: 100%;
+}
+
+.profile-media-error {
+  margin-top: var(--spacing-xs);
+  font-size: 0.8rem;
+  color: var(--error-color);
+}
+
+.profile-media-picker {
+  width: 100%;
+  max-width: none;
+  margin-top: var(--spacing-sm);
+  box-shadow: none;
+}
+
+/* The form's own select rule stretches every select to the full width */
+.profile-media-actions .profile-media-server,
+.profile-media-picker .media-library-head select {
+  width: auto;
+  flex: 0 1 auto;
+}
+
+.profile-media-picker .media-library-head span {
+  white-space: nowrap;
+}
+
+.profile-media-picker .media-library-grid {
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+}

@@ -8,6 +8,8 @@ interface MediaLibraryPickerProps {
   /** Given the address of whatever was chosen */
   onPick: (url: string) => void;
   onClose: () => void;
+  /** Only pictures — for a profile picture or banner, where a video will not do */
+  picturesOnly?: boolean;
 }
 
 const isPicture = (blob: StoredBlob): boolean =>
@@ -29,7 +31,7 @@ const mark = (blob: StoredBlob): string => {
  * the same name, but the round trip was spent for nothing. This lists what
  * is already there and hands over its address.
  */
-const MediaLibraryPicker: React.FC<MediaLibraryPickerProps> = ({ onPick, onClose }) => {
+const MediaLibraryPicker: React.FC<MediaLibraryPickerProps> = ({ onPick, onClose, picturesOnly }) => {
   const [blobs, setBlobs] = useState<StoredBlob[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [server, setServer] = useState('');
@@ -57,7 +59,8 @@ const MediaLibraryPicker: React.FC<MediaLibraryPickerProps> = ({ onPick, onClose
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const shown = (blobs || []).filter(blob => !server || blob.servers.includes(server));
+  const shown = (blobs || []).filter(blob =>
+    (!server || blob.servers.includes(server)) && (!picturesOnly || isPicture(blob)));
 
   return (
     <div className="media-library">
@@ -76,7 +79,9 @@ const MediaLibraryPicker: React.FC<MediaLibraryPickerProps> = ({ onPick, onClose
       {error && <p className="media-library-note">{error}</p>}
       {!error && !blobs && <p className="media-library-note">Reading your media servers…</p>}
       {!error && blobs && shown.length === 0 && (
-        <p className="media-library-note">Nothing here yet — anything you upload will be.</p>
+        <p className="media-library-note">
+          {picturesOnly ? 'No pictures here yet — any you upload will be.' : 'Nothing here yet — anything you upload will be.'}
+        </p>
       )}
 
       <div className="media-library-grid">
