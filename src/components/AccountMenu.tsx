@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { NostrCore, EventCache } from '../nostr/core';
 import { CredentialManager, ExtensionManager } from '../nostr/crypto';
 import {
-  SavedAccount, addAccountFromExtension, listAccounts, rememberCurrentAccount, switchToAccount
+  SavedAccount, addAccountFromExtension, forgetAccount, listAccounts, rememberCurrentAccount, switchToAccount
 } from '../nostr/accounts';
 import { UserProfile } from '../types';
 import { formatAddress } from '../utils/helpers';
@@ -92,8 +92,8 @@ const AccountMenu: React.FC = () => {
             const picture = profiles.get(account.pubkey)?.picture;
             const here = account.pubkey === current;
             return (
+              <div key={account.pubkey} className="account-menu-row">
               <button
-                key={account.pubkey}
                 type="button"
                 role="menuitem"
                 className={`account-menu-item ${here ? 'current' : ''}`}
@@ -106,6 +106,22 @@ const AccountMenu: React.FC = () => {
                 <span className="account-menu-name">{nameOf(account.pubkey)}</span>
                 <span className="account-menu-mode">{here ? '✓' : account.mode === 'extension' ? 'extension' : 'key'}</span>
               </button>
+              {!here && (
+                // The one in use leaves through Logout; the others from here
+                <button
+                  type="button"
+                  className="account-menu-remove"
+                  title={`Remove ${nameOf(account.pubkey)} from this browser`}
+                  onClick={() => {
+                    if (!window.confirm(`Remove ${nameOf(account.pubkey)} from this browser?`)) return;
+                    forgetAccount(account.pubkey);
+                    setAccounts(listAccounts());
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+              </div>
             );
           })}
           <button

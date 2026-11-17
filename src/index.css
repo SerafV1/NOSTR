@@ -9963,3 +9963,28 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   font-size: 0.8rem;
   color: var(--text-secondary);
 }
+
+.account-menu-row {
+  display: flex;
+  align-items: center;
+}
+
+.account-menu-row .account-menu-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-menu-remove {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.account-menu-remove:hover {
+  color: var(--error-color);
+  background: var(--light-bg);
+}
