@@ -470,7 +470,7 @@ export class ExtensionManager {
       throw new Error('NOSTR extension not found');
     }
     try {
-      return await Promise.race([
+      const signed = await Promise.race([
         nostr.signEvent(event),
         new Promise<never>((_, reject) =>
           setTimeout(
@@ -484,6 +484,17 @@ export class ExtensionManager {
           )
         )
       ]);
+      // With more than one account here, the extension may be set to a
+      // different one than the account in use — and a note signed by the
+      // wrong key would go out under the wrong name
+      const expected = CredentialManager.getPublicKey();
+      if (expected && signed?.pubkey && signed.pubkey !== expected) {
+        throw new Error(
+          'Your extension is set to a different account than the one in use here. ' +
+          'Switch it in the extension, or switch account here, and try again.'
+        );
+      }
+      return signed;
     } catch (error) {
       console.error('Failed to sign event with extension:', error);
       throw error;

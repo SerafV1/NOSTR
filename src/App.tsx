@@ -43,6 +43,8 @@ import LiveViewersPage from './components/LiveViewersPage';
 import LiveZappersPage from './components/LiveZappersPage';
 import { BellIcon, MessageIcon, SettingsIcon, ZapIcon } from './components/Icons';
 import ZapButton from './components/ZapButton';
+import AccountMenu from './components/AccountMenu';
+import { forgetAccount, listAccounts, switchToAccount } from './nostr/accounts';
 import RazrWordmark from './components/RazrWordmark';
 import { decodeLiveNaddr, encodeLiveNaddr } from './utils/liveStream';
 import { useHostStream } from './hooks/useHostStream';
@@ -637,6 +639,18 @@ function App() {
   };
 
   const handleLogout = () => {
+    // Logging out of one account leaves the others this browser knows
+    const leaving = CredentialManager.getPublicKey();
+    if (leaving) forgetAccount(leaving);
+    const next = listAccounts()[0];
+    if (next) {
+      clearBunkerSession();
+      // Cleared first, or switching would put this account back on the list
+      CredentialManager.clear();
+      switchToAccount(next);
+      window.location.assign('/');
+      return;
+    }
     CredentialManager.clear();
     // The pairing with a remote signer is a credential too — leaving it
     // behind would keep this browser able to ask for signatures
@@ -777,6 +791,7 @@ function App() {
                     </div>
                   )}
                 </Link>
+                <AccountMenu />
                 <button className="logout-btn" onClick={handleLogout}>
                   Logout
                 </button>

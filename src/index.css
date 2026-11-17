@@ -9859,3 +9859,107 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   cursor: pointer;
   padding: 0 var(--spacing-sm) 0 0;
 }
+
+/* Account switcher beside the avatar */
+.account-menu {
+  position: relative;
+}
+
+.account-menu-toggle {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px 6px;
+  font-size: 0.9rem;
+  margin-left: -6px;
+}
+
+.account-menu-toggle:hover {
+  color: var(--text-primary);
+}
+
+.account-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: min(280px, calc(100vw - 32px));
+  background: var(--card-bg, var(--light-bg));
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  padding: 6px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.account-menu-item,
+.account-menu-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.account-menu-item:hover:not(:disabled),
+.account-menu-add:hover:not(:disabled) {
+  background: var(--light-bg);
+}
+
+.account-menu-item.current {
+  cursor: default;
+}
+
+.account-menu-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.account-menu-avatar.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  color: white;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.account-menu-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu-mode {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.account-menu-add {
+  color: var(--primary-color);
+  border-top: 1px solid var(--border-color);
+  border-radius: 0 0 8px 8px;
+  margin-top: 4px;
+}
+
+.account-menu-note {
+  margin: 4px 8px 6px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
