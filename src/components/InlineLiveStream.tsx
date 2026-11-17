@@ -7,13 +7,7 @@ import { streamEmbed } from '../utils/streamEmbed';
 import { formatAddress } from '../utils/helpers';
 import StreamSurface from './StreamSurface';
 import { PlayIcon } from './Icons';
-
-/**
- * Only one of these plays at a time. Without this a feed could end up with
- * two streams sounding at once and two docked players stacked in the same
- * corner — starting one stops whichever was already going.
- */
-let stopPlayingElsewhere: (() => void) | null = null;
+import { somebodyPlaying, takeTurn, useStartWhenSeen } from '../utils/streamTurn';
 
 interface InlineLiveStreamProps {
   /** The stream's address, however it was written in the note */
@@ -49,7 +43,12 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
   // Scrolled past while playing, so the player has left the note and sits in
   // the corner instead
   const [docked, setDocked] = useState(false);
-  const slotRef = useRef<HTMLDivElement>(null);
+  const slotRef = useRef<HTMLDivElement | null>(null);
+  // Started by being on screen rather than by a press: such a player stops
+  // when scrolled past instead of following the reader into the corner
+  const [auto, setAuto] = useState(false);
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
+  const holdBox = (el: HTMLDivElement | null) => { slotRef.current = el; setBox(el); };
   // A running stream's poster is rewritten at the same address as it goes
   const posterAt = usePosterTick();
   const poster = stream ? posterSources(stream, posterAt)[0] : undefined;
@@ -97,7 +96,7 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
   // player sitting exactly on the edge does not flicker between the two.
   useEffect(() => {
     const slot = slotRef.current;
-    if (!playing || !slot) return;
+    if (!playing || !slot || auto) return;
 
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -108,19 +107,36 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
     );
     observer.observe(slot);
     return () => observer.disconnect();
-  }, [playing]);
+  }, [playing, auto]);
 
   // A player left docked after its note is gone — a feed refresh, a page
   // change — would otherwise keep sounding from an empty corner
   useEffect(() => {
     if (!playing) return;
-    stopPlayingElsewhere?.();
-    const stop = () => { setPlaying(false); setDocked(false); };
-    stopPlayingElsewhere = stop;
-    return () => {
-      if (stopPlayingElsewhere === stop) stopPlayingElsewhere = null;
-    };
+    return takeTurn(() => { setPlaying(false); setDocked(false); setAuto(false); });
   }, [playing]);
+
+  // Only a running stream with an address this browser can actually open gets
+  // a play button; the rest is a card that leads to the page
+  const playable = !!stream
+    && stream.status === 'live'
+    && !!stream.streamingUrl
+    // A twitch/kick/youtube address plays through that service's own player,
+    // so the checks a playlist has to pass don't apply to it
+    && (!!streamEmbed(stream.streamingUrl) || !unplayableReason(stream.streamingUrl));
+
+  // On screen and nobody else playing: start, muted, without waiting for a
+  // press. Scrolled past: stop, so it does not keep pulling the stream.
+  const seen = useStartWhenSeen(box, playable);
+  useEffect(() => {
+    if (seen && playable && !playing && !somebodyPlaying()) {
+      setAuto(true);
+      setPlaying(true);
+    } else if (!seen && playing && auto) {
+      setPlaying(false);
+      setAuto(false);
+    }
+  });
 
   const open = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -145,20 +161,12 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
     return <div className="inline-stream-card inline-stream-loading">Loading stream…</div>;
   }
 
-  // Only a running stream with an address this browser can actually open gets
-  // a play button; the rest is a card that leads to the page
-  const playable = stream.status === 'live'
-    && !!stream.streamingUrl
-    // A twitch/kick/youtube address plays through that service's own player,
-    // so the checks a playlist has to pass don't apply to it
-    && (!!streamEmbed(stream.streamingUrl) || !unplayableReason(stream.streamingUrl));
-
   if (playing && playable) {
     return (
       // The slot holds the note's layout open while the player is away in the
       // corner — without it the feed jumps under the reader's cursor at the
       // moment they scroll past
-      <div className="inline-stream-slot" ref={slotRef}>
+      <div className="inline-stream-slot" ref={holdBox}>
         <div className={`inline-stream-playing ${docked ? 'docked' : ''}`}>
           {docked && (
             <div className="inline-stream-dock-bar">
@@ -171,7 +179,7 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
               </button>
               <button
                 type="button"
-                onClick={() => { setPlaying(false); setDocked(false); }}
+                onClick={() => { setPlaying(false); setDocked(false); setAuto(false); }}
                 title="Close the player"
               >
                 ✕
@@ -188,7 +196,7 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
   }
 
   return (
-    <div className="inline-stream-card" onClick={(e) => e.stopPropagation()}>
+    <div className="inline-stream-card" ref={holdBox} onClick={(e) => e.stopPropagation()}>
       <div
         className="inline-stream-art"
         style={poster ? { backgroundImage: `url(${poster})` } : undefined}
@@ -197,7 +205,7 @@ const InlineLiveStream: React.FC<InlineLiveStreamProps> = ({ naddr, href }) => {
           <button
             type="button"
             className="inline-stream-art-play"
-            onClick={(e) => { e.stopPropagation(); setPlaying(true); }}
+            onClick={(e) => { e.stopPropagation(); setAuto(false); setPlaying(true); }}
             title="Play the stream here"
           >
             <PlayIcon />

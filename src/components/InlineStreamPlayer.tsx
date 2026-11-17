@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import LiveVideoPlayer from './LiveVideoPlayer';
 import { PlayIcon } from './Icons';
+import { somebodyPlaying, takeTurn, useStartWhenSeen } from '../utils/streamTurn';
 
 interface InlineStreamPlayerProps {
   src: string;
@@ -14,16 +15,39 @@ interface InlineStreamPlayerProps {
  * outside Safari it needs hls.js — so a stream link used to sit in a note as
  * text, and the one thing worth seeing took a trip to another tab.
  *
- * It waits for a press rather than starting on its own: a live stream has no
- * end to buffer towards, so a feed that autoplayed every one of them would
- * pull several streams at once for as long as the page stayed open. The
- * player underneath does start immediately once mounted, which is what
- * pressing play is asking for.
+ * It starts by itself, muted, once it is on screen and nothing else is
+ * playing, and stops when scrolled past: a live stream has no end to buffer
+ * towards, so a feed that played every one of them would pull several at
+ * once for as long as the page stayed open.
  */
 const InlineStreamPlayer: React.FC<InlineStreamPlayerProps> = ({ src, className }) => {
   const [playing, setPlaying] = useState(false);
+  const [auto, setAuto] = useState(false);
+  const [box, setBox] = useState<HTMLElement | null>(null);
+  const seen = useStartWhenSeen(box, true);
 
-  if (playing) return <LiveVideoPlayer src={src} className={className} />;
+  useEffect(() => {
+    if (!playing) return;
+    return takeTurn(() => { setPlaying(false); setAuto(false); });
+  }, [playing]);
+
+  useEffect(() => {
+    if (seen && !playing && !somebodyPlaying()) {
+      setAuto(true);
+      setPlaying(true);
+    } else if (!seen && playing && auto) {
+      setPlaying(false);
+      setAuto(false);
+    }
+  });
+
+  if (playing) {
+    return (
+      <div className="inline-stream-auto" ref={setBox}>
+        <LiveVideoPlayer src={src} className={className} />
+      </div>
+    );
+  }
 
   let host = '';
   try {
@@ -40,7 +64,8 @@ const InlineStreamPlayer: React.FC<InlineStreamPlayerProps> = ({ src, className 
          own that would undo this plate's layout. The plate sets its own
          size, so it does not need it. */
       className="inline-stream-poster"
-      onClick={(e) => { e.stopPropagation(); setPlaying(true); }}
+      ref={setBox}
+      onClick={(e) => { e.stopPropagation(); setAuto(false); setPlaying(true); }}
     >
       <span className="inline-stream-play"><PlayIcon /></span>
       <span className="inline-stream-label">
