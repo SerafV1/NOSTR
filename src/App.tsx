@@ -42,7 +42,7 @@ import LiveChatPage from './components/LiveChatPage';
 import LiveViewersPage from './components/LiveViewersPage';
 import LiveZappersPage from './components/LiveZappersPage';
 import { BellIcon, MessageIcon, SettingsIcon, ZapIcon } from './components/Icons';
-import ZapButton from './components/ZapButton';
+import SupportersPage from './components/SupportersPage';
 import AccountMenu from './components/AccountMenu';
 import { forgetAccount, listAccounts, switchToAccount } from './nostr/accounts';
 import RazrWordmark from './components/RazrWordmark';
@@ -51,16 +51,6 @@ import { useHostStream } from './hooks/useHostStream';
 import WaitingForStream from './components/WaitingForStream';
 import ArticlePage from './components/ArticlePage';
 
-/**
- * Where a tip for this app goes. Kept here rather than in a profile, because
- * the button in the header is the app asking, not one of its users.
- *
- * It was `sera@` until measured: that name has no LNURL behind it and the
- * provider answers 404, so every tip failed before an invoice existed.
- */
-const TIP_ADDRESS = 'seraf@getalby.com';
-/** Who the tip is for, so the zap becomes a real one with a receipt */
-const TIP_PUBKEY = '5eb2c642d40a58795422121625be7fbe47e8901485a1a8bc01e1907b8aea0a9b';
 
 // URL-safe encode/decode for note ids and pubkeys — bech32 (note1.../npub1...)
 // with a raw-hex fallback so malformed or hand-typed links still resolve
@@ -338,11 +328,6 @@ function App() {
   );
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
-  // Whoever writes this client, for the Tip button — their own name and
-  // face, not the app's, since it is their wallet the sats land in
-  const [devProfile, setDevProfile] = useState<UserProfile | null>(
-    () => EventCache.getProfile(TIP_PUBKEY) || null
-  );
   const [showComposeFab, setShowComposeFab] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   // Small screens collapse the destinations behind one button
@@ -353,14 +338,6 @@ function App() {
 
   useEffect(() => onSigningWait(setAwaitingSignature), []);
 
-  useEffect(() => {
-    if (!relaysConnected || devProfile) return;
-    let dropped = false;
-    NostrCore.fetchUserProfile(TIP_PUBKEY)
-      .then(profile => { if (!dropped && profile) setDevProfile(profile); })
-      .catch(() => { /* the name below stands in */ });
-    return () => { dropped = true; };
-  }, [relaysConnected, devProfile]);
   const mainRef = useRef<HTMLElement>(null);
 
   const navigate = useNavigate();
@@ -384,7 +361,7 @@ function App() {
   // a search engine could ever read here: a crawler has no account, so
   // behind the login screen there was one page to index, repeated at every
   // address. A profile stays behind it.
-  const publicPage = /^\/(live|e|a)(\/|$)/.test(location.pathname);
+  const publicPage = /^\/(live|e|a|supporters)(\/|$)/.test(location.pathname);
   const browsingAnonymously = !isLoggedIn && publicPage;
 
   // Show a "back to top" button once the page content is scrolled down a
@@ -763,17 +740,15 @@ function App() {
             </>}
           </nav>
           <div className="header-right">
-            <ZapButton
-              lud16={TIP_ADDRESS}
-              recipientPubkey={TIP_PUBKEY}
-              recipientName={devProfile?.display_name || devProfile?.name || 'Seraf'}
-              recipientPicture={devProfile?.picture}
-              recipientEmojis={devProfile?.emojis}
-              triggerClassName="btn btn-secondary btn-small btn-with-icon header-tip-btn"
-              triggerTitle="Tip whoever writes this client"
+            {/* The project asking for support: its page shows who already
+                has, and is where the zap is sent from */}
+            <Link
+              to="/supporters"
+              className="btn btn-secondary btn-small btn-with-icon header-tip-btn"
+              title="Support RAZR and see who already does"
             >
-              <ZapIcon /> Tip dev
-            </ZapButton>
+              <ZapIcon /> Tip RAZR
+            </Link>
             {browsingAnonymously ? (
               <Link to="/" className="btn btn-primary btn-small">Log in</Link>
             ) : (
@@ -819,6 +794,10 @@ function App() {
           <Route path="/a/:naddr" element={<ArticleRoute {...callbacks} />} />
           <Route path="/search" element={<SearchRoute {...callbacks} />} />
           <Route path="/live" element={<LivePage relaysConnected={relaysConnected} />} />
+          <Route
+            path="/supporters"
+            element={<SupportersPage relaysConnected={relaysConnected} onNavigateToProfile={navigateToProfile} />}
+          />
           {/* A server has an address of its own, and so does a group on it.
               Short, because these are addresses people paste to each other. */}
           <Route path="/s" element={<GroupsRoute {...callbacks} />} />

@@ -10060,3 +10060,195 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
 .profile-media-picker .media-library-grid {
   grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
 }
+
+/* Supporters: who keeps RAZR going */
+.supporters-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: var(--spacing-lg) var(--spacing-md);
+}
+
+.supporters-hero {
+  text-align: center;
+  padding: var(--spacing-lg) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: radial-gradient(circle at 50% 0%, rgba(118, 75, 162, 0.25), transparent 70%), var(--light-bg);
+  margin-bottom: var(--spacing-lg);
+}
+
+.supporters-logo {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  object-fit: cover;
+  display: block;
+  margin: 0 auto var(--spacing-sm);
+}
+
+.supporters-hero h2 {
+  margin: 0 0 var(--spacing-sm);
+}
+
+.supporters-hero > p {
+  max-width: 520px;
+  margin: 0 auto var(--spacing-md);
+  color: var(--text-secondary);
+}
+
+.supporters-tip {
+  font-size: 1rem;
+  padding: 10px 22px;
+}
+
+.supporters-thanks {
+  margin-top: var(--spacing-sm);
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.supporters-stats {
+  display: flex;
+  justify-content: center;
+  gap: var(--spacing-lg);
+  flex-wrap: wrap;
+  margin-top: var(--spacing-lg);
+}
+
+.supporters-stats div {
+  display: flex;
+  flex-direction: column;
+  min-width: 90px;
+}
+
+.supporters-stats strong {
+  font-size: 1.5rem;
+}
+
+.supporters-stats span {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.supporters-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--spacing-md);
+  align-items: start;
+}
+
+.supporters-top,
+.supporters-recent {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.supporters-top li {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 6px 0;
+}
+
+.supporters-rank {
+  width: 1.5em;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.supporters-recent li {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.supporters-recent li:last-child {
+  border-bottom: none;
+}
+
+.supporters-recent-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.supporter-person {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.supporter-person:disabled {
+  cursor: default;
+  color: var(--text-secondary);
+}
+
+.supporter-avatar {
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.supporter-avatar.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  color: white;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.supporter-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.supporters-sats {
+  color: #f7b733;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.supporters-comment {
+  margin: 6px 0 0 36px;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.supporters-time {
+  display: block;
+  margin: 4px 0 0 36px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.supporters-note {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin: var(--spacing-lg) 0;
+}
+
+.supporters-top .supporter-avatar {
+  width: 32px;
+  height: 32px;
+}
+
+.supporters-recent .supporter-avatar {
+  width: 28px;
+  height: 28px;
+}
