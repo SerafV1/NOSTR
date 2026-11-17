@@ -54,9 +54,39 @@ export function rememberCurrentAccount(): void {
   saveAccounts([...accounts, current]);
 }
 
+/**
+ * An extension account chosen here that the extension itself has not been
+ * switched to yet. A page cannot switch an extension (NIP-07 gives it the
+ * key in use and nothing else), so until the two agree the page asks for it
+ * rather than following the extension straight back to where it was.
+ */
+const AWAITING_KEY = 'nostr_awaiting_extension';
+
+export const awaitedExtensionAccount = (): string | null => {
+  try {
+    return localStorage.getItem(AWAITING_KEY);
+  } catch {
+    return null;
+  }
+};
+
+export const stopAwaitingExtension = (): void => {
+  try {
+    localStorage.removeItem(AWAITING_KEY);
+  } catch {
+    // Nothing stored to begin with
+  }
+};
+
 /** Makes this account the one in use. The page reloads around it. */
-export function switchToAccount(account: SavedAccount): void {
+export function switchToAccount(account: SavedAccount, fromExtension = false): void {
   rememberCurrentAccount();
+  try {
+    if (account.mode === 'extension' && !fromExtension) localStorage.setItem(AWAITING_KEY, account.pubkey);
+    else localStorage.removeItem(AWAITING_KEY);
+  } catch {
+    // Without it the page simply follows the extension
+  }
   CredentialManager.clear();
   if (account.mode === 'key' && account.privkey) {
     CredentialManager.storePrivateKey(account.privkey);
@@ -88,4 +118,16 @@ export async function addAccountFromExtension(): Promise<
 /** Takes an account off the list, as logging out of it does */
 export function forgetAccount(pubkey: string): void {
   saveAccounts(listAccounts().filter(a => a.pubkey !== pubkey));
+}
+
+/**
+ * The extension was switched to another account: follow it, adding the
+ * account to the list if it is new.
+ */
+export function followExtensionTo(pubkey: string): void {
+  rememberCurrentAccount();
+  if (!listAccounts().some(a => a.pubkey === pubkey)) {
+    saveAccounts([...listAccounts(), { pubkey, mode: 'extension' }]);
+  }
+  switchToAccount({ pubkey, mode: 'extension' }, true);
 }

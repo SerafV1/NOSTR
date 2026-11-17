@@ -44,6 +44,7 @@ import LiveZappersPage from './components/LiveZappersPage';
 import { BellIcon, MessageIcon, SettingsIcon, ZapIcon } from './components/Icons';
 import SupportersPage from './components/SupportersPage';
 import AccountMenu from './components/AccountMenu';
+import ExtensionSync from './components/ExtensionSync';
 import { forgetAccount, listAccounts, switchToAccount } from './nostr/accounts';
 import RazrWordmark from './components/RazrWordmark';
 import { decodeLiveNaddr, encodeLiveNaddr } from './utils/liveStream';
@@ -840,6 +841,8 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+
+      {isLoggedIn && <ExtensionSync />}
 
       {awaitingSignature > 0 && (
         <div className="signing-banner">

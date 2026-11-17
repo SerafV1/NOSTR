@@ -10252,3 +10252,27 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
   width: 28px;
   height: 28px;
 }
+
+/* The account here and the extension's disagree */
+.extension-sync-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 32px));
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border: 1px solid var(--primary-color);
+  border-radius: var(--border-radius);
+  background: var(--light-bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  font-size: 0.9rem;
+  z-index: 1200;
+}
+
+.extension-sync-banner span {
+  flex: 1 1 260px;
+}
