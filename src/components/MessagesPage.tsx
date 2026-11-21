@@ -75,7 +75,8 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
   /** So the cursor can be put back where it was after a message goes */
   const draftRef = useRef<HTMLTextAreaElement>(null);
 
-  const loadMessages = async () => {
+  // Quiet when it is the page refreshing itself, not somebody opening it
+  const loadMessages = async (quiet = false) => {
     const cached = PersistentCache.get<DirectMessage[]>(`dm_${pubkey}`);
     if (cached && cached.length > 0) {
       setMessages(cached);
@@ -85,7 +86,7 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
     }
 
     try {
-      const fetched = await DirectMessageCore.fetchMessages(pubkey);
+      const fetched = await DirectMessageCore.fetchMessages(pubkey, 500, quiet);
       // Everyone in every conversation, not only whoever is opposite: a
       // group of five needs five names before it can be drawn as anything
       const people = Array.from(new Set(fetched.flatMap(m => m.participants)));
@@ -125,7 +126,7 @@ const MessagesPage: React.FC<MessagesPageProps> = ({
 
   useEffect(() => {
     if (!relaysConnected) return;
-    const interval = setInterval(loadMessages, 15000);
+    const interval = setInterval(() => loadMessages(true), 15000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [relaysConnected, pubkey]);

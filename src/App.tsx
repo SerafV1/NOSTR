@@ -571,7 +571,7 @@ function App() {
 
     const refreshUnread = async () => {
       try {
-        const messages = await DirectMessageCore.fetchMessages(publicKey);
+        const messages = await DirectMessageCore.fetchMessages(publicKey, 500, true);
         // Somebody muted should not be able to light the badge either
         const conversations = DirectMessageCore.groupConversations(
           DirectMessageCore.dropMuted(messages, publicKey)

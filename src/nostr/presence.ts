@@ -37,6 +37,11 @@ export const REFRESH_PRESENCE_MS = 4 * 60 * 1000;
  */
 export async function announcePresence(address: string, relayHint = ''): Promise<NostrEventSigned | null> {
   if (!CredentialManager.canSign()) return null;
+  // Only where signing asks nobody. Through an extension or a signer app
+  // every one of these — once on arriving, again every four minutes — was
+  // a prompt to approve a "replaceable event" nobody had asked to publish,
+  // for as long as the stream stayed open.
+  if (CredentialManager.isExtensionMode() || CredentialManager.isBunkerMode()) return null;
 
   try {
     const signed = await NostrCore.signAnyMode({

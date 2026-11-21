@@ -104,7 +104,19 @@ export const dmRelaysOf = async (pubkey: string): Promise<string[]> => {
  * The gift wraps waiting on our own inbox relays — the ones only we may
  * read, which is exactly why nothing else here ever saw them.
  */
-export const fetchInboxWraps = async (ownPubkey: string, limit: number): Promise<NostrEventSigned[]> => {
+export const fetchInboxWraps = async (
+  ownPubkey: string,
+  limit: number,
+  /**
+   * A look in the background — the unread badge, a page refreshing itself.
+   * Where proving who we are means a prompt (an extension, a signer app),
+   * such a look does not ask: it reads what a connection already proven
+   * can read, and a relay that wants proof first answers it next time the
+   * inbox is opened on purpose. Asked every fifteen or thirty seconds, it
+   * was a prompt to approve that never stopped coming back.
+   */
+  quiet = false
+): Promise<NostrEventSigned[]> => {
   const relays = await dmRelaysOf(ownPubkey);
   if (relays.length === 0) return [];
 
@@ -122,7 +134,9 @@ export const fetchInboxWraps = async (ownPubkey: string, limit: number): Promise
         { kinds: [EVENT_KINDS.GIFT_WRAP], '#p': [ownPubkey], limit },
         {
           maxWait: INBOX_WAIT_MS,
-          onauth: proveIdentity,
+          onauth: quiet && (CredentialManager.isExtensionMode() || CredentialManager.isBunkerMode())
+            ? undefined
+            : proveIdentity,
           onevent: (event: RelayEvent) => { found.set(event.id, event as unknown as NostrEventSigned); },
           onclose: finish
         }

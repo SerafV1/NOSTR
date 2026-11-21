@@ -379,7 +379,7 @@ export class DirectMessageCore {
    * Fetch and decrypt all private messages addressed to us, deduplicated
    * (the recipient's and our own copy of the same rumor share an id).
    */
-  static async fetchMessages(ownPubkey: string, limit: number = 500): Promise<DirectMessage[]> {
+  static async fetchMessages(ownPubkey: string, limit: number = 500, quiet = false): Promise<DirectMessage[]> {
     const filters: NostrFilter[] = [
       { kinds: [EVENT_KINDS.GIFT_WRAP], '#p': [ownPubkey], limit },
       // Both sides of an old conversation: what was sent to us, and our own
@@ -394,7 +394,7 @@ export class DirectMessageCore {
       // which is where a client that follows NIP-17 puts its replies
       const [events, inbox] = await Promise.all([
         relayPool.fetchEvents(filters),
-        fetchInboxWraps(ownPubkey, limit).catch(() => [] as NostrEventSigned[])
+        fetchInboxWraps(ownPubkey, limit, quiet).catch(() => [] as NostrEventSigned[])
       ]);
       const seen = new Set(events.map(event => event.id));
       for (const wrap of inbox) {
