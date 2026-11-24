@@ -6,6 +6,7 @@ import { CredentialManager } from '../nostr/crypto';
 import { parseLiveEvent, LiveStreamInfo, liveEventAddress, encodeLiveNaddr, encodeHostParam, isAudioRoom, posterSources, streamShareText } from '../utils/liveStream';
 import { usePosterTick } from '../hooks/usePosterTick';
 import { useRoomPresence } from '../hooks/useRoomPresence';
+import { useServiceViewers } from '../hooks/useServiceViewers';
 import { announcePresence, REFRESH_PRESENCE_MS } from '../nostr/presence';
 import { formatAddress } from '../utils/helpers';
 import StreamSurface from './StreamSurface';
@@ -215,6 +216,13 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
 
 
   const watching = useRoomPresence(roomAddress, relaysConnected);
+  // The server's own count, which only the broadcaster may read
+  const serverCount = useServiceViewers(
+    stream?.service,
+    stream?.dTag,
+    stream ? [stream.hostPubkey, stream.pubkey] : [],
+    stream?.status === 'live'
+  );
 
   /**
    * The most this stream has been seen to have, and the last number its own
@@ -246,6 +254,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
   const me = CredentialManager.getPublicKey();
   const watchingWithMe = me && !watching.includes(me) ? watching.length + 1 : Math.max(watching.length, 1);
   const counted = Math.max(
+    serverCount ?? 0,
     stream?.currentParticipants ?? published ?? 0,
     present.length,
     stream?.status === 'live' ? watchingWithMe : watching.length
@@ -528,7 +537,9 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                 <span
                   className="live-stream-viewers-count"
                   title={
-                    present.length > (published ?? 0)
+                    serverCount !== null && serverCount >= counted
+                      ? 'Counted by the stream server itself — only you, as the broadcaster, can see this number'
+                      : present.length > (published ?? 0)
                       ? 'How many people have spoken in the chat lately — more than the broadcaster\'s own software is publishing'
                       : `The number the broadcaster's own software publishes — nostr has no other source for it. Last published ${sinceWhen(stream.publishedAt)}.`
                   }
