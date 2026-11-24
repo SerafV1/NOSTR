@@ -239,10 +239,16 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
     setPeak(0);
   }, [roomAddress]);
 
+  // Whoever has this page open is watching it, said out loud or not: an
+  // extension user publishes no presence (every one was a prompt), and a
+  // stream whose service publishes nought then showed no count at all to
+  // the person sitting in front of it
+  const me = CredentialManager.getPublicKey();
+  const watchingWithMe = me && !watching.includes(me) ? watching.length + 1 : Math.max(watching.length, 1);
   const counted = Math.max(
     stream?.currentParticipants ?? published ?? 0,
     present.length,
-    watching.length
+    stream?.status === 'live' ? watchingWithMe : watching.length
   );
 
   useEffect(() => {
@@ -258,14 +264,14 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
     if (stream?.status !== 'live') return;
 
     let dropped = false;
-    const say = () => {
+    const say = (again: boolean) => {
       if (dropped || document.visibilityState !== 'visible') return;
-      void announcePresence(roomAddress);
+      void announcePresence(roomAddress, '', again);
     };
-    say();
+    say(false);
     // A presence event stands for ten minutes; this says it again well
     // inside that, and stops the moment the page is left
-    const again = setInterval(say, REFRESH_PRESENCE_MS);
+    const again = setInterval(() => say(true), REFRESH_PRESENCE_MS);
     return () => { dropped = true; clearInterval(again); };
   }, [roomAddress, relaysConnected, stream?.status]);
 
@@ -527,7 +533,7 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
                       : `The number the broadcaster's own software publishes — nostr has no other source for it. Last published ${sinceWhen(stream.publishedAt)}.`
                   }
                 >
-                  👁 {counted} viewers
+                  👁 {counted} {counted === 1 ? 'viewer' : 'viewers'}
                 </span>
 
                 {/* What it reached, which the count itself does not keep: the

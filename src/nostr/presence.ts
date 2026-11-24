@@ -35,13 +35,21 @@ export const REFRESH_PRESENCE_MS = 4 * 60 * 1000;
  * tickbox for a while, which was a question with one sensible answer: you
  * are in the room, so the room's number should say so.
  */
-export async function announcePresence(address: string, relayHint = ''): Promise<NostrEventSigned | null> {
+export async function announcePresence(
+  address: string,
+  relayHint = '',
+  /** The refresh every few minutes, rather than arriving */
+  again = false
+): Promise<NostrEventSigned | null> {
   if (!CredentialManager.canSign()) return null;
-  // Only where signing asks nobody. Through an extension or a signer app
-  // every one of these — once on arriving, again every four minutes — was
-  // a prompt to approve a "replaceable event" nobody had asked to publish,
-  // for as long as the stream stayed open.
-  if (CredentialManager.isExtensionMode() || CredentialManager.isBunkerMode()) return null;
+  // Through an extension or a signer app every one of these is a prompt to
+  // approve. Every four minutes for as long as a stream stayed open, it was
+  // a "replaceable event" to approve that never stopped coming back; never
+  // at all, and a stream whose service publishes nought showed nobody
+  // watching, the broadcaster's own count in OBS included. So: once, on
+  // arriving — which counts them for the next ten minutes — and the refresh
+  // only where signing asks nobody.
+  if (again && (CredentialManager.isExtensionMode() || CredentialManager.isBunkerMode())) return null;
 
   try {
     const signed = await NostrCore.signAnyMode({

@@ -10276,3 +10276,10 @@ body:has(.live-chat-dock) .inline-stream-playing.docked {
 .extension-sync-banner span {
   flex: 1 1 260px;
 }
+
+/* An overlay is drawn into the broadcast itself: "No zaps yet", "No
+   messages yet" are notes for whoever set it up, not for the viewers, and
+   sat in small print in the corner of the picture */
+.chat-overlay .live-chat-empty {
+  display: none;
+}
