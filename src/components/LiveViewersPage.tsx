@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { NostrCore } from '../nostr/core';
 import { useRoomPresence } from '../hooks/useRoomPresence';
+import { useServiceViewers } from '../hooks/useServiceViewers';
 import { useReloadOnNewBuild } from '../hooks/useReloadOnNewBuild';
 import { CredentialManager } from '../nostr/crypto';
 import {
@@ -51,6 +52,8 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
    * npub — which is not the address this broadcaster wants in OBS.
    */
   const [host, setHost] = useState(pubkey);
+  /** Where the stream is served from, and whether it is running */
+  const [served, setServed] = useState<{ service: string; live: boolean } | null>(null);
   /** People who have published that they are watching this (NIP-53) */
   const watching = useRoomPresence(liveEventAddress(kind, pubkey, identifier), relaysConnected);
   /** When the copy the number came from was published, so an older one cannot replace it */
@@ -85,6 +88,7 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
 
       const parsed = parseLiveEvent(event);
       if (parsed.hostPubkey) setHost(parsed.hostPubkey);
+      setServed({ service: parsed.service, live: parsed.status === 'live' });
       if (!cancelled && parsed.currentParticipants !== undefined) {
         latestAt.current = at;
         setPublished(parsed.currentParticipants);
@@ -171,7 +175,10 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
    * absence of any number at all that shows as a dash, and turning a
    * published nought into one put a bare line where the count belongs.
    */
-  const present = Math.max(inChat, watching.length);
+  // The server's own count, readable by the broadcaster only: the pop-up
+  // opened from their stream page, not the signed-out copy inside OBS
+  const serverCount = useServiceViewers(served?.service, identifier, [host, pubkey], !!served?.live, 4000);
+  const present = Math.max(inChat, watching.length, serverCount ?? 0);
   const viewers = published !== null ? Math.max(published, present) : (present || null);
 
   useEffect(() => {

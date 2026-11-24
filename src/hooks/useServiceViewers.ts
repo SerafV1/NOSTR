@@ -22,7 +22,14 @@ export function useServiceViewers(
   service: string | undefined,
   streamId: string | undefined,
   owners: string[],
-  live: boolean
+  live: boolean,
+  /**
+   * Wait this long for another window of this browser to pass the number
+   * on before opening a socket of its own. The viewers pop-up is opened from
+   * the stream page, which already has one: a second would be a second
+   * signature, and through an extension a second prompt.
+   */
+  waitForOthersMs = 0
 ): number | null {
   const [viewers, setViewers] = useState<number | null>(null);
   const me = CredentialManager.getPublicKey();
@@ -35,6 +42,19 @@ export function useServiceViewers(
 
     const wsUrl = `${service.replace(/^http/, 'ws').replace(/\/$/, '')}/ws`;
     let dropped = false;
+    let heard = false;
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel(`razr-server-viewers-${streamId}`);
+      channel.onmessage = event => {
+        if (typeof event.data === 'number' && !dropped) {
+          heard = true;
+          setViewers(event.data);
+        }
+      };
+    } catch {
+      // No channel: every window asks for itself
+    }
     let socket: WebSocket | null = null;
     let retry: ReturnType<typeof setTimeout> | undefined;
     // Each connection is a signature, and through an extension a signature
@@ -68,7 +88,10 @@ export function useServiceViewers(
             attempts = 0;
             socket?.send(JSON.stringify({ type: 'SubscribeStream', data: { stream_id: streamId } }));
           } else if (data.type === 'StreamMetrics' && typeof data.data?.viewers === 'number') {
-            if (!dropped) setViewers(data.data.viewers);
+            if (!dropped) {
+              setViewers(data.data.viewers);
+              channel?.postMessage(data.data.viewers);
+            }
           } else if (data.type === 'Error') {
             // Not ours after all, or not this kind of service: stop asking
             attempts = 3;
@@ -84,9 +107,11 @@ export function useServiceViewers(
       socket.onerror = () => { /* onclose follows */ };
     };
 
-    connect();
+    const start = setTimeout(() => { if (!heard) connect(); }, waitForOthersMs);
     return () => {
       dropped = true;
+      clearTimeout(start);
+      channel?.close();
       clearTimeout(retry);
       socket?.close();
     };
