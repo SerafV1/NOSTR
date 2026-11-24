@@ -221,7 +221,9 @@ const LiveStreamPage: React.FC<LiveStreamPageProps> = ({ kind, pubkey, identifie
     stream?.service,
     stream?.dTag,
     stream ? [stream.hostPubkey, stream.pubkey] : [],
-    stream?.status === 'live'
+    stream?.status === 'live',
+    0,
+    roomAddress
   );
 
   /**

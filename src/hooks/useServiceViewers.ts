@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NostrCore } from '../nostr/core';
 import { CredentialManager } from '../nostr/crypto';
+import { passOnViewerCount } from '../nostr/countRelay';
 
 /** NIP-98: an HTTP request signed for, here the opening of a socket */
 const HTTP_AUTH_KIND = 27235;
@@ -29,7 +30,9 @@ export function useServiceViewers(
    * the stream page, which already has one: a second would be a second
    * signature, and through an extension a second prompt.
    */
-  waitForOthersMs = 0
+  waitForOthersMs = 0,
+  /** The room's address, to pass the number on to a signed-out OBS widget */
+  address?: string
 ): number | null {
   const [viewers, setViewers] = useState<number | null>(null);
   const me = CredentialManager.getPublicKey();
@@ -57,13 +60,24 @@ export function useServiceViewers(
     }
     let socket: WebSocket | null = null;
     let retry: ReturnType<typeof setTimeout> | undefined;
-    // Each connection is a signature, and through an extension a signature
-    // is a prompt: a few reconnects, then it is left alone
+    // Each sign-in is a signature, and through an extension a signature is
+    // a prompt. The server takes one for a couple of minutes, so a socket
+    // that drops is reopened with the same one while it lasts; past that a
+    // few more, then it is left alone. (The count used to start over after
+    // every sign-in that worked, which made a prompt of every dropped
+    // socket for as long as the page was open.)
     let attempts = 0;
+    let token: { value: string; at: number } | null = null;
+    const TOKEN_GOOD_MS = 90 * 1000;
+    let lastPassed: { n: number; at: number } | null = null;
 
     const connect = () => {
-      if (dropped || attempts >= 3) return;
-      attempts += 1;
+      if (dropped) return;
+      const fresh = token && Date.now() - token.at < TOKEN_GOOD_MS;
+      if (!fresh) {
+        if (attempts >= 3) return;
+        attempts += 1;
+      }
       try {
         socket = new WebSocket(wsUrl);
       } catch {
@@ -71,12 +85,15 @@ export function useServiceViewers(
       }
       socket.onopen = async () => {
         try {
-          const token = await NostrCore.signAnyMode({
-            kind: HTTP_AUTH_KIND,
-            content: '',
-            tags: [['u', wsUrl], ['method', 'GET']]
-          });
-          socket?.send(JSON.stringify({ type: 'Auth', data: { token: btoa(JSON.stringify(token)) } }));
+          if (!token || Date.now() - token.at >= TOKEN_GOOD_MS) {
+            const signed = await NostrCore.signAnyMode({
+              kind: HTTP_AUTH_KIND,
+              content: '',
+              tags: [['u', wsUrl], ['method', 'GET']]
+            });
+            token = { value: btoa(JSON.stringify(signed)), at: Date.now() };
+          }
+          socket?.send(JSON.stringify({ type: 'Auth', data: { token: token.value } }));
         } catch {
           socket?.close();
         }
@@ -85,16 +102,23 @@ export function useServiceViewers(
         try {
           const data = JSON.parse(String(message.data));
           if (data.type === 'AuthResponse' && data.data?.success) {
-            attempts = 0;
             socket?.send(JSON.stringify({ type: 'SubscribeStream', data: { stream_id: streamId } }));
           } else if (data.type === 'StreamMetrics' && typeof data.data?.viewers === 'number') {
             if (!dropped) {
-              setViewers(data.data.viewers);
-              channel?.postMessage(data.data.viewers);
+              const n: number = data.data.viewers;
+              setViewers(n);
+              channel?.postMessage(n);
+              // On to OBS: when it changes, and every half minute so a widget
+              // opened mid-stream hears it soon
+              if (address && (!lastPassed || lastPassed.n !== n || Date.now() - lastPassed.at > 30000)) {
+                lastPassed = { n, at: Date.now() };
+                void passOnViewerCount(address, n);
+              }
             }
           } else if (data.type === 'Error') {
             // Not ours after all, or not this kind of service: stop asking
             attempts = 3;
+            token = null;
             socket?.close();
           }
         } catch {
@@ -115,7 +139,7 @@ export function useServiceViewers(
       clearTimeout(retry);
       socket?.close();
     };
-  }, [service, streamId, mine, live]);
+  }, [service, streamId, mine, live, address]);
 
   return viewers;
 }

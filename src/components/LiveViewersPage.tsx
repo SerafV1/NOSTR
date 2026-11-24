@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { NostrCore } from '../nostr/core';
 import { useRoomPresence } from '../hooks/useRoomPresence';
 import { useServiceViewers } from '../hooks/useServiceViewers';
+import { VIEWER_COUNT_KIND, viewerCounterPubkey } from '../nostr/countRelay';
 import { useReloadOnNewBuild } from '../hooks/useReloadOnNewBuild';
 import { CredentialManager } from '../nostr/crypto';
 import {
@@ -177,8 +178,35 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
    */
   // The server's own count, readable by the broadcaster only: the pop-up
   // opened from their stream page, not the signed-out copy inside OBS
-  const serverCount = useServiceViewers(served?.service, identifier, [host, pubkey], !!served?.live, 4000);
-  const present = Math.max(inChat, watching.length, serverCount ?? 0);
+  const serverCount = useServiceViewers(
+    served?.service, identifier, [host, pubkey], !!served?.live, 4000, liveEventAddress(kind, pubkey, identifier)
+  );
+
+  /**
+   * The same number inside OBS, which is signed out and cannot ask the
+   * server: the broadcaster's own window passes it on, signed with a key
+   * named in this widget's link (see nostr/countRelay).
+   */
+  const counter = params.get('counter');
+  const [relayed, setRelayed] = useState<{ n: number; at: number } | null>(null);
+  useEffect(() => {
+    if (!counter || !/^[0-9a-f]{64}$/.test(counter) || !relaysConnected) return;
+    const address = liveEventAddress(kind, pubkey, identifier);
+    const sub = NostrCore.subscribeLive(
+      [{ kinds: [VIEWER_COUNT_KIND], authors: [counter], '#a': [address] }],
+      event => {
+        const n = Number(event.tags.find(t => t[0] === 'viewers')?.[1]);
+        if (Number.isFinite(n)) setRelayed({ n, at: Date.now() });
+      }
+    );
+    // Gone quiet — the broadcaster's window was closed — and it no longer counts
+    const stale = setInterval(() => {
+      setRelayed(current => (current && Date.now() - current.at > 2 * 60 * 1000 ? null : current));
+    }, 30000);
+    return () => { NostrCore.unsubscribeLive(sub); clearInterval(stale); };
+  }, [counter, kind, pubkey, identifier, relaysConnected]);
+
+  const present = Math.max(inChat, watching.length, serverCount ?? 0, relayed?.n ?? 0);
   const viewers = published !== null ? Math.max(published, present) : (present || null);
 
   useEffect(() => {
@@ -191,6 +219,10 @@ const LiveViewersPage: React.FC<LiveViewersPageProps> = ({
     const chosen = new URLSearchParams();
     if (opts.transparent) chosen.set('transparent', '1');
     if (opts.bold) chosen.set('bold', '1');
+    // The broadcaster's window passes the server's count on under this key;
+    // the link carries it so the copy in OBS knows whom to believe
+    const passer = readOnly ? counter : viewerCounterPubkey();
+    if (passer) chosen.set('counter', passer);
     const query = chosen.toString();
     return query ? `?${query}` : '';
   };
